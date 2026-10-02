@@ -195,6 +195,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 <style>{STYLE}</style>
 </head>
 <body>
+<!--email_off-->
 <header>
 <a href="/">~/jend</a>
 <nav><a href="{HUB}">hub</a><a href="https://bend-lang.com">bend</a></nav>
@@ -211,6 +212,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 <p>Searches Base and the latest versions of the 50 hottest BendHub packages. The score is the probability, judged by Jev, that a programmer would call the definition to do what the query asks.</p>
 <p>For programs and LLMs: <code>GET /search.json?q=…</code> returns the same results as JSON.</p>
 </footer>
+<!--/email_off-->
 </body>
 </html>
 """

@@ -55,6 +55,12 @@ def test_content_security_policy_allows_the_page_style() -> None:
     assert f"'sha256-{digest}'" in SECURITY_HEADERS["Content-Security-Policy"]
 
 
+def test_results_are_outside_cloudflare_email_obfuscation() -> None:
+    body = bytes(page("q", "bend-kit-files@0.1.1.0/files.bend").body).decode()
+    start, end = body.index("<!--email_off-->"), body.index("<!--/email_off-->")
+    assert start < body.index("bend-kit-files@0.1.1.0") < end
+
+
 def _entry(
     name: str | None, path: str, signature: str = "def f() -> U32", hot: float | None = 1.0
 ) -> Entry:
