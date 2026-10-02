@@ -66,9 +66,10 @@ The server loads the index one time and serves two routes:
 
 - `GET /?q=…`: an HTML page. It works without JavaScript. The colors follow
   the system setting: black on white, or white on black.
-- `GET /search.json?q=…`: the same 50 results as JSON. Each result has
-  `probability`, `kind`, `name`, `signature`, `summary`, `package` (`name`,
-  `version`, `hash`), `file`, `line`, `import` (`null` for Base) and `source`.
+- `GET /search.json?q=…`: the best 20 results as compact JSON for programs
+  and LLMs: `{"query": …, "results": [{"score", "signature", "summary",
+  "import", "source"}]}`. `import` is the line to write (`import Base` for
+  Base), and `source` is the file URL with the line as `#L…`.
 
 A query that is in the cache costs nothing and has no limit. A new query costs
 approximately $0.00042. The server refuses a new query with HTTP 429 and a

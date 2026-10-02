@@ -26,6 +26,7 @@ from jend.limits import Budget, RateLimit, seconds_until_utc_midnight, utc_today
 from jend.search import Hit, Result, Searcher
 
 MAX_QUERY_CHARS = 200
+JSON_RESULTS = 20
 EMBEDDING_TIMEOUT = 15.0
 JEV_TIMEOUT = 20.0
 EXAMPLES = ("decompress gzip data", "String -> Bytes", "read a file", "parse JSON text")
@@ -107,32 +108,24 @@ def import_line(entry: Entry) -> str | None:
 def source_url(entry: Entry) -> str:
     package = entry.package
     if package.is_base:
-        return (
-            f"https://github.com/bendlang/bend/blob/{package.hash}/bend2/{base.PATH}"
-            f"#L{entry.definition.line}"
-        )
-    return f"{HUB}/{package.hash}/{quote(entry.path)}"
+        file = f"https://github.com/bendlang/bend/blob/{package.hash}/bend2/{base.PATH}"
+    else:
+        file = f"{HUB}/{package.hash}/{quote(entry.path)}"
+    return f"{file}#L{entry.definition.line}"
 
 
 def hit_json(hit: Hit) -> dict[str, object]:
     entry = hit.document.entry
     enrichment = hit.document.enrichment
-    return {
-        "probability": round(hit.probability, 4),
-        "kind": entry.definition.kind.value,
-        "name": entry.definition.name,
+    result: dict[str, object] = {
+        "score": round(hit.probability, 2),
         "signature": entry.definition.signature,
-        "summary": None if enrichment is None else enrichment.summary,
-        "package": {
-            "name": entry.package.name,
-            "version": entry.package.version,
-            "hash": entry.package.hash,
-        },
-        "file": entry.path,
-        "line": entry.definition.line,
-        "import": import_line(entry),
-        "source": source_url(entry),
     }
+    if enrichment is not None:
+        result["summary"] = enrichment.summary
+    result["import"] = import_line(entry) or "import Base"
+    result["source"] = source_url(entry)
+    return result
 
 
 STYLE = """
@@ -210,7 +203,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 </main>
 <footer>
 <p>Searches Base and the latest versions of the 50 hottest BendHub packages. The score is the probability, judged by Jev, that a programmer would call the definition to do what the query asks.</p>
-<p>For programs and LLMs: <code>GET /search.json?q=…</code> returns the same results as JSON.</p>
+<p>For programs and LLMs: <code>GET /search.json?q=…</code> returns the best {JSON_RESULTS} results as JSON: score, signature, summary, import line and source URL.</p>
 </footer>
 <!--/email_off-->
 </body>
@@ -347,8 +340,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             {
                 "query": result.query,
-                "cached": result.cached,
-                "results": [hit_json(hit) for hit in result.ranking],
+                "results": [hit_json(hit) for hit in result.ranking[:JSON_RESULTS]],
             }
         )
 
