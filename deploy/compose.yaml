@@ -1,0 +1,31 @@
+name: jendhub
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  app:
+    image: jendhub:latest
+    restart: unless-stopped
+    env_file: app.env
+    environment:
+      JEND_CLIENT_IP_HEADER: cf-connecting-ip
+      JEND_RATE_PER_MINUTE: "10"
+      JEND_DAILY_BUDGET_USD: "1.0"
+    volumes:
+      - ./data:/data
+    mem_limit: 1g
+    logging: *logging
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.3
+    command: tunnel --no-autoupdate run
+    restart: unless-stopped
+    env_file: tunnel.env
+    depends_on:
+      - app
+    mem_limit: 256m
+    logging: *logging

@@ -1,0 +1,184 @@
+import argparse
+import asyncio
+import hashlib
+import math
+import re
+from collections import Counter, defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import numpy.typing as npt
+
+from jend import corpus, embed, enrich, mirror, openrouter
+from jend.corpus import Entry
+from jend.enrich import Enrichment
+
+STOPWORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "to",
+        "with",
+    ]
+)
+
+Scores = npt.NDArray[np.float32]
+BM25_K1 = 1.2
+BM25_B = 0.75
+
+
+@dataclass(frozen=True)
+class Document:
+    key: str
+    entries: tuple[Entry, ...]
+    enrichment: Enrichment | None
+
+    @property
+    def entry(self) -> Entry:
+        return self.entries[0]
+
+    @property
+    def vector_key(self) -> str:
+        return hashlib.sha256(self.text().encode()).hexdigest()[:32]
+
+    def text(self) -> str:
+        definition = self.entry.definition
+        parts = [definition.name, definition.doc]
+        if self.enrichment is not None:
+            parts += [self.enrichment.summary, *self.enrichment.queries]
+        parts += [
+            definition.signature[:800],
+            self.entry.package_label,
+            self.entry.package.description[:200],
+        ]
+        return "\n".join(part for part in parts if part)
+
+
+def tokens(text: str) -> list[str]:
+    spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", text).lower()
+    return [
+        token
+        for token in re.findall(r"[a-z]+|\d+", spaced)
+        if len(token) > 1 and token not in STOPWORDS
+    ]
+
+
+class Bm25:
+    def __init__(self, texts: Sequence[str]) -> None:
+        counts = [Counter(tokens(text)) for text in texts]
+        lengths = np.array([sum(count.values()) for count in counts], dtype=np.float32)
+        average = float(lengths.mean()) if len(counts) else 1.0
+        postings: defaultdict[str, list[tuple[int, int]]] = defaultdict(list)
+        for row, count in enumerate(counts):
+            for term, frequency in count.items():
+                postings[term].append((row, frequency))
+        self.size = len(counts)
+        self.postings: dict[str, tuple[npt.NDArray[np.int32], npt.NDArray[np.float32]]] = {}
+        for term, rows in postings.items():
+            ids = np.array([row for row, _ in rows], dtype=np.int32)
+            frequency = np.array([value for _, value in rows], dtype=np.float32)
+            idf = math.log(1 + (self.size - len(rows) + 0.5) / (len(rows) + 0.5))
+            norm = BM25_K1 * (1 - BM25_B + BM25_B * lengths[ids] / average)
+            weights = idf * frequency * (BM25_K1 + 1) / (frequency + norm)
+            self.postings[term] = (ids, weights.astype(np.float32))
+
+    def scores(self, query: str) -> Scores:
+        scores = np.zeros(self.size, dtype=np.float32)
+        for term in set(tokens(query)):
+            posting = self.postings.get(term)
+            if posting is not None:
+                np.add.at(scores, posting[0], posting[1])
+        return scores
+
+
+@dataclass(frozen=True)
+class Index:
+    documents: tuple[Document, ...]
+    vectors: embed.Vectors
+    bm25: Bm25
+    id: str
+
+
+def _documents(data: Path) -> list[Document]:
+    entries = corpus.entries(corpus.select(mirror.load(data / "mirror.json")))
+    enrichments = enrich.load(data / "index" / "enrichment.jsonl")
+    grouped: dict[str, list[Entry]] = {}
+    for entry in entries:
+        grouped.setdefault(entry.content_key, []).append(entry)
+    return [
+        Document(
+            key,
+            tuple(sorted(group, key=lambda entry: entry.rank)),
+            enrichments.get(key),
+        )
+        for key, group in grouped.items()
+    ]
+
+
+def load(data: Path) -> Index:
+    documents = _documents(data)
+    keys, vectors = embed.Store(data / "index").load()
+    row = {key: index for index, key in enumerate(keys)}
+    missing = [document for document in documents if document.vector_key not in row]
+    if missing:
+        raise ValueError(f"{len(missing)} documents have no vector; run `python -m jend.index`")
+    ordered = vectors[[row[document.vector_key] for document in documents]]
+    identity = hashlib.sha256(
+        "\n".join([embed.MODEL, *(document.vector_key for document in documents)]).encode()
+    ).hexdigest()[:16]
+    return Index(
+        tuple(documents), ordered, Bm25([document.text() for document in documents]), identity
+    )
+
+
+async def build(data: Path, budget: float) -> None:
+    entries = corpus.entries(corpus.select(mirror.load(data / "mirror.json")))
+    report = await enrich.enrich(entries, data / "index" / "enrichment.jsonl", budget)
+    print(
+        f"enrichment: {report.written} written, {report.failed_batches} failed batches,"
+        f" {report.skipped_batches} skipped batches, ${report.cost:.4f}"
+    )
+    documents = _documents(data)
+    store = embed.Store(data / "index")
+    keys, vectors = store.load()
+    known = {key: row for row, key in enumerate(keys)}
+    missing = [document for document in documents if document.vector_key not in known]
+    async with openrouter.connect() as client:
+        added, cost = await embed.embed(client, [document.text() for document in missing])
+    rows = {key: vectors[row] for key, row in known.items()}
+    rows.update({document.vector_key: added[row] for row, document in enumerate(missing)})
+    current = [document.vector_key for document in documents]
+    store.save(current, np.stack([rows[key] for key in current]))
+    print(f"embeddings: {len(missing)} added, ${cost:.4f}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Enrich and embed the hottest packages.")
+    parser.add_argument("--data", type=Path, default=Path("data/hub"))
+    parser.add_argument("--budget", type=float, required=True, help="USD limit for enrichment")
+    args = parser.parse_args()
+    asyncio.run(build(args.data, args.budget))
+
+
+if __name__ == "__main__":
+    main()
