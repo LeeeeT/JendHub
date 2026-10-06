@@ -29,6 +29,7 @@ def _record(row: int) -> Record:
         name=f"f{row}",
         kind=Kind.DEF,
         signature=f"def f{row}() -> U32",
+        doc=None,
         line=row + 1,
         path="a.bend",
         package_hash="0xa",

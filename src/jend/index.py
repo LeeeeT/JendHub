@@ -65,6 +65,7 @@ create table documents (
     name text not null,
     kind text not null,
     signature text not null,
+    doc text,
     line integer not null,
     path text not null,
     package_hash text not null,
@@ -86,6 +87,7 @@ class Record:
     name: str
     kind: Kind
     signature: str
+    doc: str | None
     line: int
     path: str
     package_hash: str
@@ -108,6 +110,7 @@ RECORD_COLUMNS = (
     "name",
     "kind",
     "signature",
+    "doc",
     "line",
     "path",
     "package_hash",
@@ -127,6 +130,7 @@ def _row(record: Record) -> tuple[object, ...]:
         record.name,
         record.kind.value,
         record.signature,
+        record.doc,
         record.line,
         record.path,
         record.package_hash,
@@ -145,6 +149,7 @@ def _record(row: Sequence[Any]) -> Record:
         name,
         kind,
         signature,
+        doc,
         line,
         path,
         package_hash,
@@ -160,6 +165,7 @@ def _record(row: Sequence[Any]) -> Record:
         name=name,
         kind=Kind(kind),
         signature=signature,
+        doc=doc,
         line=line,
         path=path,
         package_hash=package_hash,

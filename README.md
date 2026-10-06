@@ -88,7 +88,7 @@ gives it. Nothing is trained. The query vectors are in
 python -m jend.web --port 8000
 ```
 
-The server opens the index one time and serves three routes:
+The server opens the index one time and serves four routes:
 
 - `GET /?q=…`: an HTML page with the best 20 results. When the reader scrolls
   near the end of the list, a small script loads the next 20, until the end
@@ -96,13 +96,16 @@ The server opens the index one time and serves three routes:
   the system setting: black on white, or white on black.
 - `GET /more?q=…&start=N`: the HTML list items of the results from position
   `N`, 20 at a time. The script of the page uses this route.
-- `GET /search.json?q=…`: the best 20 results as compact JSON for programs
-  and LLMs: `{"query": …, "results": [{"score", "signature", "summary",
-  "import", "source"}]}`. `score` is the value of the ranking formula: a
+- `GET /search.txt?q=…`: the best 20 results as plain text for LLMs. The
+  results are under their import line (`import Base` for Base), in groups in
+  the order of their best result. Each result gives its rank, the name to use
+  in code (`Alias.name`, or the plain name for Base), its score, its
+  declaration, the doc comment of its author, the summary, and the file URL
+  with the line as `#L…`. The score is the value of the ranking formula: a
   higher score is a better match, but the scores of two queries cannot be
-  compared. `import` is the line to write
-  (`import Base` for Base), and `source` is the file URL with the line as
-  `#L…`.
+  compared.
+- `GET /llms.txt`: tells LLMs how to use `/search.txt`, and how to import and
+  call a result in Bend.
 
 A new query costs one query embedding, approximately $0.0000003, so the server
 has no rate limit and no budget. A query longer than 200 characters gets HTTP
@@ -111,8 +114,8 @@ keeps the rankings of the 256 most recent queries in memory, so the next 20
 results do not need a new ranking.
 
 Every response has a strict Content-Security-Policy (only the style and the
-script of the page, identified by their hashes), `X-Content-Type-Options`, `Referrer-Policy` and
-`Strict-Transport-Security`. `/robots.txt` keeps crawlers away from result
+script of the page, identified by their hashes), `X-Content-Type-Options`,
+`Referrer-Policy` and `Strict-Transport-Security`. `/robots.txt` keeps crawlers away from result
 pages.
 
 ## Docker

@@ -14,7 +14,7 @@ from urllib.parse import quote, urlencode
 import httpx2
 import uvicorn
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 from jend import base, embed, openrouter
 from jend.index import INDEX, Index, Record
@@ -22,7 +22,7 @@ from jend.score import Scorer
 from jend.search import PAGE, Engine, Hit, Result
 
 MAX_QUERY_CHARS = 200
-JSON_RESULTS = 20
+TEXT_RESULTS = 20
 EMBEDDING_TIMEOUT = 15.0
 EXAMPLES = ("decompress gzip data", "String -> Bytes", "read a file", "parse JSON text")
 HUB = "https://hub.bend-lang.com"
@@ -56,10 +56,14 @@ def alias(record: Record) -> str:
     return name if name[0].isalpha() else f"M{name}"
 
 
-def import_line(record: Record) -> str | None:
+def import_line(record: Record) -> str:
     if record.is_base:
-        return None
+        return "import Base"
     return f"import {record.package_label}/{record.path} as {alias(record)}"
+
+
+def call_name(record: Record) -> str:
+    return record.name if record.is_base else f"{alias(record)}.{record.name}"
 
 
 def source_url(record: Record) -> str:
@@ -70,14 +74,26 @@ def source_url(record: Record) -> str:
     return f"{file}#L{record.line}"
 
 
-def hit_json(hit: Hit) -> dict[str, object]:
+def results_text(result: Result) -> str:
+    groups: dict[str, list[str]] = {}
+    for rank, hit in enumerate(result.hits, 1):
+        groups.setdefault(import_line(hit.record), []).append(hit_text(rank, hit))
+    heading = (
+        f"Bend definitions for “{result.query}”: the best {len(result.hits)} of"
+        f" {result.total}. A higher score is a better match."
+    )
+    return "\n\n".join([heading, *("\n\n".join([line, *hits]) for line, hits in groups.items())])
+
+
+def hit_text(rank: int, hit: Hit) -> str:
     record = hit.record
-    result: dict[str, object] = {"score": round(hit.score, 2), "signature": record.signature}
+    lines = [f"{rank}. {call_name(record)} (score {hit.score:.2f})", *record.signature.splitlines()]
+    if record.doc is not None:
+        lines.append(f"doc: {record.doc}")
     if record.summary is not None:
-        result["summary"] = record.summary
-    result["import"] = import_line(record) or "import Base"
-    result["source"] = source_url(record)
-    return result
+        lines.append(f"summary: {record.summary}")
+    lines.append(f"source: {source_url(record)}")
+    return "\n   ".join(lines)
 
 
 STYLE = """
@@ -142,15 +158,40 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Strict-Transport-Security": "max-age=31536000",
 }
-ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /more\nDisallow: /search.json\n"
+ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /more\nDisallow: /search.txt\n"
+LLMS = f"""# JendHub
+
+> A search engine for Bend definitions. It searches Base and the latest
+> versions of the 100 hottest BendHub packages ({HUB}).
+> A query can tell what the definition does, give a name, or give a type.
+
+## Search
+
+GET /search.txt?q=<query>
+
+The answer is plain text with the best {TEXT_RESULTS} definitions. Results that need the
+same import line are under that line. Each result gives its rank, the name to
+use in your code, its score, its declaration, the doc comment of its author when
+it has one, a summary, and the URL of its source. A higher score is a better
+match. You cannot compare the scores of two queries. A query has at most
+{MAX_QUERY_CHARS} characters.
+
+## Use a result in Bend
+
+Write the import line at the top of your file. Then use the name of the result:
+the alias of the import, a dot, and the name of the definition. For example,
+after `import bend-kit-zlib@0.2.0.0/zlib.bend as Zlib`, call `Zlib.gunzip(data)`.
+Definitions of Base need `import Base`, and you use their names without an
+alias, for example `String.eq(a, b)`.
+"""
 
 
 def page(query: str, body: str, status: int = 200) -> HTMLResponse:
     title = f"{query} - JendHub" if query else "JendHub - search Bend definitions"
-    json_link = ""
+    text_link = ""
     if query:
-        href = escape(f"/search.json?{urlencode({'q': query})}")
-        json_link = f'<link rel="alternate" type="application/json" href="{href}">'
+        href = escape(f"/search.txt?{urlencode({'q': query})}")
+        text_link = f'<link rel="alternate" type="text/plain" href="{href}">'
     html = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -159,7 +200,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 <title>{escape(title)}</title>
 <meta name="description" content="Search the definitions of Bend packages on BendHub and of Base by what they do.">
 <link rel="icon" href="data:,">
-{json_link}
+{text_link}
 <style>{STYLE}</style>
 </head>
 <body>
@@ -178,7 +219,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 </main>
 <footer>
 <p>Searches Base and the latest versions of the 100 hottest BendHub packages. The score tells how well the definition matches the query, compared with the other results of the same query.</p>
-<p>For programs and LLMs: <code>GET /search.json?q=…</code> returns the best {JSON_RESULTS} results as JSON: score, signature, summary, import line and source URL.</p>
+<p>For LLMs: <code>GET /search.txt?q=…</code> returns the best {TEXT_RESULTS} results as plain text: the name to use, score, declaration, doc comment, summary, import line and source URL. <a href="/llms.txt">/llms.txt</a> tells how to use it.</p>
 </footer>
 <!--/email_off-->
 <script type="module">{SCRIPT}</script>
@@ -203,19 +244,13 @@ def hits_html(result: Result) -> str:
 def hit_html(hit: Hit) -> str:
     record = hit.record
     summary = "" if record.summary is None else f"<p>{escape(record.summary)}</p>"
-    line = import_line(record)
-    usage = (
-        '<p class="m">in Base, no import needed</p>'
-        if line is None
-        else f'<pre class="i"><code>{escape(line)}</code></pre>'
-    )
     return (
         f'<li><data class="s" value="{hit.score:.4f}">{hit.score:.1f}</data><div>'
         f'<pre class="sig"><code>{escape(record.signature)}</code></pre>'
         f"{summary}"
         f'<p class="m"><a href="{escape(source_url(record))}">{escape(record.package_label)}'
         f"/{escape(record.path)}</a> line {record.line}</p>"
-        f"{usage}</div></li>"
+        f'<pre class="i"><code>{escape(import_line(record))}</code></pre></div></li>'
     )
 
 
@@ -283,24 +318,28 @@ def create_app(data: Path | None = None) -> FastAPI:
             return PlainTextResponse(refusal.message, status_code=refusal.status)
         return HTMLResponse(hits_html(result))
 
-    @app.get("/search.json")
-    async def search_json(q: str = "") -> Response:  # pyright: ignore[reportUnusedFunction]
+    @app.get("/llms.txt", response_class=PlainTextResponse)
+    async def llms() -> str:  # pyright: ignore[reportUnusedFunction]
+        return LLMS
+
+    @app.get("/search.txt", response_class=PlainTextResponse)
+    async def search_text(q: str = "") -> Response:  # pyright: ignore[reportUnusedFunction]
         query = q.strip()
         if not query:
-            return JSONResponse({"error": "The parameter q is empty."}, status_code=400)
+            return PlainTextResponse("The parameter q is empty.", status_code=400)
         try:
-            result = await state["service"].search(query, 0, JSON_RESULTS)
+            result = await state["service"].search(query, 0, TEXT_RESULTS)
         except Refusal as refusal:
-            return JSONResponse({"error": refusal.message}, status_code=refusal.status)
-        return JSONResponse(
-            {"query": result.query, "results": [hit_json(hit) for hit in result.hits]}
-        )
+            return PlainTextResponse(refusal.message, status_code=refusal.status)
+        return PlainTextResponse(results_text(result))
 
     return app
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Serve the JendHub search page and JSON API.")
+    parser = argparse.ArgumentParser(
+        description="Serve the JendHub search page and the text API for LLMs."
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()

@@ -41,6 +41,7 @@ def _record(name: str, path: str, role: Role | None = None) -> Record:
         name=name,
         kind=Kind.DEF,
         signature=f"def {name}(b: Bytes) -> U64",
+        doc=None,
         line=1,
         path=path,
         package_hash="0x" + "b" * 32,

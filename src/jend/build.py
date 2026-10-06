@@ -56,6 +56,7 @@ class Document:
             name=entry.definition.name,
             kind=entry.definition.kind,
             signature=entry.definition.signature,
+            doc=entry.definition.doc or None,
             line=entry.definition.line,
             path=entry.path,
             package_hash=package.hash,

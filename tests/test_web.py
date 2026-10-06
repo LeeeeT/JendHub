@@ -11,9 +11,18 @@ from fastapi.testclient import TestClient
 from jend import embed
 from jend.index import INDEX, Record, write
 from jend.openrouter import KEY_VARIABLE
-from jend.search import PAGE, Hit
+from jend.search import PAGE, Hit, Result
 from jend.signatures import Kind
-from jend.web import SECURITY_HEADERS, create_app, hit_html, import_line, page, source_url
+from jend.web import (
+    SECURITY_HEADERS,
+    call_name,
+    create_app,
+    hit_html,
+    import_line,
+    page,
+    results_text,
+    source_url,
+)
 
 
 @pytest.mark.parametrize(("tag", "directive"), [("style", "style-src"), ("script", "script-src")])
@@ -32,13 +41,19 @@ def test_results_are_outside_cloudflare_email_obfuscation() -> None:
 
 
 def _entry(
-    name: str | None, path: str, signature: str = "def f() -> U32", is_base: bool = False
+    name: str | None,
+    path: str,
+    signature: str = "def f() -> U32",
+    is_base: bool = False,
+    definition: str = "f",
+    doc: str | None = None,
 ) -> Record:
     return Record(
         key="k",
-        name="f",
+        name=definition,
         kind=Kind.DEF,
         signature=signature,
+        doc=doc,
         line=7,
         path=path,
         package_hash="0x" + "a" * 32,
@@ -61,7 +76,43 @@ def test_import_line_names_the_package_or_its_hash() -> None:
     assert import_line(_entry(None, "src/containers/bit_set.bend")) == (
         f"import 0x{'a' * 32}/src/containers/bit_set.bend as BitSet"
     )
-    assert import_line(_entry("Base", "base.bend", is_base=True)) is None
+    assert import_line(_entry("Base", "base.bend", is_base=True)) == "import Base"
+
+
+def test_call_name_puts_the_import_alias_before_the_definition_name() -> None:
+    assert call_name(_entry("bend-kit-zlib", "zlib.bend", definition="inflate.words")) == (
+        "Zlib.inflate.words"
+    )
+    assert call_name(_entry("Base", "base.bend", is_base=True, definition="String.eq")) == (
+        "String.eq"
+    )
+
+
+def test_text_results_group_by_import_line_and_keep_the_rank() -> None:
+    signature = "def gunzip(s: String)\n  -> String"
+    zlib = _entry("bend-kit-zlib", "zlib.bend", signature, definition="gunzip", doc="One member.")
+    base = _entry("Base", "base.bend", "def String.eq() -> Bool", True, "String.eq")
+    unzlib = _entry("bend-kit-zlib", "zlib.bend", definition="unzlib")
+    hits = (Hit(zlib, 5.861), Hit(base, 4.0), Hit(unzlib, 3.5))
+
+    text = results_text(Result("gzip", 238, hits))
+
+    assert text == (
+        "Bend definitions for “gzip”: the best 3 of 238. A higher score is a better match.\n\n"
+        "import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n\n"
+        "1. Zlib.gunzip (score 5.86)\n"
+        "   def gunzip(s: String)\n"
+        "     -> String\n"
+        "   doc: One member.\n"
+        f"   source: {source_url(zlib)}\n\n"
+        "3. Zlib.unzlib (score 3.50)\n"
+        "   def f() -> U32\n"
+        f"   source: {source_url(unzlib)}\n\n"
+        "import Base\n\n"
+        "2. String.eq (score 4.00)\n"
+        "   def String.eq() -> Bool\n"
+        f"   source: {source_url(base)}"
+    )
 
 
 def test_base_links_to_the_line_on_github() -> None:
@@ -100,11 +151,11 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
             client.get("/more", params={"q": "sort a list", "start": start}).text
             for start in range(PAGE, size + PAGE, PAGE)
         ]
-        best = client.get("/search.json", params={"q": "sort a list"}).json()["results"]
+        best = client.get("/search.txt", params={"q": "sort a list"}).text
 
     shown = _signatures(first) + [signature for html in pages for signature in _signatures(html)]
     assert f'data-query="sort a list" data-total="{size}"' in first
     assert len(_signatures(first)) == PAGE
     assert [len(_signatures(html)) for html in pages] == [PAGE, 5, 0]
     assert sorted(shown) == sorted(record.signature for record in records)
-    assert [result["signature"] for result in best] == shown[:PAGE]
+    assert re.findall(r"^   (def .*)$", best, re.MULTILINE) == shown[:PAGE]
