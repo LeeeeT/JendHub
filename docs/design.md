@@ -7,29 +7,40 @@ query embedding (approximately $0.0000003) and 10 to 20 ms of local work.
 ## Corpus
 
 The index holds Base, the standard library from the `main` branch of
-`bendlang/bend` (`bend2/base.bend`), and the latest version of the 50 hottest
+`bendlang/bend` (`bend2/base.bend`), and the latest version of the 100 hottest
 packages (`corpus.HOTTEST_PACKAGES`). Base ranks before all packages; the
 packages rank by `hot`. Definitions with the same signature and doc comment are
 one document; the document shows the highest-ranked package that has it.
 
-Index: Base (463 definitions) and the latest version of the 50 hottest
-packages, 53,511 definitions, 43,952 documents. All documents have a summary.
+Index on 2026-10-06: Base (475 definitions) and the latest version of the 100
+hottest packages, 74,140 definitions, 55,894 documents. 55,874 documents have an
+enrichment; the model left out the other 20.
 
 ## Index time
 
 When a definition enters the index (`jend.index`):
 
-1. `deepseek/deepseek-v4-flash` writes a one-sentence summary and 3 likely
-   queries for the definition, from its signature, doc comment, file and
-   package description (`jend.enrich`). One request holds up to 24
-   definitions of one file. The enrichment model sometimes returns the list of
-   items without the `items` object; `jend.enrich` accepts both forms.
+1. `deepseek/deepseek-v4-flash` writes an enrichment for the definition
+   (`jend.enrich`). It sees the package and its description, the file, the
+   names of the definitions in the file (at most 120), and the signature and
+   doc comment of each definition. One request holds up to 24 definitions of
+   one file. The enrichment holds:
+   - the role: `api` (a user imports it), `helper` (a step of another
+     definition of the file), `local` (a utility that the file keeps for its
+     own code) or `test` (a test, spec, proof, example or usage file);
+   - a one-sentence summary;
+   - for an API definition, 3 likely queries and 2 or 3 keywords, such as
+     `crc32` or `checksum`. Other roles have none, so that helpers do not
+     match the words of user queries.
+
+   The enrichment model sometimes returns the list of items without the
+   `items` object; `jend.enrich` accepts both forms.
 2. `qwen/qwen3-embedding-8b` makes two 1024-dimension vectors (`jend.embed`):
    one of the full document text (name, doc comment, summary, queries,
-   signature, package), and one of the name and the signature only.
+   keywords, signature, package), and one of the name and the signature only.
 
-Cost of the full index, one time: enrichment approximately $0.95, text vectors
-$0.06, signature vectors $0.03. A new definition costs approximately $0.00002.
+Cost of the full index, one time: enrichment $1.28, text vectors $0.07,
+signature vectors $0.03. A new definition costs approximately $0.000025.
 
 When the index loads, the server builds a BM25 keyword index of the full text,
 and one BM25 index for each field: name, doc comment, enrichment, signature
@@ -65,6 +76,7 @@ signal means, before the measurement on the benchmark.
 | The name has a helper form (`.go`, `_loop`, `internal_` and similar) | -1.0 |
 | The file is a proof, spec, test, example, usage, benchmark or conformance file, but not a shared lemma file (`proofs/lib/`) | -1.0 |
 | The definition is a law and the query is not a statement | -0.5 |
+| The enrichment gives a role other than `api` | -1.0 |
 
 `z` is the standard score of the signal in the candidate pool: its distance
 from the mean of the pool, in standard deviations. So the signals have the
@@ -148,17 +160,28 @@ for each query, and Jev adds +0.08 to +0.12 nDCG@10 for $0.19 or more.
    benchmark had none. The project removed it: the benchmark is only for
    evaluation, and a learned ranker needs separate training data. The fixed
    formula gets 0.775 on the same 90 queries, measured one time.
+10. The enrichments help: without the summary and the queries in the text,
+    nDCG@10 of the formula fell from 0.753 to 0.678 (between 0.040 and 0.075,
+    because the run without them had results without a judgment).
+11. A role in the enrichment puts the API before helpers. A set of 32 dev
+    queries, separate from the benchmark, selected the design: the role
+    penalty in addition to the name and file rules was best (nDCG@5 +0.038
+    against the earlier enrichment, on a subset of the corpus). On the
+    rebuilt index, the role penalty adds +0.036 nDCG@5 (interval +0.022 to
+    +0.052) and +0.044 MRR on the benchmark, and +0.032 nDCG@5 on the dev
+    set. The role labels are not always right; the model is not
+    deterministic at temperature 0.
 
 ## Open questions
 
-- Short queries are the weakest group (`word` nDCG@10 0.671). For `hash`, the
-  exact name bonus puts copies in spec files before the hash functions of
-  `bend-kit-hash`. A change to the weights needs a separate set of queries to
-  set them, so that the benchmark stays a fair test.
+- Short queries are the weakest group (`word` nDCG@10 0.608). For `hash`,
+  the exact name bonus puts `hash` functions of the package manager `ezx`
+  first, which the model labels `api`. A change to the weights needs the dev
+  queries to set them, so that the benchmark stays a fair test.
 - Training data that is separate from the benchmark, for example Jev labels
   of synthetic queries, can give a learned ranker without the problem of
   finding 9.
 - The best score does not separate queries with an answer from queries
-  without one (AUC 0.68; Jev had 0.98).
+  without one (AUC 0.64; Jev had 0.98).
 - The formula does not see the bodies of the definitions. A call graph can
   tell a helper that one definition uses from an API.

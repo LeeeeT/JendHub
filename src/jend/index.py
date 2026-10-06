@@ -67,7 +67,11 @@ class Document:
         definition = self.entry.definition
         parts = [definition.name, definition.doc]
         if self.enrichment is not None:
-            parts += [self.enrichment.summary, *self.enrichment.queries]
+            parts += [
+                self.enrichment.summary,
+                *self.enrichment.queries,
+                " ".join(self.enrichment.keywords),
+            ]
         parts += [
             definition.signature[:800],
             self.entry.package_label,

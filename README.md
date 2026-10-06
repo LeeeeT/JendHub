@@ -38,23 +38,25 @@ For each declaration, the mirror keeps:
 
 ## Index
 
-Enrich and embed the definitions of Base and of the 50 hottest packages (latest
-version of each package). This step costs money, so `--budget` sets a limit in
-USD for the enrichment:
+Enrich and embed the definitions of Base and of the 100 hottest packages
+(latest version of each package). This step costs money, so `--budget` sets a
+limit in USD for the enrichment:
 
 ```sh
-python -m jend.index --budget 1.0
+python -m jend.index --budget 2.5
 ```
 
 The command keeps its results in `data/hub/index/`:
 
-- `enrichment.jsonl`: a summary and 3 likely queries for each definition.
+- `enrichment.jsonl`: for each definition, its role (`api`, `helper`, `local`
+  or `test`), a summary, and for API definitions 3 likely queries and 2 or 3
+  keywords.
 - `text.npy` and `text.keys.json`: a vector of the full document text.
 - `signature.npy` and `signature.keys.json`: a vector of the name and the
   signature.
 
 It sends only definitions that do not have a result yet, so a second run costs
-only the new work. A new definition costs approximately $0.00002 for the
+only the new work. A new definition costs approximately $0.000023 for the
 enrichment and $0.000002 for the two vectors.
 
 ## Search

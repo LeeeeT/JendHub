@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from jend.mirror import Mirror, Package
 from jend.signatures import Definition
 
-HOTTEST_PACKAGES = 50
+HOTTEST_PACKAGES = 100
 
 
 @dataclass(frozen=True)

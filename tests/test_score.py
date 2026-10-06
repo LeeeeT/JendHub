@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import numpy as np
 
 from jend.corpus import Entry
+from jend.enrich import Enrichment, Role
 from jend.index import Bm25, Document, Index
 from jend.mirror import Package
 from jend.score import Scorer, is_helper, is_outside_api, names_match
@@ -69,3 +70,22 @@ def test_rank_prefers_the_api_over_helpers_and_spec_copies_with_the_same_vector(
 
     assert [int(row) for row in ranking.rows] == [2, 1, 0, 3]
     assert np.all(np.diff(ranking.scores) <= 0)
+
+
+def test_rank_puts_a_definition_with_the_api_role_before_a_helper_with_the_same_signals() -> None:
+    def enriched(name: str, role: Role) -> Document:
+        document = _document(name, "crc.bend")
+        enrichment = Enrichment(
+            key=name, role=role, summary="", queries=(), keywords=(), model="test"
+        )
+        return Document(document.key, document.entries, enrichment)
+
+    documents = [enriched("crc", Role.HELPER), enriched("crc32", Role.API)]
+    vectors = np.zeros((2, 4), dtype=np.float32)
+    vectors[:, 0] = 1.0
+    texts = [document.text() for document in documents]
+    scorer = Scorer(Index(tuple(documents), vectors, vectors.copy(), Bm25(texts), "test"))
+
+    ranking = scorer.rank("checksum", np.array([1, 0, 0, 0], dtype=np.float32))
+
+    assert [int(row) for row in ranking.rows] == [1, 0]

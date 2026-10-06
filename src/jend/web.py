@@ -161,7 +161,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 {body}
 </main>
 <footer>
-<p>Searches Base and the latest versions of the 50 hottest BendHub packages. The score tells how well the definition matches the query, compared with the other results of the same query.</p>
+<p>Searches Base and the latest versions of the 100 hottest BendHub packages. The score tells how well the definition matches the query, compared with the other results of the same query.</p>
 <p>For programs and LLMs: <code>GET /search.json?q=…</code> returns the best {JSON_RESULTS} results as JSON: score, signature, summary, import line and source URL.</p>
 </footer>
 <!--/email_off-->

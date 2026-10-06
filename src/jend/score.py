@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
+from jend.enrich import Role
 from jend.index import Document, Index, Scores, tokens
 
 POOL_DEPTH = 200
@@ -18,6 +19,7 @@ BASE_BONUS = 0.25
 HELPER_PENALTY = 1.0
 NON_API_FILE_PENALTY = 1.0
 LAW_PENALTY = 0.5
+ROLE_PENALTY = 1.0
 
 Rows = npt.NDArray[np.intp]
 Vector = npt.NDArray[np.float32]
@@ -143,4 +145,9 @@ def _prior(document: Document) -> float:
         BASE_BONUS * entry.package.is_base
         - HELPER_PENALTY * is_helper(entry.definition.name)
         - NON_API_FILE_PENALTY * is_outside_api(entry.path)
+        - ROLE_PENALTY * outside_api_role(document)
     )
+
+
+def outside_api_role(document: Document) -> bool:
+    return document.enrichment is not None and document.enrichment.role is not Role.API

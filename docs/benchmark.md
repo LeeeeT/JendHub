@@ -34,8 +34,9 @@ The topics cover Base (lists, strings, numbers, maps, Maybe and Result, IO,
 files, threads and channels, TCP), the libraries of the indexed packages
 (JSON, HTTP, URL, encodings, cryptography, compression, time, CLI, TOML,
 SQLite, webhooks, LLM SDKs, random numbers, containers, BLAS, tracing,
-Unicode) and laws about Nat, List, Bool and equality. 11 queries have no answer
-in the corpus (`uuid` is the eleventh). 8 of them ask for something that no indexed package does
+Unicode) and laws about Nat, List, Bool and equality. 8 queries have no answer
+in the corpus. With the 100 hottest packages, the queries about regular
+expressions, SMTP and PNG got answers. 8 of them ask for something that no indexed package does
 (PostgreSQL, regex, XML, SMTP, PNG, WebSocket, YAML, edit distance).
 
 ## Judgments
@@ -52,6 +53,12 @@ The judgments use the TREC method:
 5. Later designs put results without a judgment in their top 10. The judge
    graded them with the same rules (39 judgments).
 
+When the index moved to the latest versions of the 100 hottest packages
+(2026-10-06), a judgment of a definition that changed moved to its new version
+(same package, file and name; 50 judgments), and judgments of definitions that
+are no longer in the corpus were removed (68). The judge then graded the 495
+new results in the top 10 of the formula with and without the role penalty.
+
 For q101 to q132, the pool is the union of the best 20 results of BM25, of
 vector search, of the ranking formula and of the Jev design, 40 documents on
 average. A search of the corpus by name added 88 answers and related
@@ -59,7 +66,7 @@ definitions. The judge saw the signature, the doc comment, the summary and
 the file of each definition, not its body.
 
 Claude Opus 5.5 did the grading with the rules below, in 2026-10. There are
-5122 judgments: 2098 of grade 0, 2269 of grade 1, 390 of grade 2 and 365 of
+5549 judgments: 2229 of grade 0, 2497 of grade 1, 430 of grade 2 and 393 of
 grade 3. The `note` of a judgment gives the reason for its grade.
 
 A result that has no judgment counts as grade 0. `jend.evaluate` lists the
@@ -127,45 +134,41 @@ rewards a ranking that shows the copies instead of `Maybe.default`.
 
 ## Results of the current design
 
-The ranking formula (see [design.md](design.md#query-time)) was fixed before
-q101 to q132 were written, and it was measured one time, on 2026-10-06 (index
-`4d2eb20c6e39883f`). The Jev design is the earlier design: the best 50 of
-reciprocal rank fusion, ordered by Jev.
+Run of 2026-10-06 on the index of Base and the latest versions of the 100
+hottest packages (index `75cb8f3f48f45154`), with the role-aware enrichment:
 
-| Measure, 121 queries with an answer | Formula | Vector search | Jev design |
-| - | - | - | - |
-| nDCG@10 | 0.753 | 0.701 | 0.877 |
-| Grade 3 first | 0.669 | 0.587 | 0.835 |
-| MRR | 0.832 | 0.759 | 0.946 |
-| Cost of 1000 new queries | $0.0003 | $0.0003 | $0.53 |
+| Measure, 124 queries with an answer | Formula | Formula without the role penalty |
+| - | - | - |
+| nDCG@5 | 0.728 | 0.692 |
+| nDCG@10 | 0.747 | 0.711 |
+| Grade 3 first | 0.653 | 0.621 |
+| MRR | 0.849 | 0.805 |
+| Recall@20 | 0.808 | 0.770 |
 
-Differences of nDCG@10, with the 95% bootstrap interval over the queries:
-
-| Comparison | q001 to q100 | q101 to q132 | All |
-| - | - | - | - |
-| Formula minus vector search | +0.041 (+0.012, +0.069) | +0.087 (+0.041, +0.140) | +0.053 (+0.028, +0.078) |
-| Formula minus Jev design | -0.111 (-0.144, -0.078) | -0.160 (-0.232, -0.094) | -0.123 (-0.154, -0.093) |
+The role penalty adds +0.036 nDCG@5 (95% interval +0.022 to +0.052; better
+on 52 queries, worse on 15). The corpus grew from 50 to 100 packages and some
+queries got answers, so these numbers do not compare directly with the
+earlier runs (0.753 nDCG@10 on 121 queries with the 50 hottest packages).
 
 Share of the answers (grade 2 or 3) that each stage finds:
 
 | Stage | @10 | @25 | @50 | @100 |
 | - | - | - | - | - |
-| BM25 | 0.446 | 0.616 | 0.727 | 0.826 |
-| Vector search | 0.616 | 0.814 | 0.883 | 0.935 |
-| Formula | 0.692 | 0.836 | 0.909 | 0.961 |
+| BM25 | 0.486 | 0.624 | 0.727 | 0.808 |
+| Vector search | 0.550 | 0.739 | 0.834 | 0.903 |
+| Formula | 0.693 | 0.842 | 0.922 | 0.952 |
 
-nDCG@10 for each style: `identifier` 0.890, `statement` 0.858, `question`
-0.844, `keywords` 0.758, `task` 0.752, `word` 0.671, `signature` 0.654.
+nDCG@10 for each style: `identifier` 0.883, `statement` 0.802, `task` 0.789,
+`keywords` 0.742, `question` 0.701, `signature` 0.654, `word` 0.608.
 
-The worst queries show the limits of the formula:
+The worst queries: `hash` (the `hash` functions of the package manager `ezx`
+come first), `hex` (local hex utilities), `parse int`, and `unicode general
+category of a code point` (table entries come first). The best score does
+not separate queries with an answer from queries without one (AUC 0.64).
 
-- `checksum`: local checksum steps of one storage package come before
-  `crc32` and `adler32`.
-- `hash`: definitions named `hash` in spec files come first, because the
-  bonus for the exact name (+2) is larger than the penalty for a spec file
-  (-1). `HashMap` comes before the hash functions of `bend-kit-hash`.
-- `HMAC-SHA256` and `compare two byte strings in constant time`: the answer
-  is at rank 35 and 93.
+## Dev queries
 
-The best score does not separate queries with an answer from queries without
-one (AUC 0.68), so the score has no threshold.
+`data/dev.json` holds 32 other queries, graded with the same rules (1,291
+judgments). Use them to choose between designs and to set weights or prompts.
+Then measure the chosen design one time on the benchmark. `python -m
+jend.evaluate --benchmark data/dev.json` measures them.
