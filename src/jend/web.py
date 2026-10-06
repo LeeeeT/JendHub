@@ -8,17 +8,18 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path, PurePosixPath
+from typing import Annotated
 from urllib.parse import quote, urlencode
 
 import httpx2
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from jend import base, embed, openrouter
 from jend.index import INDEX, Index, Record
 from jend.score import Scorer
-from jend.search import Engine, Hit, Result
+from jend.search import PAGE, Engine, Hit, Result
 
 MAX_QUERY_CHARS = 200
 JSON_RESULTS = 20
@@ -38,11 +39,11 @@ class Refusal(Exception):
 class Service:
     engine: Engine
 
-    async def search(self, query: str) -> Result:
+    async def search(self, query: str, start: int, count: int) -> Result:
         if len(query) > MAX_QUERY_CHARS:
             raise Refusal(400, f"The query is longer than {MAX_QUERY_CHARS} characters.")
         try:
-            return await self.engine.search(query)
+            return await self.engine.search(query, start, count)
         except httpx2.HTTPError as error:
             raise Refusal(502, "The embedding service did not answer. Try again.") from error
 
@@ -108,17 +109,40 @@ pre{margin:0;font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}
 footer{margin:3em 0 0;padding-top:1em;border-top:1px solid var(--fg);font-size:.87em}
 @media (max-width:600px){html{font-size:15px}header{flex-direction:column;gap:.5em}header nav a{margin:0 2ch 0 0}}
 """
-STYLE_HASH = base64.b64encode(hashlib.sha256(STYLE.encode()).digest()).decode()
+SCRIPT = """
+const list = document.querySelector("ol[data-total]");
+const watch = new IntersectionObserver(async ([entry]) => {
+  if (!entry.isIntersecting) return;
+  watch.disconnect();
+  const shown = list.children.length;
+  const response = await fetch("/more?" + new URLSearchParams({q: list.dataset.query, start: shown}));
+  if (!response.ok) return;
+  list.insertAdjacentHTML("beforeend", await response.text());
+  follow(shown);
+}, {rootMargin: "0px 0px 100% 0px"});
+function follow(shown) {
+  const count = list.children.length;
+  if (count > shown && count < Number(list.dataset.total)) watch.observe(list.lastElementChild);
+}
+if (list) follow(0);
+"""
+
+
+def digest(source: str) -> str:
+    return base64.b64encode(hashlib.sha256(source.encode()).digest()).decode()
+
+
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
-        f"default-src 'none'; style-src 'sha256-{STYLE_HASH}'; img-src data:;"
+        f"default-src 'none'; style-src 'sha256-{digest(STYLE)}';"
+        f" script-src 'sha256-{digest(SCRIPT)}'; connect-src 'self'; img-src data:;"
         " form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     ),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Strict-Transport-Security": "max-age=31536000",
 }
-ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /search.json\n"
+ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /more\nDisallow: /search.json\n"
 
 
 def page(query: str, body: str, status: int = 200) -> HTMLResponse:
@@ -157,6 +181,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 <p>For programs and LLMs: <code>GET /search.json?q=…</code> returns the best {JSON_RESULTS} results as JSON: score, signature, summary, import line and source URL.</p>
 </footer>
 <!--/email_off-->
+<script type="module">{SCRIPT}</script>
 </body>
 </html>
 """
@@ -164,11 +189,15 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 
 
 def results_html(result: Result) -> str:
-    rows = "\n".join(hit_html(hit) for hit in result.ranking)
     return (
-        f'<p class="note">{len(result.ranking)} definitions for “{escape(result.query)}”,'
-        f" best first.</p>\n<ol>\n{rows}\n</ol>"
+        f'<p class="note">{result.total} definitions for “{escape(result.query)}”,'
+        f' best first.</p>\n<ol data-query="{escape(result.query)}" data-total="{result.total}">'
+        f"\n{hits_html(result)}\n</ol>"
     )
+
+
+def hits_html(result: Result) -> str:
+    return "\n".join(hit_html(hit) for hit in result.hits)
 
 
 def hit_html(hit: Hit) -> str:
@@ -236,10 +265,23 @@ def create_app(data: Path | None = None) -> FastAPI:
         if not query:
             return page("", intro_html())
         try:
-            result = await state["service"].search(query)
+            result = await state["service"].search(query, 0, PAGE)
         except Refusal as refusal:
             return page(query, refusal_html(refusal), refusal.status)
         return page(query, results_html(result))
+
+    @app.get("/more", response_class=HTMLResponse)
+    async def more(  # pyright: ignore[reportUnusedFunction]
+        q: str, start: Annotated[int, Query(ge=0)]
+    ) -> Response:
+        query = q.strip()
+        if not query:
+            return PlainTextResponse("The parameter q is empty.", status_code=400)
+        try:
+            result = await state["service"].search(query, start, PAGE)
+        except Refusal as refusal:
+            return PlainTextResponse(refusal.message, status_code=refusal.status)
+        return HTMLResponse(hits_html(result))
 
     @app.get("/search.json")
     async def search_json(q: str = "") -> Response:  # pyright: ignore[reportUnusedFunction]
@@ -247,14 +289,11 @@ def create_app(data: Path | None = None) -> FastAPI:
         if not query:
             return JSONResponse({"error": "The parameter q is empty."}, status_code=400)
         try:
-            result = await state["service"].search(query)
+            result = await state["service"].search(query, 0, JSON_RESULTS)
         except Refusal as refusal:
             return JSONResponse({"error": refusal.message}, status_code=refusal.status)
         return JSONResponse(
-            {
-                "query": result.query,
-                "results": [hit_json(hit) for hit in result.ranking[:JSON_RESULTS]],
-            }
+            {"query": result.query, "results": [hit_json(hit) for hit in result.hits]}
         )
 
     return app

@@ -75,8 +75,8 @@ reads only this directory:
 python -m jend.search "decompress gzip data"
 ```
 
-The command shows the 10 best of 50 results (`--top` changes this), in
-descending order of their score. A fixed formula (`jend.score`) computes the
+The command shows the 10 best results (`--top` changes this), in descending
+order of their score. A fixed formula (`jend.score`) computes the
 score from vector similarity, BM25, the name, and signals that put the API
 before helpers and proof files; [docs/design.md](docs/design.md#formula)
 gives it. Nothing is trained. The query vectors are in
@@ -88,10 +88,14 @@ gives it. Nothing is trained. The query vectors are in
 python -m jend.web --port 8000
 ```
 
-The server opens the index one time and serves two routes:
+The server opens the index one time and serves three routes:
 
-- `GET /?q=…`: an HTML page. It works without JavaScript. The colors follow
+- `GET /?q=…`: an HTML page with the best 20 results. When the reader scrolls
+  near the end of the list, a small script loads the next 20, until the end
+  of the candidate pool (approximately 200 to 400 results). The colors follow
   the system setting: black on white, or white on black.
+- `GET /more?q=…&start=N`: the HTML list items of the results from position
+  `N`, 20 at a time. The script of the page uses this route.
 - `GET /search.json?q=…`: the best 20 results as compact JSON for programs
   and LLMs: `{"query": …, "results": [{"score", "signature", "summary",
   "import", "source"}]}`. `score` is the value of the ranking formula: a
@@ -102,10 +106,12 @@ The server opens the index one time and serves two routes:
 
 A new query costs one query embedding, approximately $0.0000003, so the server
 has no rate limit and no budget. A query longer than 200 characters gets HTTP
-400. When OpenRouter does not answer, the server returns HTTP 502.
+400. When OpenRouter does not answer, the server returns HTTP 502. The server
+keeps the rankings of the 256 most recent queries in memory, so the next 20
+results do not need a new ranking.
 
-Every response has a strict Content-Security-Policy (the page has no
-scripts), `X-Content-Type-Options`, `Referrer-Policy` and
+Every response has a strict Content-Security-Policy (only the style and the
+script of the page, identified by their hashes), `X-Content-Type-Options`, `Referrer-Policy` and
 `Strict-Transport-Security`. `/robots.txt` keeps crawlers away from result
 pages.
 

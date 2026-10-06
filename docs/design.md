@@ -71,9 +71,14 @@ For each query (`jend.search`):
 2. Vector search and BM25 each select their best 200 documents. The union is
    the candidate pool, approximately 320 documents. It holds 98% of the
    answers of the benchmark.
-3. `jend.score` gives each candidate a score with a fixed formula. The engine
-   returns the best 50 in descending order of the score. The package rank
+3. `jend.score` gives each candidate a score with a fixed formula. The ranking
+   holds all candidates in descending order of the score. The package rank
    breaks ties.
+4. The engine reads the records of the requested part of the ranking only: 20
+   for each page of the HTML list and for the JSON route. It keeps the
+   rankings of the 256 most recent queries, so the next page of a query takes
+   approximately 2 ms. The ranking is deterministic, so the pages do not repeat
+   or skip a result.
 
 ### Formula
 
