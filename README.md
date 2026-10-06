@@ -115,8 +115,9 @@ results do not need a new ranking.
 
 Every response has a strict Content-Security-Policy (only the style and the
 script of the page, identified by their hashes), `X-Content-Type-Options`,
-`Referrer-Policy` and `Strict-Transport-Security`. `/robots.txt` keeps crawlers away from result
-pages.
+`Referrer-Policy` and `Strict-Transport-Security`. `/robots.txt` keeps crawlers away from the HTML
+result pages. It allows `/search.txt` and `/llms.txt`, because some LLM tools
+do not fetch a URL that `robots.txt` disallows.
 
 ## Docker
 

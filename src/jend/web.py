@@ -158,7 +158,7 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Strict-Transport-Security": "max-age=31536000",
 }
-ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /more\nDisallow: /search.txt\n"
+ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /more\n"
 LLMS = f"""# JendHub
 
 > A search engine for Bend definitions. It searches Base and the latest

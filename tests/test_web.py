@@ -3,6 +3,7 @@ import hashlib
 import re
 from html import unescape
 from pathlib import Path
+from urllib.robotparser import RobotFileParser
 
 import numpy as np
 import pytest
@@ -14,6 +15,7 @@ from jend.openrouter import KEY_VARIABLE
 from jend.search import PAGE, Hit, Result
 from jend.signatures import Kind
 from jend.web import (
+    ROBOTS,
     SECURITY_HEADERS,
     call_name,
     create_app,
@@ -159,3 +161,12 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
     assert [len(_signatures(html)) for html in pages] == [PAGE, 5, 0]
     assert sorted(shown) == sorted(record.signature for record in records)
     assert re.findall(r"^   (def .*)$", best, re.MULTILINE) == shown[:PAGE]
+
+
+def test_robots_allow_the_llm_routes_and_keep_crawlers_off_the_html_results() -> None:
+    robots = RobotFileParser()
+    robots.parse(ROBOTS.splitlines())
+    assert robots.can_fetch("*", "/search.txt?q=gzip")
+    assert robots.can_fetch("*", "/llms.txt")
+    assert not robots.can_fetch("*", "/?q=gzip")
+    assert not robots.can_fetch("*", "/more?q=gzip&start=20")
