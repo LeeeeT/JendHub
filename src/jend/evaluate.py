@@ -6,16 +6,16 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from statistics import mean, median, quantiles
+from statistics import mean, median
 
 from pydantic import BaseModel, ConfigDict
 
-from jend import jev, openrouter
 from jend.benchmark import EXACT, Query, auc, bootstrap, load, ndcg, recall, reciprocal_rank
+from jend.features import Featurizer, positions
 from jend.index import load as load_index
-from jend.search import Engine
+from jend.ranker import example, fit, folds, query_vectors
+from jend.search import order
 
-CONCURRENCY = 8
 CUTOFF = 10
 RESULTS = 20
 DEPTHS = (10, 25, 50, 100)
@@ -29,12 +29,11 @@ class QueryRun(BaseModel):
     id: str
     stages: dict[str, tuple[str, ...]]
     scores: tuple[float, ...]
-    cost: float
     seconds: float
 
     @property
-    def ranking(self) -> tuple[str, ...] | None:
-        return self.stages.get("ranking")
+    def ranking(self) -> tuple[str, ...]:
+        return self.stages["ranking"]
 
 
 class Run(BaseModel):
@@ -45,44 +44,45 @@ class Run(BaseModel):
     index: str
     queries: tuple[QueryRun, ...]
 
-    @property
-    def reranked(self) -> bool:
-        return all(query.ranking is not None for query in self.queries)
 
-
-async def execute(data: Path, queries: Sequence[Query], label: str, rerank: bool) -> Run:
+def execute(data: Path, queries: Sequence[Query], label: str) -> Run:
     index = load_index(data)
-    gate = asyncio.Semaphore(CONCURRENCY)
-    async with openrouter.connect() as client, jev.connect() as judge:
-        engine = Engine(index, client, judge)
-
-        async def one(query: Query) -> QueryRun:
-            async with gate:
-                start = time.monotonic()
-                if rerank:
-                    trace = await engine.rank(query.query)
-                    retrieval, hits, cost = trace.retrieval, trace.ranking, trace.cost
-                else:
-                    retrieval = await engine.retrieve(query.query)
-                    hits, cost = [], retrieval.cost
-                seconds = time.monotonic() - start
+    featurizer = Featurizer(index)
+    vectors = asyncio.run(query_vectors(data, queries))
+    started = time.monotonic()
+    candidates = [
+        featurizer.candidates(query.query, vector)
+        for query, vector in zip(queries, vectors, strict=True)
+    ]
+    seconds = (time.monotonic() - started) / len(queries)
+    examples = [example(index, query, found) for query, found in zip(queries, candidates)]
+    runs: dict[int, QueryRun] = {}
+    for fold in folds(len(queries)):
+        held_out = set(fold)
+        ranker = fit([e for position, e in enumerate(examples) if position not in held_out])
+        for position in fold:
+            found = candidates[position]
+            rows, probabilities = order(ranker, featurizer, found)
             stages = {
-                name: tuple(document.key for document in documents)
-                for name, documents in retrieval.stages.items()
+                "bm25": found.lexical,
+                "vector": found.semantic,
+                "ranking": rows,
             }
-            stages["candidates"] = tuple(document.key for document in retrieval.candidates)
-            if rerank:
-                stages["ranking"] = tuple(hit.document.key for hit in hits)
-            return QueryRun(
-                id=query.id,
-                stages=stages,
-                scores=tuple(hit.probability for hit in hits),
-                cost=cost,
+            runs[position] = QueryRun(
+                id=queries[position].id,
+                stages={
+                    name: tuple(index.documents[row].key for row in positions(rows))
+                    for name, rows in stages.items()
+                },
+                scores=tuple(float(probability) for probability in probabilities[:RESULTS]),
                 seconds=seconds,
             )
-
-        runs = await asyncio.gather(*(one(query) for query in queries))
-    return Run(label=label, created=datetime.now(UTC), index=index.id, queries=tuple(runs))
+    return Run(
+        label=label,
+        created=datetime.now(UTC),
+        index=index.id,
+        queries=tuple(runs[position] for position in range(len(queries))),
+    )
 
 
 def measures(query: Query, run: QueryRun) -> dict[str, float]:
@@ -92,19 +92,18 @@ def measures(query: Query, run: QueryRun) -> dict[str, float]:
         for stage, keys in run.stages.items()
         for depth in DEPTHS
     }
-    if run.ranking is not None:
-        grades = query.grades()
-        top = run.ranking[0] if run.ranking else None
-        values[f"nDCG@{CUTOFF}"] = ndcg(run.ranking, grades, CUTOFF)
-        values["top 1 exact"] = float(top is not None and grades.get(top) == EXACT)
-        values["MRR"] = reciprocal_rank(run.ranking, answers)
-        values[f"recall@{RESULTS}"] = recall(run.ranking, answers, RESULTS)
+    grades = query.grades()
+    top = run.ranking[0] if run.ranking else None
+    values[f"nDCG@{CUTOFF}"] = ndcg(run.ranking, grades, CUTOFF)
+    values["top 1 exact"] = float(top is not None and grades.get(top) == EXACT)
+    values["MRR"] = reciprocal_rank(run.ranking, answers)
+    values[f"recall@{RESULTS}"] = recall(run.ranking, answers, RESULTS)
     return values
 
 
 def headline(run: Run) -> list[str]:
     stages = list(run.queries[0].stages)
-    ranked = [f"nDCG@{CUTOFF}", "top 1 exact", "MRR", f"recall@{RESULTS}"] if run.reranked else []
+    ranked = [f"nDCG@{CUTOFF}", "top 1 exact", "MRR", f"recall@{RESULTS}"]
     return ranked + [f"{stage} recall@{COMPARED_DEPTH}" for stage in stages]
 
 
@@ -133,17 +132,14 @@ def report(queries: Sequence[Query], run: Run) -> None:
         f" {len(unanswered)} without, {judgments} judgments"
     )
     seconds = [result.seconds for _, result in pairs]
-    p95 = quantiles(seconds, n=20)[-1] if len(seconds) > 1 else seconds[0]
     print(
         f"run {run.label!r}: {run.created:%Y-%m-%d %H:%M} UTC, index {run.index},"
-        f" ${sum(result.cost for _, result in pairs):.4f},"
-        f" latency p50 {median(seconds):.2f} s, p95 {p95:.2f} s"
+        f" ranking time {median(seconds):.3f} s for each query"
     )
     values = [measures(query, result) for query, result in answered]
-    if run.reranked:
-        print(f"\nranking, {len(answered)} queries with an answer (grade 2 or 3)")
-        for name in headline(run)[:4]:
-            print(f"  {name:12} {mean(value[name] for value in values):.3f}")
+    print(f"\nranking, {len(answered)} queries with an answer (grade 2 or 3)")
+    for name in headline(run)[:4]:
+        print(f"  {name:12} {mean(value[name] for value in values):.3f}")
     stages = list(pairs[0][1].stages)
     print(
         f"\nshare of answers found, by stage and depth\n  {'':12}"
@@ -156,8 +152,6 @@ def report(queries: Sequence[Query], run: Run) -> None:
         )
         found = sum(bool(query.answers() & set(result.stages[stage])) for query, result in answered)
         print(f"  {stage:12}{row}{f'{found}/{len(answered)}':>8}")
-    if not run.reranked:
-        return
     _detection(answered, unanswered)
     _styles(answered, values)
     _worst(answered, values)
@@ -191,7 +185,7 @@ def _worst(answered: Sequence[tuple[Query, QueryRun]], values: list[dict[str, fl
     ordered = sorted(zip(answered, values), key=lambda item: item[1][f"nDCG@{CUTOFF}"])
     print(f"\nlowest nDCG@{CUTOFF}")
     for (query, result), value in ordered[:SHOWN]:
-        ranking = result.ranking or ()
+        ranking = result.ranking
         first = next((rank for rank, key in enumerate(ranking, 1) if key in query.answers()), None)
         top = _label(query, ranking[0]) if ranking else "nothing"
         print(
@@ -204,10 +198,10 @@ def _unjudged(pairs: Sequence[tuple[Query, QueryRun]]) -> None:
     missing = [
         (query.id, rank, key)
         for query, result in pairs
-        for rank, key in enumerate((result.ranking or ())[:CUTOFF], 1)
+        for rank, key in enumerate(result.ranking[:CUTOFF], 1)
         if key not in query.grades()
     ]
-    shown = sum(min(CUTOFF, len(result.ranking or ())) for _, result in pairs)
+    shown = sum(min(CUTOFF, len(result.ranking)) for _, result in pairs)
     print(f"\nunjudged in the top {CUTOFF}: {len(missing)} of {shown}")
     for query_id, rank, key in missing[:SHOWN]:
         print(f"  {query_id} rank {rank}: {key}")
@@ -248,7 +242,6 @@ def main() -> None:
     parser.add_argument("--data", type=Path, default=Path("data/hub"))
     parser.add_argument("--benchmark", type=Path, default=Path("data/benchmark.json"))
     parser.add_argument("--label", default="run", help="name of the run, part of its file name")
-    parser.add_argument("--retrieval", action="store_true", help="skip Jev, measure retrieval")
     parser.add_argument("--against", type=Path, help="compare the new run with this run")
     parser.add_argument("--report", type=Path, help="score a saved run again, do not search")
     parser.add_argument("--compare", type=Path, nargs=2, metavar=("BEFORE", "AFTER"))
@@ -260,7 +253,7 @@ def main() -> None:
     if args.report is not None:
         report(queries, _read(args.report))
         return
-    run = asyncio.run(execute(args.data, queries, args.label, rerank=not args.retrieval))
+    run = execute(args.data, queries, args.label)
     stamp = run.created.strftime("%Y%m%d-%H%M%S")
     target = args.data / "runs" / f"{stamp}-{re.sub(r'[^A-Za-z0-9_.-]+', '-', run.label)}.json"
     target.parent.mkdir(parents=True, exist_ok=True)

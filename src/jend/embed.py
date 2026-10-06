@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -9,6 +10,7 @@ import numpy.typing as npt
 from pydantic import BaseModel
 
 from jend import openrouter
+from jend.cache import EmbeddingCache, Vector
 
 MODEL = "qwen/qwen3-embedding-8b"
 DIMENSIONS = 1024
@@ -63,10 +65,38 @@ async def embed(client: httpx2.AsyncClient, texts: Sequence[str]) -> tuple[Vecto
     return vectors, sum(cost for _, cost in parts)
 
 
+def query_cache(data: Path) -> EmbeddingCache:
+    return EmbeddingCache(data / "index" / "embeddings.sqlite", MODEL)
+
+
+class QueryEmbedder:
+    def __init__(self, client: httpx2.AsyncClient, cache: EmbeddingCache) -> None:
+        self.client = client
+        self.cache = cache
+
+    async def embed(self, queries: Sequence[str]) -> Vectors:
+        texts = [query_text(query) for query in queries]
+        known: dict[str, Vector] = {}
+        for text in dict.fromkeys(texts):
+            vector = self.cache.get(text)
+            if vector is not None:
+                known[text] = vector
+        missing = [text for text in dict.fromkeys(texts) if text not in known]
+        if missing:
+            vectors, _ = await embed(self.client, missing)
+            self.cache.put(missing, list(vectors))
+            known.update(zip(missing, vectors))
+        return np.stack([known[text] for text in texts])
+
+
+def vector_key(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:32]
+
+
 class Store:
-    def __init__(self, directory: Path) -> None:
-        self.keys_path = directory / "vector_keys.json"
-        self.vectors_path = directory / "vectors.npy"
+    def __init__(self, directory: Path, name: str) -> None:
+        self.keys_path = directory / f"{name}.keys.json"
+        self.vectors_path = directory / f"{name}.npy"
 
     def load(self) -> tuple[list[str], Vectors]:
         if not self.keys_path.exists():

@@ -38,9 +38,11 @@ The judgments use the TREC method:
    adds them. This added 67 answers that no retriever found.
 4. One review applied rule 8 below to all queries, and changed 133 grades
    to 1.
+5. The learned ranker put 7 results without a judgment in its top 10. The
+   judge graded them with the same rules: 5 of grade 0 and 2 of grade 1.
 
 Claude Opus 5.5 did the grading with the rules below, in 2026-10. There are
-3728 judgments: 1832 of grade 0, 1510 of grade 1, 204 of grade 2 and 182 of
+3735 judgments: 1837 of grade 0, 1512 of grade 1, 204 of grade 2 and 182 of
 grade 3. The `note` of a judgment gives the reason for its grade.
 
 A result that has no judgment counts as grade 0. `jend.evaluate` lists the
@@ -103,39 +105,40 @@ rewards a ranking that shows the copies instead of `Maybe.default`.
 
 ## Results of the current design
 
-Two runs of the current design on 2026-10-06 (index `4b649a6c9fe2a7ac`):
+Cross-validated run of the learned ranker on 2026-10-06 (index
+`4d2eb20c6e39883f`), with the earlier design for comparison:
 
-| Measure | Run 1 | Run 2 |
+| Measure | Ranker | Earlier design: RRF, then Jev on 50 |
 | - | - | - |
-| nDCG@10 | 0.879 | 0.884 |
-| Grade 3 first | 0.800 | 0.822 |
-| MRR | 0.936 | 0.946 |
-| Recall@20 | 0.901 | 0.896 |
-| AUC of the best score for "has an answer" | 0.980 | |
-| Cost | $0.053 | $0.053 |
-| Latency p50, p95 | 1.8 s, 18.5 s | |
+| nDCG@10 | 0.797 | 0.886 |
+| Grade 3 first | 0.700 | 0.844 |
+| MRR | 0.842 | 0.947 |
+| Recall@20 | 0.835 | 0.896 |
+| AUC of the best score for "has an answer" | 0.819 | 0.984 |
+| Cost of 1000 new queries | $0.0003 | $0.53 |
 
-The two runs differ only because Jev gives slightly different probabilities,
-and the query embeddings from OpenRouter also change a little between calls.
-A difference of less than approximately 0.01 nDCG@10 or 0.03 in "grade 3
-first" is noise.
+The ranker loses 0.089 nDCG@10 (95% interval 0.058 to 0.121) and costs
+almost nothing. [design.md](design.md#research) gives the designs between
+these two points. The query vectors come from the cache, so two runs give the
+same result. A change to the judgments, the features or the training changes
+the result; compare runs with `--compare` and use the interval.
 
 Share of the answers (grade 2 or 3) that each stage finds:
 
 | Stage | @10 | @25 | @50 | @100 |
 | - | - | - | - | - |
 | BM25 | 0.486 | 0.644 | 0.729 | 0.828 |
-| Vector search | 0.674 | 0.859 | 0.909 | 0.945 |
-| Fused candidates | 0.614 | 0.788 | 0.912 | 0.912 |
-| Jev ranking | 0.858 | 0.903 | 0.912 | 0.912 |
+| Vector search | 0.675 | 0.859 | 0.909 | 0.945 |
+| Ranker | 0.746 | 0.853 | 0.934 | 0.967 |
 
-BM25 brings 16 answers into the candidates that vector search does not have in
-its best 50, for example the only grade 3 answer of `compare two byte strings
-in constant time`. The fusion removes 14 answers that vector search has in its
-best 50, for example both answers of `HMAC-SHA256`. The candidates contain 50
-documents. 6 of the 386 answers are at ranks 51 to 100 of vector search and do
-not get to Jev.
+nDCG@10 for each style: `statement` 0.874, `keywords` 0.849, `identifier`
+0.841, `question` 0.840, `task` 0.764, `signature` 0.740.
 
-The weakest style is `signature` (nDCG@10 0.744). The best score for a query
-without an answer is 0.61, and the lowest best score for a query with an
-answer is 0.38. So no threshold separates them completely.
+The worst queries show what the ranker cannot see. For `HMAC-SHA256`, the best
+results are local `hmac` functions in other files of the same package; the
+answer is at rank 47. For `compare two byte strings in constant time`, the
+only answer is at rank 63. For `format an integer as hexadecimal text`, a
+local `hex_word` comes before `U16.show_radix`.
+
+The best score for a query without an answer is 0.61, and the lowest best
+score for a query with an answer is 0.21. So no threshold separates them.

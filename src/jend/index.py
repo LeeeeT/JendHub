@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx2
 import numpy as np
 import numpy.typing as npt
 
@@ -45,6 +46,7 @@ STOPWORDS = frozenset(
 Scores = npt.NDArray[np.float32]
 BM25_K1 = 1.2
 BM25_B = 0.75
+SIGNATURE_TEXT_CHARS = 400
 
 
 @dataclass(frozen=True)
@@ -57,9 +59,9 @@ class Document:
     def entry(self) -> Entry:
         return self.entries[0]
 
-    @property
-    def vector_key(self) -> str:
-        return hashlib.sha256(self.text().encode()).hexdigest()[:32]
+    def signature_text(self) -> str:
+        definition = self.entry.definition
+        return f"{definition.name}\n{definition.signature[:SIGNATURE_TEXT_CHARS]}"
 
     def text(self) -> str:
         definition = self.entry.definition
@@ -104,7 +106,7 @@ class Bm25:
 
     def scores(self, query: str) -> Scores:
         scores = np.zeros(self.size, dtype=np.float32)
-        for term in set(tokens(query)):
+        for term in sorted(set(tokens(query))):
             posting = self.postings.get(term)
             if posting is not None:
                 np.add.at(scores, posting[0], posting[1])
@@ -114,7 +116,8 @@ class Bm25:
 @dataclass(frozen=True)
 class Index:
     documents: tuple[Document, ...]
-    vectors: embed.Vectors
+    text_vectors: embed.Vectors
+    signature_vectors: embed.Vectors
     bm25: Bm25
     id: str
 
@@ -135,20 +138,50 @@ def _documents(data: Path) -> list[Document]:
     ]
 
 
+def _texts(documents: Sequence[Document]) -> dict[str, list[str]]:
+    return {
+        "text": [document.text() for document in documents],
+        "signature": [document.signature_text() for document in documents],
+    }
+
+
+def _vectors(directory: Path, name: str, texts: Sequence[str]) -> embed.Vectors:
+    keys, vectors = embed.Store(directory, name).load()
+    row = {key: position for position, key in enumerate(keys)}
+    wanted = [embed.vector_key(text) for text in texts]
+    missing = sum(key not in row for key in wanted)
+    if missing:
+        raise ValueError(f"{missing} documents have no {name} vector; run `python -m jend.index`")
+    return vectors[[row[key] for key in wanted]]
+
+
 def load(data: Path) -> Index:
     documents = _documents(data)
-    keys, vectors = embed.Store(data / "index").load()
-    row = {key: index for index, key in enumerate(keys)}
-    missing = [document for document in documents if document.vector_key not in row]
-    if missing:
-        raise ValueError(f"{len(missing)} documents have no vector; run `python -m jend.index`")
-    ordered = vectors[[row[document.vector_key] for document in documents]]
-    identity = hashlib.sha256(
-        "\n".join([embed.MODEL, *(document.vector_key for document in documents)]).encode()
-    ).hexdigest()[:16]
+    texts = _texts(documents)
+    keys = [embed.vector_key(text) for name in ("text", "signature") for text in texts[name]]
+    identity = hashlib.sha256("\n".join([embed.MODEL, *keys]).encode()).hexdigest()[:16]
     return Index(
-        tuple(documents), ordered, Bm25([document.text() for document in documents]), identity
+        tuple(documents),
+        _vectors(data / "index", "text", texts["text"]),
+        _vectors(data / "index", "signature", texts["signature"]),
+        Bm25(texts["text"]),
+        identity,
     )
+
+
+async def _embed_missing(
+    client: httpx2.AsyncClient, directory: Path, name: str, texts: Sequence[str]
+) -> None:
+    store = embed.Store(directory, name)
+    keys, vectors = store.load()
+    known = {key: row for row, key in enumerate(keys)}
+    wanted = {embed.vector_key(text): text for text in texts}
+    missing = [key for key in wanted if key not in known]
+    added, cost = await embed.embed(client, [wanted[key] for key in missing])
+    rows = {key: vectors[row] for key, row in known.items()}
+    rows.update(zip(missing, added))
+    store.save(list(wanted), np.stack([rows[key] for key in wanted]))
+    print(f"{name} embeddings: {len(missing)} added, ${cost:.4f}")
 
 
 async def build(data: Path, budget: float) -> None:
@@ -158,18 +191,10 @@ async def build(data: Path, budget: float) -> None:
         f"enrichment: {report.written} written, {report.failed_batches} failed batches,"
         f" {report.skipped_batches} skipped batches, ${report.cost:.4f}"
     )
-    documents = _documents(data)
-    store = embed.Store(data / "index")
-    keys, vectors = store.load()
-    known = {key: row for row, key in enumerate(keys)}
-    missing = [document for document in documents if document.vector_key not in known]
+    texts = _texts(_documents(data))
     async with openrouter.connect() as client:
-        added, cost = await embed.embed(client, [document.text() for document in missing])
-    rows = {key: vectors[row] for key, row in known.items()}
-    rows.update({document.vector_key: added[row] for row, document in enumerate(missing)})
-    current = [document.vector_key for document in documents]
-    store.save(current, np.stack([rows[key] for key in current]))
-    print(f"embeddings: {len(missing)} added, ${cost:.4f}")
+        for name, values in texts.items():
+            await _embed_missing(client, data / "index", name, values)
 
 
 def main() -> None:

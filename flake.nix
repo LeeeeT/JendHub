@@ -19,26 +19,6 @@
         pkgs.python3.override {
           self = pythonFor pkgs;
           packageOverrides = pyself: pysuper: {
-            typesafe-sdk = pyself.buildPythonPackage rec {
-              pname = "typesafe_sdk";
-              version = "0.7.2";
-              format = "wheel";
-              src = pkgs.fetchPypi {
-                inherit pname version format;
-                dist = "py3";
-                python = "py3";
-                hash = "sha256-CpYRSBh9UuGCdu1/LQJhfPrEjjuXZzy2Mah0k5fUPR4=";
-              };
-              dependencies = with pyself; [
-                httpx2
-                pydantic
-                pydantic-core
-                tenacity
-                typing-extensions
-              ];
-              pythonImportsCheck = [ "typesafe_sdk" ];
-            };
-
             jend = pyself.buildPythonPackage {
               pname = "jend";
               version = "0.1.0";
@@ -48,9 +28,9 @@
               dependencies = with pyself; [
                 fastapi
                 httpx2
+                lightgbm
                 numpy
                 pydantic
-                typesafe-sdk
                 uvicorn
               ];
               pythonImportsCheck = [ "jend" ];
@@ -70,9 +50,9 @@
               ps.fastapi
               ps.httpx
               ps.httpx2
+              ps.lightgbm
               ps.numpy
               ps.pydantic
-              ps.typesafe-sdk
               ps.uvicorn
               ps.pytest
             ]))

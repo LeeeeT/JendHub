@@ -1,10 +1,8 @@
 import argparse
 import base64
 import hashlib
-import ipaddress
 import os
 import re
-import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -16,77 +14,39 @@ import httpx2
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
-from typesafe_sdk import TypeSafeError
 
-from jend import base, jev, openrouter
-from jend.cache import Cache
+from jend import base, embed, openrouter
 from jend.corpus import Entry
+from jend.features import Featurizer
 from jend.index import load
-from jend.limits import Budget, RateLimit, seconds_until_utc_midnight, utc_today
-from jend.search import Engine, Hit, Result, Searcher
+from jend.ranker import Ranker
+from jend.search import Engine, Hit, Result
 
 MAX_QUERY_CHARS = 200
 JSON_RESULTS = 20
 EMBEDDING_TIMEOUT = 15.0
-JEV_TIMEOUT = 20.0
 EXAMPLES = ("decompress gzip data", "String -> Bytes", "read a file", "parse JSON text")
 HUB = "https://hub.bend-lang.com"
 
 
-@dataclass(frozen=True)
-class Settings:
-    data: Path
-    rate_per_minute: int
-    daily_budget_usd: float
-    client_ip_header: str | None
-
-    @classmethod
-    def from_env(cls) -> "Settings":
-        return cls(
-            data=Path(os.environ.get("JEND_DATA", "data/hub")),
-            rate_per_minute=int(os.environ.get("JEND_RATE_PER_MINUTE", "10")),
-            daily_budget_usd=float(os.environ.get("JEND_DAILY_BUDGET_USD", "1.0")),
-            client_ip_header=os.environ.get("JEND_CLIENT_IP_HEADER") or None,
-        )
-
-
 class Refusal(Exception):
-    def __init__(self, status: int, message: str, retry_after: int | None = None) -> None:
+    def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
         self.status = status
         self.message = message
-        self.retry_after = retry_after
 
 
-@dataclass
+@dataclass(frozen=True)
 class Service:
-    searcher: Searcher
-    rate: RateLimit
-    budget: Budget
+    engine: Engine
 
-    async def search(self, query: str, client: str) -> Result:
+    async def search(self, query: str) -> Result:
         if len(query) > MAX_QUERY_CHARS:
             raise Refusal(400, f"The query is longer than {MAX_QUERY_CHARS} characters.")
-        cached = self.searcher.lookup(query)
-        if cached is not None:
-            return cached
-        wait = self.rate.wait(client)
-        if wait > 0:
-            seconds = max(1, round(wait))
-            raise Refusal(429, f"Too many new queries. Try again in {seconds} s.", seconds)
-        if self.budget.exhausted():
-            raise Refusal(
-                429,
-                "The search budget for today is used. Queries that were asked before still work.",
-                seconds_until_utc_midnight(),
-            )
-        self.rate.record(client)
         try:
-            result = await self.searcher.compute(query)
-        except (httpx2.HTTPError, TypeSafeError) as error:
-            raise Refusal(502, "The ranking service did not answer. Try again.") from error
-        self.budget.charge(result.cost)
-        return result
+            return await self.engine.search(query)
+        except httpx2.HTTPError as error:
+            raise Refusal(502, "The embedding service did not answer. Try again.") from error
 
 
 def alias(entry: Entry) -> str:
@@ -202,7 +162,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 {body}
 </main>
 <footer>
-<p>Searches Base and the latest versions of the 50 hottest BendHub packages. The score is the probability, judged by Jev, that a programmer would call the definition to do what the query asks.</p>
+<p>Searches Base and the latest versions of the 50 hottest BendHub packages. The score is the estimated probability that the definition does what the query asks. A ranker trained on judged searches computes it.</p>
 <p>For programs and LLMs: <code>GET /search.json?q=…</code> returns the best {JSON_RESULTS} results as JSON: score, signature, summary, import line and source URL.</p>
 </footer>
 <!--/email_off-->
@@ -252,46 +212,21 @@ def refusal_html(refusal: Refusal) -> str:
     return f'<p class="note"><strong>{escape(refusal.message)}</strong></p>'
 
 
-def client_key(request: Request, header: str | None) -> str:
-    address = request.headers.get(header) if header is not None else None
-    if address is None:
-        address = request.client.host if request.client is not None else "unknown"
-    try:
-        ip = ipaddress.ip_address(address.strip())
-    except ValueError:
-        return address
-    if ip.version == 6:
-        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
-    return str(ip)
-
-
-def _retry_headers(refusal: Refusal) -> dict[str, str]:
-    return {} if refusal.retry_after is None else {"Retry-After": str(refusal.retry_after)}
-
-
-def create_app(settings: Settings | None = None) -> FastAPI:
-    settings = settings or Settings.from_env()
+def create_app(data: Path | None = None) -> FastAPI:
+    directory = data or Path(os.environ.get("JEND_DATA", "data/hub"))
     state: dict[str, Service] = {}
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        index = load(settings.data)
-        cache = Cache(settings.data / "index" / "cache.sqlite")
-        budget = Budget(
-            settings.data / "index" / "budget.sqlite", settings.daily_budget_usd, utc_today
-        )
-        async with (
-            openrouter.connect(EMBEDDING_TIMEOUT) as embedder,
-            jev.connect(JEV_TIMEOUT) as judge,
-        ):
+        featurizer = Featurizer(load(directory))
+        ranker = Ranker.load()
+        cache = embed.query_cache(directory)
+        async with openrouter.connect(EMBEDDING_TIMEOUT) as client:
             state["service"] = Service(
-                Searcher(Engine(index, embedder, judge), cache),
-                RateLimit(settings.rate_per_minute, time.monotonic),
-                budget,
+                Engine(featurizer, ranker, embed.QueryEmbedder(client, cache))
             )
             yield
         cache.close()
-        budget.close()
 
     app = FastAPI(title="JendHub", lifespan=lifespan, docs_url=None, redoc_url=None)
 
@@ -308,35 +243,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return ROBOTS
 
     @app.get("/", response_class=HTMLResponse)
-    async def home(request: Request, q: str = "") -> Response:  # pyright: ignore[reportUnusedFunction]
+    async def home(q: str = "") -> Response:  # pyright: ignore[reportUnusedFunction]
         query = q.strip()
         if not query:
             return page("", intro_html())
         try:
-            result = await state["service"].search(
-                query, client_key(request, settings.client_ip_header)
-            )
+            result = await state["service"].search(query)
         except Refusal as refusal:
-            response = page(query, refusal_html(refusal), refusal.status)
-            response.headers.update(_retry_headers(refusal))
-            return response
+            return page(query, refusal_html(refusal), refusal.status)
         return page(query, results_html(result))
 
     @app.get("/search.json")
-    async def search_json(request: Request, q: str = "") -> Response:  # pyright: ignore[reportUnusedFunction]
+    async def search_json(q: str = "") -> Response:  # pyright: ignore[reportUnusedFunction]
         query = q.strip()
         if not query:
             return JSONResponse({"error": "The parameter q is empty."}, status_code=400)
         try:
-            result = await state["service"].search(
-                query, client_key(request, settings.client_ip_header)
-            )
+            result = await state["service"].search(query)
         except Refusal as refusal:
-            return JSONResponse(
-                {"error": refusal.message, "retry_after": refusal.retry_after},
-                status_code=refusal.status,
-                headers=_retry_headers(refusal),
-            )
+            return JSONResponse({"error": refusal.message}, status_code=refusal.status)
         return JSONResponse(
             {
                 "query": result.query,

@@ -11,10 +11,6 @@ services:
     image: jendhub:latest
     restart: unless-stopped
     env_file: app.env
-    environment:
-      JEND_CLIENT_IP_HEADER: cf-connecting-ip
-      JEND_RATE_PER_MINUTE: "10"
-      JEND_DAILY_BUDGET_USD: "1.0"
     volumes:
       - ./data:/data
     mem_limit: 1g
