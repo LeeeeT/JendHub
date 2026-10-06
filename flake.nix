@@ -84,7 +84,7 @@
             export PYTHONPATH="$PWD/src''${PYTHONPATH:+:$PYTHONPATH}"
             if [ -f .env ]; then
               set -a
-              . ./.env
+              . <(tr -d '\r' < .env)
               set +a
             fi
           '';
