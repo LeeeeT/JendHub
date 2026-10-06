@@ -22,6 +22,7 @@ class Hit:
 class Result:
     query: str
     total: int
+    start: int
     hits: tuple[Hit, ...]
 
 
@@ -52,7 +53,7 @@ class Engine:
             Hit(record, float(score))
             for record, score in zip(records, ranking.scores[page], strict=True)
         )
-        return Result(text, len(ranking.rows), hits)
+        return Result(text, len(ranking.rows), start, hits)
 
 
 async def _run(data: Path, query: str, top: int) -> None:

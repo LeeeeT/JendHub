@@ -75,9 +75,9 @@ For each query (`jend.search`):
    holds all candidates in descending order of the score. The package rank
    breaks ties.
 4. The engine reads the records of the requested part of the ranking only: 20
-   for each page of the HTML list and for the text route. It keeps the
-   rankings of the 256 most recent queries, so the next page of a query takes
-   approximately 2 ms. The ranking is deterministic, so the pages do not repeat
+   for each page of the HTML list, and 10 for each answer of the text route.
+   It keeps the rankings of the 256 most recent queries, so the next page of a
+   query takes approximately 2 ms. The ranking is deterministic, so the pages do not repeat
    or skip a result.
 
 ### Formula

@@ -22,7 +22,9 @@ from jend.score import Scorer
 from jend.search import PAGE, Engine, Hit, Result
 
 MAX_QUERY_CHARS = 200
-TEXT_RESULTS = 20
+TEXT_RESULTS = 10
+DOC_CHARS = 500
+ANSWER_CHARS = 16_000
 EMBEDDING_TIMEOUT = 15.0
 EXAMPLES = ("decompress gzip data", "String -> Bytes", "read a file", "parse JSON text")
 HUB = "https://hub.bend-lang.com"
@@ -76,20 +78,41 @@ def source_url(record: Record) -> str:
 
 def results_text(result: Result) -> str:
     groups: dict[str, list[str]] = {}
-    for rank, hit in enumerate(result.hits, 1):
-        groups.setdefault(import_line(hit.record), []).append(hit_text(rank, hit))
+    size = 0
+    for rank, hit in enumerate(result.hits, result.start + 1):
+        line = import_line(hit.record)
+        text = hit_text(rank, hit)
+        size += len(text) + (0 if line in groups else len(line))
+        if groups and size > ANSWER_CHARS:
+            break
+        groups.setdefault(line, []).append(text)
+    end = result.start + sum(len(hits) for hits in groups.values())
+    if end == result.start:
+        return f"Bend definitions for “{result.query}”: {result.total} results, none after {end}."
     heading = (
-        f"Bend definitions for “{result.query}”: the best {len(result.hits)} of"
-        f" {result.total}. A higher score is a better match."
+        f"Bend definitions for “{result.query}”: results {result.start + 1} to {end}"
+        f" of {result.total}, best first. A higher score is a better match."
     )
-    return "\n\n".join([heading, *("\n\n".join([line, *hits]) for line, hits in groups.items())])
+    parts = [heading, *("\n\n".join([line, *hits]) for line, hits in groups.items())]
+    if end < result.total:
+        parts.append(f"More results: /search.txt?{urlencode({'q': result.query, 'start': end})}")
+    return "\n\n".join(parts)
+
+
+def short_doc(doc: str) -> str:
+    if len(doc) <= DOC_CHARS:
+        return doc
+    head = doc[:DOC_CHARS]
+    sentence = head.rfind(". ")
+    end = sentence + 1 if sentence >= DOC_CHARS // 2 else head.rfind(" ")
+    return f"{head[: end if end > 0 else DOC_CHARS].rstrip()} …"
 
 
 def hit_text(rank: int, hit: Hit) -> str:
     record = hit.record
     lines = [f"{rank}. {call_name(record)} (score {hit.score:.2f})", *record.signature.splitlines()]
     if record.doc is not None:
-        lines.append(f"doc: {record.doc}")
+        lines.append(f"doc: {short_doc(record.doc)}")
     if record.summary is not None:
         lines.append(f"summary: {record.summary}")
     lines.append(f"source: {source_url(record)}")
@@ -176,6 +199,11 @@ it has one, a summary, and the URL of its source. A higher score is a better
 match. You cannot compare the scores of two queries. A query has at most
 {MAX_QUERY_CHARS} characters.
 
+The best answer is usually in the first {TEXT_RESULTS} results. When more results
+exist, the last line of the answer gives the URL of the next results. A doc
+comment longer than {DOC_CHARS} characters ends with "…"; the source has the full
+text.
+
 ## Use a result in Bend
 
 Write the import line at the top of your file. Then use the name of the result:
@@ -219,7 +247,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 </main>
 <footer>
 <p>Searches Base and the latest versions of the 100 hottest BendHub packages. The score tells how well the definition matches the query, compared with the other results of the same query.</p>
-<p>For LLMs: <code>GET /search.txt?q=…</code> returns the best {TEXT_RESULTS} results as plain text: the name to use, score, declaration, doc comment, summary, import line and source URL. <a href="/llms.txt">/llms.txt</a> tells how to use it.</p>
+<p>For LLMs: <code>GET /search.txt?q=…</code> returns the best {TEXT_RESULTS} results as plain text, with a link to the next ones: the name to use, score, declaration, doc comment, summary, import line and source URL. <a href="/llms.txt">/llms.txt</a> tells how to use it.</p>
 </footer>
 <!--/email_off-->
 <script type="module">{SCRIPT}</script>
@@ -323,12 +351,14 @@ def create_app(data: Path | None = None) -> FastAPI:
         return LLMS
 
     @app.get("/search.txt", response_class=PlainTextResponse)
-    async def search_text(q: str = "") -> Response:  # pyright: ignore[reportUnusedFunction]
+    async def search_text(  # pyright: ignore[reportUnusedFunction]
+        q: str = "", start: Annotated[int, Query(ge=0)] = 0
+    ) -> Response:
         query = q.strip()
         if not query:
             return PlainTextResponse("The parameter q is empty.", status_code=400)
         try:
-            result = await state["service"].search(query, 0, TEXT_RESULTS)
+            result = await state["service"].search(query, start, TEXT_RESULTS)
         except Refusal as refusal:
             return PlainTextResponse(refusal.message, status_code=refusal.status)
         return PlainTextResponse(results_text(result))

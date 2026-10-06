@@ -15,14 +15,18 @@ from jend.openrouter import KEY_VARIABLE
 from jend.search import PAGE, Hit, Result
 from jend.signatures import Kind
 from jend.web import (
+    ANSWER_CHARS,
+    DOC_CHARS,
     ROBOTS,
     SECURITY_HEADERS,
+    TEXT_RESULTS,
     call_name,
     create_app,
     hit_html,
     import_line,
     page,
     results_text,
+    short_doc,
     source_url,
 )
 
@@ -97,10 +101,11 @@ def test_text_results_group_by_import_line_and_keep_the_rank() -> None:
     unzlib = _entry("bend-kit-zlib", "zlib.bend", definition="unzlib")
     hits = (Hit(zlib, 5.861), Hit(base, 4.0), Hit(unzlib, 3.5))
 
-    text = results_text(Result("gzip", 238, hits))
+    text = results_text(Result("gzip", 238, 0, hits))
 
     assert text == (
-        "Bend definitions for “gzip”: the best 3 of 238. A higher score is a better match.\n\n"
+        "Bend definitions for “gzip”: results 1 to 3 of 238, best first."
+        " A higher score is a better match.\n\n"
         "import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n\n"
         "1. Zlib.gunzip (score 5.86)\n"
         "   def gunzip(s: String)\n"
@@ -113,8 +118,39 @@ def test_text_results_group_by_import_line_and_keep_the_rank() -> None:
         "import Base\n\n"
         "2. String.eq (score 4.00)\n"
         "   def String.eq() -> Bool\n"
-        f"   source: {source_url(base)}"
+        f"   source: {source_url(base)}\n\n"
+        "More results: /search.txt?q=gzip&start=3"
     )
+
+
+def test_text_results_stop_at_the_size_limit_and_link_to_the_rest() -> None:
+    long = _entry("p", "p.bend", "def f() -> U32\n" + "x" * (ANSWER_CHARS // 3))
+    hits = tuple(Hit(long, 1.0) for _ in range(5))
+
+    text = results_text(Result("q", 40, 10, hits))
+
+    assert len(re.findall(r"^\d+\. ", text, re.MULTILINE)) == 2
+    assert "results 11 to 12 of 40" in text
+    assert text.endswith("More results: /search.txt?q=q&start=12")
+
+
+def test_text_results_after_the_end_say_so() -> None:
+    assert results_text(Result("q", 40, 40, ())) == (
+        "Bend definitions for “q”: 40 results, none after 40."
+    )
+
+
+def test_short_doc_cuts_a_long_comment_at_a_sentence_end() -> None:
+    sentence = "Word " * 20 + "end. "
+    doc = sentence * 10
+
+    short = short_doc(doc)
+
+    assert short_doc("Short.") == "Short."
+    assert len(short) <= DOC_CHARS + 2
+    assert short.endswith("end. …")
+    assert doc.startswith(short.removesuffix(" …"))
+    assert short_doc("x" * 600) == "x" * DOC_CHARS + " …"
 
 
 def test_base_links_to_the_line_on_github() -> None:
@@ -153,14 +189,18 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
             client.get("/more", params={"q": "sort a list", "start": start}).text
             for start in range(PAGE, size + PAGE, PAGE)
         ]
-        best = client.get("/search.txt", params={"q": "sort a list"}).text
+        answers = [client.get("/search.txt", params={"q": "sort a list"}).text]
+        while found := re.search(r"^More results: (\S+)$", answers[-1], re.MULTILINE):
+            answers.append(client.get(found[1]).text)
 
     shown = _signatures(first) + [signature for html in pages for signature in _signatures(html)]
     assert f'data-query="sort a list" data-total="{size}"' in first
     assert len(_signatures(first)) == PAGE
     assert [len(_signatures(html)) for html in pages] == [PAGE, 5, 0]
     assert sorted(shown) == sorted(record.signature for record in records)
-    assert re.findall(r"^   (def .*)$", best, re.MULTILINE) == shown[:PAGE]
+    assert [re.findall(r"^   (def .*)$", text, re.MULTILINE) for text in answers] == [
+        shown[start : start + TEXT_RESULTS] for start in range(0, size, TEXT_RESULTS)
+    ]
 
 
 def test_robots_allow_the_llm_routes_and_keep_crawlers_off_the_html_results() -> None:
