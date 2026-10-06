@@ -28,7 +28,6 @@
               dependencies = with pyself; [
                 fastapi
                 httpx2
-                lightgbm
                 numpy
                 pydantic
                 uvicorn
@@ -50,7 +49,6 @@
               ps.fastapi
               ps.httpx
               ps.httpx2
-              ps.lightgbm
               ps.numpy
               ps.pydantic
               ps.uvicorn

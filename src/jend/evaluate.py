@@ -11,10 +11,9 @@ from statistics import mean, median
 from pydantic import BaseModel, ConfigDict
 
 from jend.benchmark import EXACT, Query, auc, bootstrap, load, ndcg, recall, reciprocal_rank
-from jend.features import Featurizer, positions
+from jend.embed import cached_query_vectors
 from jend.index import load as load_index
-from jend.ranker import example, fit, folds, query_vectors
-from jend.search import order
+from jend.score import Scorer, normalize, positions
 
 CUTOFF = 10
 RESULTS = 20
@@ -47,42 +46,27 @@ class Run(BaseModel):
 
 def execute(data: Path, queries: Sequence[Query], label: str) -> Run:
     index = load_index(data)
-    featurizer = Featurizer(index)
-    vectors = asyncio.run(query_vectors(data, queries))
-    started = time.monotonic()
-    candidates = [
-        featurizer.candidates(query.query, vector)
-        for query, vector in zip(queries, vectors, strict=True)
-    ]
-    seconds = (time.monotonic() - started) / len(queries)
-    examples = [example(index, query, found) for query, found in zip(queries, candidates)]
-    runs: dict[int, QueryRun] = {}
-    for fold in folds(len(queries)):
-        held_out = set(fold)
-        ranker = fit([e for position, e in enumerate(examples) if position not in held_out])
-        for position in fold:
-            found = candidates[position]
-            rows, probabilities = order(ranker, featurizer, found)
-            stages = {
-                "bm25": found.lexical,
-                "vector": found.semantic,
-                "ranking": rows,
-            }
-            runs[position] = QueryRun(
-                id=queries[position].id,
+    scorer = Scorer(index)
+    texts = [normalize(query.query) for query in queries]
+    vectors = asyncio.run(cached_query_vectors(data, texts))
+    runs: list[QueryRun] = []
+    for query, vector in zip(queries, vectors, strict=True):
+        started = time.monotonic()
+        ranking = scorer.rank(query.query, vector)
+        seconds = time.monotonic() - started
+        stages = {"bm25": ranking.lexical, "vector": ranking.semantic, "ranking": ranking.rows}
+        runs.append(
+            QueryRun(
+                id=query.id,
                 stages={
                     name: tuple(index.documents[row].key for row in positions(rows))
                     for name, rows in stages.items()
                 },
-                scores=tuple(float(probability) for probability in probabilities[:RESULTS]),
+                scores=tuple(float(score) for score in ranking.scores[:RESULTS]),
                 seconds=seconds,
             )
-    return Run(
-        label=label,
-        created=datetime.now(UTC),
-        index=index.id,
-        queries=tuple(runs[position] for position in range(len(queries))),
-    )
+        )
+    return Run(label=label, created=datetime.now(UTC), index=index.id, queries=tuple(runs))
 
 
 def measures(query: Query, run: QueryRun) -> dict[str, float]:

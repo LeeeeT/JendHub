@@ -64,20 +64,12 @@ python -m jend.search "decompress gzip data"
 ```
 
 The command shows the 10 best of 50 results (`--top` changes this), in
-descending order of the ranker's score. The query vectors are in
+descending order of their score. A fixed formula (`jend.score`) computes the
+score from vector similarity, BM25, the name, and signals that put the API
+before helpers and proof files; [docs/design.md](docs/design.md#formula)
+gives it. Nothing is trained. The query vectors are in
 `data/hub/index/embeddings.sqlite`, so a repeated query does not call
 OpenRouter.
-
-## Ranker
-
-The ranker is a LambdaMART model (LightGBM) that is trained on the benchmark
-judgments. `src/jend/ranker.json` holds the model, the names of its features,
-and the calibration that changes a score into a probability. Train it again
-after a change to the judgments, to the features or to the index:
-
-```sh
-python -m jend.ranker
-```
 
 ## Web server
 
@@ -91,8 +83,9 @@ The server loads the index one time and serves two routes:
   the system setting: black on white, or white on black.
 - `GET /search.json?q=…`: the best 20 results as compact JSON for programs
   and LLMs: `{"query": …, "results": [{"score", "signature", "summary",
-  "import", "source"}]}`. `score` is the estimated probability that the
-  result does what the query asks. `import` is the line to write
+  "import", "source"}]}`. `score` is the value of the ranking formula: a
+  higher score is a better match, but the scores of two queries cannot be
+  compared. `import` is the line to write
   (`import Base` for Base), and `source` is the file URL with the line as
   `#L…`.
 
@@ -107,7 +100,7 @@ pages.
 
 ## Docker
 
-The image holds the code and the ranker model. Mount the data directory
+The image holds the code only. Mount the data directory
 (`mirror.json` and `index/`) at `/data`. The server writes its query vectors to
 that directory, so the container user must be able to write there:
 
@@ -157,7 +150,8 @@ definition and the reason for the grade:
   an answer, the inverse operation.
 - 0: it is not relevant.
 
-A query without a grade 2 or 3 judgment has no answer in the corpus.
+A query without a grade 2 or 3 judgment has no answer in the corpus. The
+benchmark is only for evaluation: do not train on it or tune on it.
 
 Measure the search:
 
@@ -165,11 +159,8 @@ Measure the search:
 python -m jend.evaluate --label baseline
 ```
 
-The ranker learns from the benchmark, so the shipped model cannot measure
-itself. The command uses 5-fold cross-validation over the queries: it trains a
-model on 4 parts and ranks the queries of the fifth part with that model. The
-query vectors come from `data/hub/index/embeddings.sqlite`, so a second run
-costs nothing and gives the same result. The command writes the run to
+The query vectors come from `data/hub/index/embeddings.sqlite`, so a second
+run costs nothing and gives the same result. The command writes the run to
 `data/hub/runs/` and prints:
 
 - nDCG@10, the share of queries with a grade 3 result first, MRR and recall@20,

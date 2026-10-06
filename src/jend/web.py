@@ -17,9 +17,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 
 from jend import base, embed, openrouter
 from jend.corpus import Entry
-from jend.features import Featurizer
 from jend.index import load
-from jend.ranker import Ranker
+from jend.score import Scorer
 from jend.search import Engine, Hit, Result
 
 MAX_QUERY_CHARS = 200
@@ -78,7 +77,7 @@ def hit_json(hit: Hit) -> dict[str, object]:
     entry = hit.document.entry
     enrichment = hit.document.enrichment
     result: dict[str, object] = {
-        "score": round(hit.probability, 2),
+        "score": round(hit.score, 2),
         "signature": entry.definition.signature,
     }
     if enrichment is not None:
@@ -162,7 +161,7 @@ def page(query: str, body: str, status: int = 200) -> HTMLResponse:
 {body}
 </main>
 <footer>
-<p>Searches Base and the latest versions of the 50 hottest BendHub packages. The score is the estimated probability that the definition does what the query asks. A ranker trained on judged searches computes it.</p>
+<p>Searches Base and the latest versions of the 50 hottest BendHub packages. The score tells how well the definition matches the query, compared with the other results of the same query.</p>
 <p>For programs and LLMs: <code>GET /search.json?q=…</code> returns the best {JSON_RESULTS} results as JSON: score, signature, summary, import line and source URL.</p>
 </footer>
 <!--/email_off-->
@@ -191,7 +190,7 @@ def hit_html(hit: Hit) -> str:
         else f'<pre class="i"><code>{escape(line)}</code></pre>'
     )
     return (
-        f'<li><data class="s" value="{hit.probability:.4f}">{hit.probability:.2f}</data><div>'
+        f'<li><data class="s" value="{hit.score:.4f}">{hit.score:.1f}</data><div>'
         f'<pre class="sig"><code>{escape(entry.definition.signature)}</code></pre>'
         f"{summary}"
         f'<p class="m"><a href="{escape(source_url(entry))}">{escape(entry.package_label)}'
@@ -218,13 +217,10 @@ def create_app(data: Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        featurizer = Featurizer(load(directory))
-        ranker = Ranker.load()
+        scorer = Scorer(load(directory))
         cache = embed.query_cache(directory)
         async with openrouter.connect(EMBEDDING_TIMEOUT) as client:
-            state["service"] = Service(
-                Engine(featurizer, ranker, embed.QueryEmbedder(client, cache))
-            )
+            state["service"] = Service(Engine(scorer, embed.QueryEmbedder(client, cache)))
             yield
         cache.close()
 

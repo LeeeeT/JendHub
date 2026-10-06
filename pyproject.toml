@@ -10,7 +10,6 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115",
     "httpx2>=2.0.0",
-    "lightgbm>=4.6",
     "numpy>=2.0",
     "pydantic>=2.12.0",
     "uvicorn>=0.30",
@@ -23,7 +22,6 @@ dev = ["httpx>=0.28", "pyright", "pytest", "ruff"]
 jend-mirror = "jend.mirror:main"
 jend-index = "jend.index:main"
 jend-search = "jend.search:main"
-jend-train = "jend.ranker:main"
 jend-evaluate = "jend.evaluate:main"
 jend-web = "jend.web:main"
 

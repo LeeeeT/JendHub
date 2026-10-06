@@ -45,43 +45,36 @@ For each query (`jend.search`):
 2. Vector search and BM25 each select their best 200 documents. The union is
    the candidate pool, approximately 320 documents. It holds 98% of the
    answers of the benchmark.
-3. `jend.features` computes 34 features for each candidate.
-4. The ranker (`jend.ranker`) gives each candidate a score. The engine returns
-   the best 50 in descending order of the score. The package rank breaks ties.
-5. A logistic function changes the score into the probability that the
-   candidate is an answer (grade 2 or 3).
+3. `jend.score` gives each candidate a score with a fixed formula. The engine
+   returns the best 50 in descending order of the score. The package rank
+   breaks ties.
 
-### Features
+### Formula
 
-| Group | Features |
+The formula has no trained parameters. Each weight was set from what the
+signal means, before the measurement on the benchmark.
+
+| Part | Value |
 | - | - |
-| Vector search | cosine, distance to the best cosine, log of the rank |
-| BM25 | score relative to the best, distance to the best, log of the rank |
-| BM25 for each field | score relative to the best candidate, for the 5 fields |
-| Signature vector | cosine, distance to the best candidate |
-| Query and name | share of query words in the name, name equals the query |
-| Query and type | overlap of the type names, when the query contains `->` |
-| Query form | statement query, signature query, law for a statement query |
-| File | proof file, shared proof library, spec file, test or example file |
-| Name | helper form (`.go`, `_loop`, `internal_` and similar), number of dots |
-| Definition | `law`, `type`, has a doc comment, doc length, signature length |
-| Package | Base, package rank, number of packages with a copy |
-| Enrichment | no summary |
+| Similarity of the query to the full-text vector | 1.0 x z |
+| Similarity of the query to the name and signature vector | 0.5 x z |
+| BM25 score of the full text | 0.5 x z |
+| Share of the name's words that the query contains | up to +1.0 |
+| The name, or its last part, is the query | +1.0 |
+| The definition is in Base | +0.25 |
+| The name has a helper form (`.go`, `_loop`, `internal_` and similar) | -1.0 |
+| The file is a proof, spec, test, example, usage, benchmark or conformance file, but not a shared lemma file (`proofs/lib/`) | -1.0 |
+| The definition is a law and the query is not a statement | -0.5 |
 
-The file, name and package features let the ranker put the API before the
-copies, the helpers and the proofs that grading rule 8 limits to grade 1 (see
-[benchmark.md](benchmark.md)).
+`z` is the standard score of the signal in the candidate pool: its distance
+from the mean of the pool, in standard deviations. So the signals have the
+same scale for each query, and a bonus or a penalty of 1.0 moves a candidate
+by approximately one standard deviation. A strong match keeps its place after
+one penalty; a weak match goes below the others.
 
-### Ranker
-
-The ranker is LambdaMART (LightGBM, 200 trees with 7 leaves, gains 0, 1, 3 and
-7 for the grades). `python -m jend.ranker` trains it on all benchmark queries.
-The calibration is a logistic fit on the out-of-fold scores of the best 20
-candidates of each query. `src/jend/ranker.json` holds the trees, the feature
-names and the calibration. The server refuses a model with other feature names.
-
-`jend.evaluate` measures the ranker with 5-fold cross-validation over the
-queries, so no query is ranked by a model that learned from it.
+The penalties follow rule 8 of the benchmark: only API can be an answer.
+The score of a result is the value of the formula. It is not a probability,
+and the scores of two queries cannot be compared.
 
 ## Results
 
@@ -90,7 +83,8 @@ See [benchmark.md](benchmark.md#results-of-the-current-design).
 ## Research
 
 This section tells how the design was selected. The measurements use the
-benchmark with 90 queries that have an answer. Costs are for 1000 new queries.
+benchmark queries q001 to q100, 90 of which have an answer. Costs are for 1000
+new queries.
 
 ### Pareto frontier
 
@@ -106,14 +100,16 @@ asked one `noul` for each candidate: "Would a programmer call definition
 | Ranker, then Jev `noul` on 20, lean cards | $0.190 | 0.875 | 0.822 |
 | Ranker, then Jev `noul` on 15, lean cards | $0.145 | 0.861 | 0.822 |
 | Ranker, then one Jev `choice` over 20 | $0.117 | 0.852 | 0.822 |
-| Ranker only (current design) | $0.0003 | 0.797 | 0.700 |
+| Ranker only (removed) | $0.0003 | 0.797 | 0.700 |
+| Formula (current design) | $0.0003 | 0.775 | 0.678 |
 | Vector search only | $0.0003 | 0.735 | 0.600 |
 | RRF only | $0.0003 | 0.656 | 0.456 |
 | BM25 only | $0 | 0.517 | 0.344 |
 
-The ranker numbers with Jev used an earlier ranker that had nDCG@10 0.794.
-The project selected the ranker without Jev: it costs nothing for each query,
-and Jev adds +0.08 nDCG@10 for $0.19 or more.
+"Ranker" in this table is a learned ranker (LambdaMART) that the project
+removed; see finding 9. Its numbers are optimistic, because it learned from
+the benchmark. The project selected a design without Jev: it costs nothing
+for each query, and Jev adds +0.08 to +0.12 nDCG@10 for $0.19 or more.
 
 ### Findings
 
@@ -145,14 +141,24 @@ and Jev adds +0.08 nDCG@10 for $0.19 or more.
    each generated query add less than the noise. A signature vector cut to 256
    dimensions loses 0.007.
 8. Two Jev runs of the same requests differ by approximately 0.002 nDCG@10.
+9. A learned ranker (LambdaMART on 34 features) got nDCG@10 0.797 in
+   cross-validation on the benchmark. But it learned from the benchmark, and
+   the benchmark also selected its features and settings, so the number was
+   optimistic. It also failed on short queries such as `hash`, because the
+   benchmark had none. The project removed it: the benchmark is only for
+   evaluation, and a learned ranker needs separate training data. The fixed
+   formula gets 0.775 on the same 90 queries, measured one time.
 
 ## Open questions
 
-- The ranker learns from 100 queries. More judged queries, in particular of
-  the `task` and `signature` styles, can make it better and make the
-  measurement more exact.
-- The best score separates queries with an answer from queries without one
-  less well than Jev did (AUC 0.81 against 0.98). The page shows all results;
-  a threshold needs more queries without an answer.
-- The features do not see the bodies of the definitions. A call graph can tell
-  a helper that one definition uses from an API.
+- Short queries are the weakest group (`word` nDCG@10 0.671). For `hash`, the
+  exact name bonus puts copies in spec files before the hash functions of
+  `bend-kit-hash`. A change to the weights needs a separate set of queries to
+  set them, so that the benchmark stays a fair test.
+- Training data that is separate from the benchmark, for example Jev labels
+  of synthetic queries, can give a learned ranker without the problem of
+  finding 9.
+- The best score does not separate queries with an answer from queries
+  without one (AUC 0.68; Jev had 0.98).
+- The formula does not see the bodies of the definitions. A call graph can
+  tell a helper that one definition uses from an API.

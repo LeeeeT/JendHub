@@ -89,6 +89,15 @@ class QueryEmbedder:
         return np.stack([known[text] for text in texts])
 
 
+async def cached_query_vectors(data: Path, queries: Sequence[str]) -> Vectors:
+    cache = query_cache(data)
+    try:
+        async with openrouter.connect() as client:
+            return await QueryEmbedder(client, cache).embed(queries)
+    finally:
+        cache.close()
+
+
 def vector_key(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:32]
 
