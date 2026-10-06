@@ -23,7 +23,7 @@ from jend.cache import Cache
 from jend.corpus import Entry
 from jend.index import load
 from jend.limits import Budget, RateLimit, seconds_until_utc_midnight, utc_today
-from jend.search import Hit, Result, Searcher
+from jend.search import Engine, Hit, Result, Searcher
 
 MAX_QUERY_CHARS = 200
 JSON_RESULTS = 20
@@ -285,7 +285,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             jev.connect(JEV_TIMEOUT) as judge,
         ):
             state["service"] = Service(
-                Searcher(index, cache, embedder, judge),
+                Searcher(Engine(index, embedder, judge), cache),
                 RateLimit(settings.rate_per_minute, time.monotonic),
                 budget,
             )

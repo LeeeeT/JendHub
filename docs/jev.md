@@ -78,10 +78,13 @@ For each query (`jend.search`):
    definition `definitions.d07` directly to do what `query` asks for?". The
    criteria tell Jev that an internal helper that performs one step for another
    definition is not a match. The state holds the query and a card for each
-   candidate: name, package, file, doc comment, full signature and summary.
+   candidate: name, package, file, doc comment, signature (up to 600
+   characters) and summary.
 4. The engine returns all 50 candidates in descending order of their `noul`.
-   There is no threshold: the user decides. The cache key includes a hash of
-   the Jev question, so a new question does not reuse old answers.
+   There is no threshold: the user decides. The cache key contains the index id
+   and a hash of the source of the ranking modules (`search.RANKING_MODULES`).
+   A change to the ranking code starts a new cache, so the server does not
+   return rankings of an earlier algorithm.
 
 The web server (`jend.web`) serves the same ranking as an HTML page and as
 JSON. Before it pays for a new query, it checks a rate limit for each client
@@ -110,11 +113,13 @@ input tokens ($0.00042) and one query embedding ($0.0000003). Time:
 approximately 0.5 s for the embedding and 0.4 s for Jev. One measured query took
 52 s; a second measurement did not show this delay.
 
-`data/queries.json` holds 69 queries with a match (12 of them for Base) and 6
-queries without a match. When Jev ranked a definition first that is also
-correct, the labels now include it.
+[benchmark.md](benchmark.md) gives the benchmark and the measurements of the
+current design.
 
 ### Internal helpers
+
+This experiment used an earlier set of 69 labeled queries with one correct
+answer each. The benchmark replaced that set.
 
 Helpers such as `utf8.decode.go` or `pct.enc.path` got high `noul` values
 because they do the work that the query names. We compared four orders. The
@@ -135,9 +140,7 @@ have doc comments and many public definitions do not.
 
 With the direct-call question, keyword search has a correct document in its
 best 50 for 66/69 queries, vector search for 69/69, and the merged candidates
-for 69/69. The highest `noul` for a query without a match is 0.52. The labels
-are small and written by one person, so these numbers are an upper bound for
-real queries.
+for 69/69.
 
 ## Experiments
 

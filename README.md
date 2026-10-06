@@ -5,7 +5,10 @@ the design and the Jev measurements.
 
 ## Setup
 
-Put `OPENROUTER_API_KEY=...` in `.env`. Then open the dev shell:
+Put `OPENROUTER_API_KEY=...` in `.env`. The dev shell removes carriage returns
+when it reads `.env`, so Windows line endings are permitted. A key with a space
+or a control character stops the program with an error that does not show the
+key. Then open the dev shell:
 
 ```sh
 nix develop
@@ -54,7 +57,9 @@ python -m jend.search "decompress gzip data"
 
 The command shows the 10 best of 50 candidates (`--top` changes this), in
 descending order of Jev's probability. The result cache is in
-`data/hub/index/cache.sqlite`. A repeated query costs nothing.
+`data/hub/index/cache.sqlite`. A repeated query costs nothing. A change to the
+code of the ranking starts a new cache, so after such a change each query
+costs money again one time.
 
 ## Web server
 
@@ -133,9 +138,55 @@ ssh root@host 'cd /opt/jendhub && docker compose up -d'
 
 ## Evaluation
 
-`data/queries.json` holds labeled queries on the real packages. Measure the
-search on them:
+`data/benchmark.json` holds 100 queries in the style of LLM coding agents, with
+graded relevance judgments. Each judgment gives a document key, a grade, the
+definition and the reason for the grade:
+
+- 3: the definition does what the query asks.
+- 2: it does the job with small extra work, or it does the central part.
+- 1: it is related: a helper of an answer, the type of an answer, a proof about
+  an answer, the inverse operation.
+- 0: it is not relevant.
+
+A query without a grade 2 or 3 judgment has no answer in the corpus. The
+judgments cover the union of the best 20 results of BM25, of vector search and
+of Jev, and answers found by a search of the corpus.
+
+Measure the search:
 
 ```sh
-python -m jend.evaluate
+python -m jend.evaluate --label baseline
 ```
+
+The command runs the full pipeline for each query, without the result cache,
+and costs approximately $0.05. `--retrieval` skips Jev and measures only the
+retrieval stages, for the cost of the query embeddings. The command writes the
+run to `data/hub/runs/` and prints:
+
+- nDCG@10, the share of queries with a grade 3 result first, MRR and recall@20,
+  on the queries with an answer.
+- For each stage (BM25, vector search, the fused candidates, the final
+  ranking), the share of answers in the best 10, 25, 50 and 100.
+- How well the best score separates queries with an answer from queries
+  without one (AUC).
+- nDCG@10 for each query style, the queries with the lowest nDCG@10, and the
+  results in the top 10 that have no judgment. When the share of results
+  without a judgment increases, add judgments for them.
+
+Compare two runs, or score a saved run again after the judgments change:
+
+```sh
+python -m jend.evaluate --compare data/hub/runs/A.json data/hub/runs/B.json
+python -m jend.evaluate --report data/hub/runs/A.json
+```
+
+`--against RUN` compares a new run with `RUN` immediately. The comparison
+gives the mean difference for each measure, a 95% bootstrap interval over the
+queries, and the queries that changed most. Jev gives slightly different
+probabilities for the same request, so two runs of the same algorithm differ
+too, by approximately 0.01 nDCG@10. A difference is real only when it is
+larger and its interval does not contain 0.
+
+[docs/benchmark.md](docs/benchmark.md) tells how the queries and judgments
+were made, gives the rules to grade new results, and gives the results of the
+current design.
