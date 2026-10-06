@@ -1,13 +1,11 @@
-from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 
-from jend.corpus import Entry
-from jend.enrich import Enrichment, Role
-from jend.index import Bm25, Document, Index
-from jend.mirror import Package
+from jend.enrich import Role
+from jend.index import Index, Record, write
 from jend.score import Scorer, is_helper, is_outside_api, names_match
-from jend.signatures import Definition, Kind
+from jend.signatures import Kind
 
 
 def test_helper_names_follow_the_usual_conventions() -> None:
@@ -37,55 +35,60 @@ def test_names_match_the_full_name_or_its_last_part() -> None:
     assert not names_match("hash_acc", "hash")
 
 
-def _document(name: str, path: str, kind: Kind = Kind.DEF) -> Document:
-    package = Package(
-        hash="0x" + "b" * 32,
-        name="bend-kit-hash",
-        version="1.0.0.0",
-        description="Hash functions",
-        published=datetime(2026, 1, 1, tzinfo=UTC),
-        hot=1.0,
-        files=(),
-    )
-    signature = f"def {name}(b: Bytes) -> U64"
-    return Document(
-        name, (Entry(package, 1, path, Definition(kind, name, signature, "", 1)),), None
+def _record(name: str, path: str, role: Role | None = None) -> Record:
+    return Record(
+        key=f"{path}:{name}",
+        name=name,
+        kind=Kind.DEF,
+        signature=f"def {name}(b: Bytes) -> U64",
+        line=1,
+        path=path,
+        package_hash="0x" + "b" * 32,
+        package_name="bend-kit-hash",
+        package_version="1.0.0.0",
+        package_rank=1,
+        is_base=False,
+        role=role,
+        summary=None,
     )
 
 
-def test_rank_prefers_the_api_over_helpers_and_spec_copies_with_the_same_vector() -> None:
-    documents = [
-        _document("hash.go", "hash.bend"),
-        _document("hash", "spec/hash.bend"),
-        _document("hash", "hash.bend"),
-        _document("unrelated", "other.bend"),
+def _scorer(directory: Path, records: list[Record], vectors: np.ndarray) -> Scorer:
+    texts = [f"{record.name}\n{record.signature}" for record in records]
+    write(directory, records, texts, vectors, vectors.copy(), "test")
+    return Scorer(Index(directory))
+
+
+def test_rank_prefers_the_api_over_helpers_and_spec_copies_with_the_same_vector(
+    tmp_path: Path,
+) -> None:
+    records = [
+        _record("hash.go", "hash.bend"),
+        _record("hash", "spec/hash.bend"),
+        _record("hash", "hash.bend"),
+        _record("unrelated", "other.bend"),
     ]
     vectors = np.zeros((4, 4), dtype=np.float32)
     vectors[:3, 0] = 1.0
     vectors[3, 1] = 1.0
-    texts = [document.text() for document in documents]
-    scorer = Scorer(Index(tuple(documents), vectors, vectors.copy(), Bm25(texts), "test"))
+    scorer = _scorer(tmp_path / "index", records, vectors)
 
     ranking = scorer.rank("hash", np.array([1, 0, 0, 0], dtype=np.float32))
 
     assert [int(row) for row in ranking.rows] == [2, 1, 0, 3]
     assert np.all(np.diff(ranking.scores) <= 0)
+    scorer.index.close()
 
 
-def test_rank_puts_a_definition_with_the_api_role_before_a_helper_with_the_same_signals() -> None:
-    def enriched(name: str, role: Role) -> Document:
-        document = _document(name, "crc.bend")
-        enrichment = Enrichment(
-            key=name, role=role, summary="", queries=(), keywords=(), model="test"
-        )
-        return Document(document.key, document.entries, enrichment)
-
-    documents = [enriched("crc", Role.HELPER), enriched("crc32", Role.API)]
+def test_rank_puts_a_definition_with_the_api_role_before_a_helper_with_the_same_signals(
+    tmp_path: Path,
+) -> None:
+    records = [_record("crc", "crc.bend", Role.HELPER), _record("crc32", "crc.bend", Role.API)]
     vectors = np.zeros((2, 4), dtype=np.float32)
     vectors[:, 0] = 1.0
-    texts = [document.text() for document in documents]
-    scorer = Scorer(Index(tuple(documents), vectors, vectors.copy(), Bm25(texts), "test"))
+    scorer = _scorer(tmp_path / "index", records, vectors)
 
     ranking = scorer.rank("checksum", np.array([1, 0, 0, 0], dtype=np.float32))
 
     assert [int(row) for row in ranking.rows] == [1, 0]
+    scorer.index.close()

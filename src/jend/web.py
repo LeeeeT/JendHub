@@ -16,8 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from jend import base, embed, openrouter
-from jend.corpus import Entry
-from jend.index import load
+from jend.index import INDEX, Index, Record
 from jend.score import Scorer
 from jend.search import Engine, Hit, Result
 
@@ -48,42 +47,35 @@ class Service:
             raise Refusal(502, "The embedding service did not answer. Try again.") from error
 
 
-def alias(entry: Entry) -> str:
-    stem = PurePosixPath(entry.path).stem
-    source = (entry.package.name or "P") if stem == "main" else stem
+def alias(record: Record) -> str:
+    stem = PurePosixPath(record.path).stem
+    source = (record.package_name or "P") if stem == "main" else stem
     words = [word for word in re.split(r"[^A-Za-z0-9]+", source) if word]
     name = "".join(word[0].upper() + word[1:] for word in words) or "P"
     return name if name[0].isalpha() else f"M{name}"
 
 
-def import_line(entry: Entry) -> str | None:
-    package = entry.package
-    if package.is_base:
+def import_line(record: Record) -> str | None:
+    if record.is_base:
         return None
-    target = package.hash if package.name is None else f"{package.name}@{package.version}"
-    return f"import {target}/{entry.path} as {alias(entry)}"
+    return f"import {record.package_label}/{record.path} as {alias(record)}"
 
 
-def source_url(entry: Entry) -> str:
-    package = entry.package
-    if package.is_base:
-        file = f"https://github.com/bendlang/bend/blob/{package.hash}/bend2/{base.PATH}"
+def source_url(record: Record) -> str:
+    if record.is_base:
+        file = f"https://github.com/bendlang/bend/blob/{record.package_hash}/bend2/{base.PATH}"
     else:
-        file = f"{HUB}/{package.hash}/{quote(entry.path)}"
-    return f"{file}#L{entry.definition.line}"
+        file = f"{HUB}/{record.package_hash}/{quote(record.path)}"
+    return f"{file}#L{record.line}"
 
 
 def hit_json(hit: Hit) -> dict[str, object]:
-    entry = hit.document.entry
-    enrichment = hit.document.enrichment
-    result: dict[str, object] = {
-        "score": round(hit.score, 2),
-        "signature": entry.definition.signature,
-    }
-    if enrichment is not None:
-        result["summary"] = enrichment.summary
-    result["import"] = import_line(entry) or "import Base"
-    result["source"] = source_url(entry)
+    record = hit.record
+    result: dict[str, object] = {"score": round(hit.score, 2), "signature": record.signature}
+    if record.summary is not None:
+        result["summary"] = record.summary
+    result["import"] = import_line(record) or "import Base"
+    result["source"] = source_url(record)
     return result
 
 
@@ -180,10 +172,9 @@ def results_html(result: Result) -> str:
 
 
 def hit_html(hit: Hit) -> str:
-    entry = hit.document.entry
-    enrichment = hit.document.enrichment
-    summary = "" if enrichment is None else f"<p>{escape(enrichment.summary)}</p>"
-    line = import_line(entry)
+    record = hit.record
+    summary = "" if record.summary is None else f"<p>{escape(record.summary)}</p>"
+    line = import_line(record)
     usage = (
         '<p class="m">in Base, no import needed</p>'
         if line is None
@@ -191,10 +182,10 @@ def hit_html(hit: Hit) -> str:
     )
     return (
         f'<li><data class="s" value="{hit.score:.4f}">{hit.score:.1f}</data><div>'
-        f'<pre class="sig"><code>{escape(entry.definition.signature)}</code></pre>'
+        f'<pre class="sig"><code>{escape(record.signature)}</code></pre>'
         f"{summary}"
-        f'<p class="m"><a href="{escape(source_url(entry))}">{escape(entry.package_label)}'
-        f"/{escape(entry.path)}</a> line {entry.definition.line}</p>"
+        f'<p class="m"><a href="{escape(source_url(record))}">{escape(record.package_label)}'
+        f"/{escape(record.path)}</a> line {record.line}</p>"
         f"{usage}</div></li>"
     )
 
@@ -217,12 +208,13 @@ def create_app(data: Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        scorer = Scorer(load(directory))
+        index = Index(directory / INDEX)
         cache = embed.query_cache(directory)
         async with openrouter.connect(EMBEDDING_TIMEOUT) as client:
-            state["service"] = Service(Engine(scorer, embed.QueryEmbedder(client, cache)))
+            state["service"] = Service(Engine(Scorer(index), embed.QueryEmbedder(client, cache)))
             yield
         cache.close()
+        index.close()
 
     app = FastAPI(title="JendHub", lifespan=lifespan, docs_url=None, redoc_url=None)
 

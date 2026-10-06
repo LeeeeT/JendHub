@@ -12,8 +12,8 @@ from pydantic import BaseModel, ConfigDict
 
 from jend.benchmark import EXACT, Query, auc, bootstrap, load, ndcg, recall, reciprocal_rank
 from jend.embed import cached_query_vectors
-from jend.index import load as load_index
-from jend.score import Scorer, normalize, positions
+from jend.index import INDEX, Index
+from jend.score import Scorer, normalize
 
 CUTOFF = 10
 RESULTS = 20
@@ -45,7 +45,7 @@ class Run(BaseModel):
 
 
 def execute(data: Path, queries: Sequence[Query], label: str) -> Run:
-    index = load_index(data)
+    index = Index(data / INDEX)
     scorer = Scorer(index)
     texts = [normalize(query.query) for query in queries]
     vectors = asyncio.run(cached_query_vectors(data, texts))
@@ -58,14 +58,12 @@ def execute(data: Path, queries: Sequence[Query], label: str) -> Run:
         runs.append(
             QueryRun(
                 id=query.id,
-                stages={
-                    name: tuple(index.documents[row].key for row in positions(rows))
-                    for name, rows in stages.items()
-                },
+                stages={name: tuple(index.keys(rows)) for name, rows in stages.items()},
                 scores=tuple(float(score) for score in ranking.scores[:RESULTS]),
                 seconds=seconds,
             )
         )
+    index.close()
     return Run(label=label, created=datetime.now(UTC), index=index.id, queries=tuple(runs))
 
 

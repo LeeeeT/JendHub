@@ -43,10 +43,11 @@ Enrich and embed the definitions of Base and of the 100 hottest packages
 limit in USD for the enrichment:
 
 ```sh
-python -m jend.index --budget 2.5
+python -m jend.build --budget 2.5
 ```
 
-The command keeps its results in `data/hub/index/`:
+The command keeps the paid results in `data/hub/cache/`. Do not delete this
+directory: a new enrichment of all definitions costs approximately $1.30.
 
 - `enrichment.jsonl`: for each definition, its role (`api`, `helper`, `local`
   or `test`), a summary, and for API definitions 3 likely queries and 2 or 3
@@ -59,6 +60,15 @@ It sends only definitions that do not have a result yet, so a second run costs
 only the new work. A new definition costs approximately $0.000023 for the
 enrichment and $0.000002 for the two vectors.
 
+Then the command writes the search index to `data/hub/index/`. The search
+reads only this directory:
+
+- `index.sqlite`: the documents, one row for each document, and the BM25
+  postings of each term.
+- `text.codes.npy`, `signature.codes.npy` and their `.scale.npy` files: the
+  two vectors of each document as int8, with one scale for each dimension.
+  int8 does not change the ranking measurably.
+
 ## Search
 
 ```sh
@@ -70,8 +80,7 @@ descending order of their score. A fixed formula (`jend.score`) computes the
 score from vector similarity, BM25, the name, and signals that put the API
 before helpers and proof files; [docs/design.md](docs/design.md#formula)
 gives it. Nothing is trained. The query vectors are in
-`data/hub/index/embeddings.sqlite`, so a repeated query does not call
-OpenRouter.
+`data/hub/queries.sqlite`, so a repeated query does not call OpenRouter.
 
 ## Web server
 
@@ -79,7 +88,7 @@ OpenRouter.
 python -m jend.web --port 8000
 ```
 
-The server loads the index one time and serves two routes:
+The server opens the index one time and serves two routes:
 
 - `GET /?q=…`: an HTML page. It works without JavaScript. The colors follow
   the system setting: black on white, or white on black.
@@ -102,9 +111,9 @@ pages.
 
 ## Docker
 
-The image holds the code only. Mount the data directory
-(`mirror.json` and `index/`) at `/data`. The server writes its query vectors to
-that directory, so the container user must be able to write there:
+The image holds the code only. Mount the data directory (with `index/`) at
+`/data`. The server writes its query vectors to `queries.sqlite` in that
+directory, so the container user must be able to write there:
 
 ```sh
 docker build -t jendhub .
@@ -127,10 +136,13 @@ the server holds:
 - `compose.yaml`
 - `app.env`: `OPENROUTER_API_KEY=…` (mode 600)
 - `tunnel.env`: `TUNNEL_TOKEN=…` (mode 600)
-- `data/`: `mirror.json` and `index/`, owned by user 10001 (the user in the
-  image)
+- `data/`: `index/` and `queries.sqlite`, owned by user 10001 (the user in
+  the image)
 
-The server uses approximately 700 MB of memory.
+The server keeps only the text vectors (55 MB) and three numbers for each
+document in memory. It reads the documents, the BM25 postings and the
+signature vectors from disk for each query. The process uses approximately
+150 MB of memory. The host has a 2 GB swap file.
 
 To update the code, build the image, load it on the server and restart:
 
@@ -161,7 +173,7 @@ Measure the search:
 python -m jend.evaluate --label baseline
 ```
 
-The query vectors come from `data/hub/index/embeddings.sqlite`, so a second
+The query vectors come from `data/hub/queries.sqlite`, so a second
 run costs nothing and gives the same result. The command writes the run to
 `data/hub/runs/` and prints:
 

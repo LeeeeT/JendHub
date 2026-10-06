@@ -1,13 +1,10 @@
 import base64
 import hashlib
 import re
-from datetime import UTC, datetime
 
-from jend.corpus import Entry
-from jend.index import Document
-from jend.mirror import Package
+from jend.index import Record
 from jend.search import Hit
-from jend.signatures import Definition, Kind
+from jend.signatures import Kind
 from jend.web import SECURITY_HEADERS, hit_html, import_line, page, source_url
 
 
@@ -26,18 +23,23 @@ def test_results_are_outside_cloudflare_email_obfuscation() -> None:
 
 
 def _entry(
-    name: str | None, path: str, signature: str = "def f() -> U32", hot: float | None = 1.0
-) -> Entry:
-    package = Package(
-        hash="0x" + "a" * 32,
-        name=name,
-        version=None if name is None else "1.2.0.0",
-        description="",
-        published=datetime(2026, 1, 1, tzinfo=UTC),
-        hot=hot,
-        files=(),
+    name: str | None, path: str, signature: str = "def f() -> U32", is_base: bool = False
+) -> Record:
+    return Record(
+        key="k",
+        name="f",
+        kind=Kind.DEF,
+        signature=signature,
+        line=7,
+        path=path,
+        package_hash="0x" + "a" * 32,
+        package_name=name,
+        package_version=None if name is None else "1.2.0.0",
+        package_rank=0,
+        is_base=is_base,
+        role=None,
+        summary=None,
     )
-    return Entry(package, 0, path, Definition(Kind.DEF, "f", signature, "", 7))
 
 
 def test_import_line_names_the_package_or_its_hash() -> None:
@@ -50,16 +52,16 @@ def test_import_line_names_the_package_or_its_hash() -> None:
     assert import_line(_entry(None, "src/containers/bit_set.bend")) == (
         f"import 0x{'a' * 32}/src/containers/bit_set.bend as BitSet"
     )
-    assert import_line(_entry("Base", "base.bend", hot=None)) is None
+    assert import_line(_entry("Base", "base.bend", is_base=True)) is None
 
 
 def test_base_links_to_the_line_on_github() -> None:
-    assert source_url(_entry("Base", "base.bend", hot=None)).endswith("/bend2/base.bend#L7")
+    assert source_url(_entry("Base", "base.bend", is_base=True)).endswith("/bend2/base.bend#L7")
 
 
 def test_html_escapes_signatures_and_queries() -> None:
     entry = _entry("x", "x.bend", signature="def f() -> {a <script>b</script> : T}")
-    row = hit_html(Hit(Document("k", (entry,), None), 0.5))
+    row = hit_html(Hit(entry, 0.5))
     body = bytes(page("<img src=x>", row).body).decode()
 
     assert "<script>" not in body

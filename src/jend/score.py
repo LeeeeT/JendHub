@@ -5,7 +5,8 @@ import numpy as np
 import numpy.typing as npt
 
 from jend.enrich import Role
-from jend.index import Document, Index, Scores, tokens
+from jend.index import Index, Record, Rows, Scores, Vector, tokens
+from jend.signatures import Kind
 
 POOL_DEPTH = 200
 STAGE_DEPTH = 100
@@ -21,8 +22,6 @@ NON_API_FILE_PENALTY = 1.0
 LAW_PENALTY = 0.5
 ROLE_PENALTY = 1.0
 
-Rows = npt.NDArray[np.intp]
-Vector = npt.NDArray[np.float32]
 Values = npt.NDArray[np.float64]
 
 HELPER_NAME = re.compile(
@@ -97,16 +96,21 @@ class Ranking:
 class Scorer:
     def __init__(self, index: Index) -> None:
         self.index = index
-        documents = index.documents
-        self.name_tokens = [frozenset(tokens(d.entry.definition.name)) for d in documents]
-        self.prior = np.array([_prior(document) for document in documents], dtype=np.float64)
-        self.law = np.array([d.entry.definition.kind.value == "law" for d in documents])
-        self.package_rank = np.array([d.entry.rank for d in documents])
+        prior: list[float] = []
+        law: list[bool] = []
+        package_rank: list[int] = []
+        for record in index.scan():
+            prior.append(_prior(record))
+            law.append(record.kind is Kind.LAW)
+            package_rank.append(record.package_rank)
+        self.prior = np.array(prior, dtype=np.float64)
+        self.law = np.array(law, dtype=np.bool_)
+        self.package_rank = np.array(package_rank, dtype=np.int32)
 
     def rank(self, query: str, vector: Vector) -> Ranking:
         text = normalize(query)
-        semantic = self.index.text_vectors @ vector
-        lexical = self.index.bm25.scores(text)
+        semantic = self.index.semantic(vector)
+        lexical = self.index.lexical(text)
         rows = np.union1d(_top(semantic, POOL_DEPTH), _matches(lexical, POOL_DEPTH))
         scores = self._scores(text, vector, semantic, lexical, rows)
         best = np.lexsort((self.package_rank[rows], -scores))
@@ -118,36 +122,34 @@ class Scorer:
         self, text: str, vector: Vector, semantic: Scores, lexical: Scores, rows: Rows
     ) -> Values:
         words = frozenset(tokens(text))
-        documents = self.index.documents
-        names = [
-            len(words & self.name_tokens[row]) / len(self.name_tokens[row])
-            if self.name_tokens[row]
-            else 0.0
-            for row in positions(rows)
-        ]
-        exact = [names_match(documents[row].entry.definition.name, text) for row in positions(rows)]
+        names = self.index.names(rows)
+        coverage = [_coverage(words, frozenset(tokens(name))) for name in names]
+        exact = [names_match(name, text) for name in names]
         statement = bool(STATEMENT_QUERY.search(text))
-        signature = self.index.signature_vectors[rows] @ vector
+        signature = self.index.signature_scores(rows, vector)
         return (
             TEXT_WEIGHT * _standard(semantic[rows].astype(np.float64))
             + SIGNATURE_WEIGHT * _standard(signature.astype(np.float64))
             + KEYWORD_WEIGHT * _standard(lexical[rows].astype(np.float64))
-            + NAME_WEIGHT * np.array(names)
+            + NAME_WEIGHT * np.array(coverage, dtype=np.float64)
             + EXACT_NAME_BONUS * np.array(exact, dtype=np.float64)
             + self.prior[rows]
             - LAW_PENALTY * (self.law[rows] & (not statement))
         )
 
 
-def _prior(document: Document) -> float:
-    entry = document.entry
+def _coverage(words: frozenset[str], name: frozenset[str]) -> float:
+    return len(words & name) / len(name) if name else 0.0
+
+
+def _prior(record: Record) -> float:
     return (
-        BASE_BONUS * entry.package.is_base
-        - HELPER_PENALTY * is_helper(entry.definition.name)
-        - NON_API_FILE_PENALTY * is_outside_api(entry.path)
-        - ROLE_PENALTY * outside_api_role(document)
+        BASE_BONUS * record.is_base
+        - HELPER_PENALTY * is_helper(record.name)
+        - NON_API_FILE_PENALTY * is_outside_api(record.path)
+        - ROLE_PENALTY * outside_api_role(record)
     )
 
 
-def outside_api_role(document: Document) -> bool:
-    return document.enrichment is not None and document.enrichment.role is not Role.API
+def outside_api_role(record: Record) -> bool:
+    return record.role is not None and record.role is not Role.API

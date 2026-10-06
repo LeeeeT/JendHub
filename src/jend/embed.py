@@ -16,6 +16,7 @@ MODEL = "qwen/qwen3-embedding-8b"
 DIMENSIONS = 1024
 BATCH = 128
 REQUESTS_IN_FLIGHT = 8
+QUERY_CACHE = "queries.sqlite"
 QUERY_TASK = "Given a description of what a programmer needs, find Bend definitions that do it"
 
 Vectors = npt.NDArray[np.float32]
@@ -66,7 +67,7 @@ async def embed(client: httpx2.AsyncClient, texts: Sequence[str]) -> tuple[Vecto
 
 
 def query_cache(data: Path) -> EmbeddingCache:
-    return EmbeddingCache(data / "index" / "embeddings.sqlite", MODEL)
+    return EmbeddingCache(data / QUERY_CACHE, MODEL)
 
 
 class QueryEmbedder:

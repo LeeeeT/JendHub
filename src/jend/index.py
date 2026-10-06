@@ -1,20 +1,19 @@
-import argparse
-import asyncio
-import hashlib
+import json
 import math
 import re
+import shutil
+import sqlite3
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-import httpx2
 import numpy as np
 import numpy.typing as npt
 
-from jend import corpus, embed, enrich, mirror, openrouter
-from jend.corpus import Entry
-from jend.enrich import Enrichment
+from jend.enrich import Role
+from jend.signatures import Kind
 
 STOPWORDS = frozenset(
     [
@@ -44,40 +43,133 @@ STOPWORDS = frozenset(
 )
 
 Scores = npt.NDArray[np.float32]
+Vector = npt.NDArray[np.float32]
+Vectors = npt.NDArray[np.float32]
+Rows = npt.NDArray[np.intp]
+Codes = npt.NDArray[np.int8]
+
 BM25_K1 = 1.2
 BM25_B = 0.75
-SIGNATURE_TEXT_CHARS = 400
+CODE_LIMIT = 127
+SCAN_ROWS = 256
+INDEX = "index"
+DATABASE = "index.sqlite"
+TEXT = "text"
+SIGNATURE = "signature"
+
+SCHEMA = """
+create table meta (name text primary key, value text not null) without rowid;
+create table documents (
+    row integer primary key,
+    key text not null,
+    name text not null,
+    kind text not null,
+    signature text not null,
+    line integer not null,
+    path text not null,
+    package_hash text not null,
+    package_name text,
+    package_version text,
+    package_rank integer not null,
+    is_base integer not null,
+    role text,
+    summary text
+);
+create table postings (term text primary key, rows blob not null, weights blob not null)
+    without rowid;
+"""
 
 
 @dataclass(frozen=True)
-class Document:
+class Record:
     key: str
-    entries: tuple[Entry, ...]
-    enrichment: Enrichment | None
+    name: str
+    kind: Kind
+    signature: str
+    line: int
+    path: str
+    package_hash: str
+    package_name: str | None
+    package_version: str | None
+    package_rank: int
+    is_base: bool
+    role: Role | None
+    summary: str | None
 
     @property
-    def entry(self) -> Entry:
-        return self.entries[0]
+    def package_label(self) -> str:
+        if self.package_name is None:
+            return self.package_hash
+        return f"{self.package_name}@{self.package_version}"
 
-    def signature_text(self) -> str:
-        definition = self.entry.definition
-        return f"{definition.name}\n{definition.signature[:SIGNATURE_TEXT_CHARS]}"
 
-    def text(self) -> str:
-        definition = self.entry.definition
-        parts = [definition.name, definition.doc]
-        if self.enrichment is not None:
-            parts += [
-                self.enrichment.summary,
-                *self.enrichment.queries,
-                " ".join(self.enrichment.keywords),
-            ]
-        parts += [
-            definition.signature[:800],
-            self.entry.package_label,
-            self.entry.package.description[:200],
-        ]
-        return "\n".join(part for part in parts if part)
+RECORD_COLUMNS = (
+    "key",
+    "name",
+    "kind",
+    "signature",
+    "line",
+    "path",
+    "package_hash",
+    "package_name",
+    "package_version",
+    "package_rank",
+    "is_base",
+    "role",
+    "summary",
+)
+SELECTED = ", ".join(RECORD_COLUMNS)
+
+
+def _row(record: Record) -> tuple[object, ...]:
+    return (
+        record.key,
+        record.name,
+        record.kind.value,
+        record.signature,
+        record.line,
+        record.path,
+        record.package_hash,
+        record.package_name,
+        record.package_version,
+        record.package_rank,
+        record.is_base,
+        None if record.role is None else record.role.value,
+        record.summary,
+    )
+
+
+def _record(row: Sequence[Any]) -> Record:
+    (
+        key,
+        name,
+        kind,
+        signature,
+        line,
+        path,
+        package_hash,
+        package_name,
+        package_version,
+        package_rank,
+        is_base,
+        role,
+        summary,
+    ) = row
+    return Record(
+        key=key,
+        name=name,
+        kind=Kind(kind),
+        signature=signature,
+        line=line,
+        path=path,
+        package_hash=package_hash,
+        package_name=package_name,
+        package_version=package_version,
+        package_rank=package_rank,
+        is_base=bool(is_base),
+        role=None if role is None else Role(role),
+        summary=summary,
+    )
 
 
 def tokens(text: str) -> list[str]:
@@ -89,125 +181,150 @@ def tokens(text: str) -> list[str]:
     ]
 
 
-class Bm25:
-    def __init__(self, texts: Sequence[str]) -> None:
-        counts = [Counter(tokens(text)) for text in texts]
-        lengths = np.array([sum(count.values()) for count in counts], dtype=np.float32)
-        average = float(lengths.mean()) if len(counts) else 1.0
-        postings: defaultdict[str, list[tuple[int, int]]] = defaultdict(list)
-        for row, count in enumerate(counts):
-            for term, frequency in count.items():
-                postings[term].append((row, frequency))
-        self.size = len(counts)
-        self.postings: dict[str, tuple[npt.NDArray[np.int32], npt.NDArray[np.float32]]] = {}
-        for term, rows in postings.items():
-            ids = np.array([row for row, _ in rows], dtype=np.int32)
-            frequency = np.array([value for _, value in rows], dtype=np.float32)
-            idf = math.log(1 + (self.size - len(rows) + 0.5) / (len(rows) + 0.5))
-            norm = BM25_K1 * (1 - BM25_B + BM25_B * lengths[ids] / average)
-            weights = idf * frequency * (BM25_K1 + 1) / (frequency + norm)
-            self.postings[term] = (ids, weights.astype(np.float32))
+Posting = tuple[npt.NDArray[np.int32], npt.NDArray[np.float32]]
 
-    def scores(self, query: str) -> Scores:
-        scores = np.zeros(self.size, dtype=np.float32)
-        for term in sorted(set(tokens(query))):
-            posting = self.postings.get(term)
-            if posting is not None:
-                np.add.at(scores, posting[0], posting[1])
-        return scores
+
+def postings(texts: Sequence[str]) -> dict[str, Posting]:
+    counts = [Counter(tokens(text)) for text in texts]
+    lengths = np.array([sum(count.values()) for count in counts], dtype=np.float32)
+    average = float(lengths.mean()) if len(counts) else 1.0
+    rows: defaultdict[str, list[tuple[int, int]]] = defaultdict(list)
+    for row, count in enumerate(counts):
+        for term, frequency in count.items():
+            rows[term].append((row, frequency))
+    result: dict[str, Posting] = {}
+    for term, pairs in rows.items():
+        ids = np.array([row for row, _ in pairs], dtype=np.int32)
+        frequency = np.array([value for _, value in pairs], dtype=np.float32)
+        idf = math.log(1 + (len(counts) - len(pairs) + 0.5) / (len(pairs) + 0.5))
+        norm = BM25_K1 * (1 - BM25_B + BM25_B * lengths[ids] / average)
+        weights = idf * frequency * (BM25_K1 + 1) / (frequency + norm)
+        result[term] = (ids, weights.astype(np.float32))
+    return result
 
 
 @dataclass(frozen=True)
-class Index:
-    documents: tuple[Document, ...]
-    text_vectors: embed.Vectors
-    signature_vectors: embed.Vectors
-    bm25: Bm25
-    id: str
+class Quantized:
+    codes: Codes
+    scale: Vector
+
+    @staticmethod
+    def of(vectors: Vectors) -> "Quantized":
+        peak = np.abs(vectors).max(axis=0) if len(vectors) else np.ones(vectors.shape[1])
+        scale = np.where(peak > 0, peak / CODE_LIMIT, 1.0).astype(np.float32)
+        codes = np.round(vectors / scale).clip(-CODE_LIMIT, CODE_LIMIT).astype(np.int8)
+        return Quantized(codes, scale)
+
+    def scores(self, vector: Vector) -> Scores:
+        weights = vector * self.scale
+        result = np.empty(len(self.codes), dtype=np.float32)
+        decoded = np.empty((SCAN_ROWS, self.codes.shape[1]), dtype=np.float32)
+        for start in range(0, len(self.codes), SCAN_ROWS):
+            block = self.codes[start : start + SCAN_ROWS]
+            np.copyto(decoded[: len(block)], block, casting="unsafe")
+            np.matmul(decoded[: len(block)], weights, out=result[start : start + len(block)])
+        return result
+
+    def row_scores(self, rows: Rows, vector: Vector) -> Scores:
+        scores = self.codes[rows].astype(np.float32) @ (vector * self.scale)
+        return scores.astype(np.float32, copy=False)
+
+    def save(self, directory: Path, name: str) -> None:
+        np.save(directory / f"{name}.codes.npy", self.codes)
+        np.save(directory / f"{name}.scale.npy", self.scale)
+
+    @staticmethod
+    def load(directory: Path, name: str, mapped: bool) -> "Quantized":
+        codes: Codes = np.load(directory / f"{name}.codes.npy", mmap_mode="r" if mapped else None)
+        scale: Vector = np.load(directory / f"{name}.scale.npy")
+        return Quantized(codes, scale)
 
 
-def _documents(data: Path) -> list[Document]:
-    entries = corpus.entries(corpus.select(mirror.load(data / "mirror.json")))
-    enrichments = enrich.load(data / "index" / "enrichment.jsonl")
-    grouped: dict[str, list[Entry]] = {}
-    for entry in entries:
-        grouped.setdefault(entry.content_key, []).append(entry)
-    return [
-        Document(
-            key,
-            tuple(sorted(group, key=lambda entry: entry.rank)),
-            enrichments.get(key),
-        )
-        for key, group in grouped.items()
-    ]
-
-
-def _texts(documents: Sequence[Document]) -> dict[str, list[str]]:
-    return {
-        "text": [document.text() for document in documents],
-        "signature": [document.signature_text() for document in documents],
-    }
-
-
-def _vectors(directory: Path, name: str, texts: Sequence[str]) -> embed.Vectors:
-    keys, vectors = embed.Store(directory, name).load()
-    row = {key: position for position, key in enumerate(keys)}
-    wanted = [embed.vector_key(text) for text in texts]
-    missing = sum(key not in row for key in wanted)
-    if missing:
-        raise ValueError(f"{missing} documents have no {name} vector; run `python -m jend.index`")
-    return vectors[[row[key] for key in wanted]]
-
-
-def load(data: Path) -> Index:
-    documents = _documents(data)
-    texts = _texts(documents)
-    keys = [embed.vector_key(text) for name in ("text", "signature") for text in texts[name]]
-    identity = hashlib.sha256("\n".join([embed.MODEL, *keys]).encode()).hexdigest()[:16]
-    return Index(
-        tuple(documents),
-        _vectors(data / "index", "text", texts["text"]),
-        _vectors(data / "index", "signature", texts["signature"]),
-        Bm25(texts["text"]),
-        identity,
-    )
-
-
-async def _embed_missing(
-    client: httpx2.AsyncClient, directory: Path, name: str, texts: Sequence[str]
+def write(
+    directory: Path,
+    records: Sequence[Record],
+    texts: Sequence[str],
+    text_vectors: Vectors,
+    signature_vectors: Vectors,
+    identity: str,
 ) -> None:
-    store = embed.Store(directory, name)
-    keys, vectors = store.load()
-    known = {key: row for row, key in enumerate(keys)}
-    wanted = {embed.vector_key(text): text for text in texts}
-    missing = [key for key in wanted if key not in known]
-    added, cost = await embed.embed(client, [wanted[key] for key in missing])
-    rows = {key: vectors[row] for key, row in known.items()}
-    rows.update(zip(missing, added))
-    store.save(list(wanted), np.stack([rows[key] for key in wanted]))
-    print(f"{name} embeddings: {len(missing)} added, ${cost:.4f}")
+    partial = directory.with_name(directory.name + ".partial")
+    shutil.rmtree(partial, ignore_errors=True)
+    partial.mkdir(parents=True)
+    Quantized.of(text_vectors).save(partial, TEXT)
+    Quantized.of(signature_vectors).save(partial, SIGNATURE)
+    connection = sqlite3.connect(partial / DATABASE)
+    with connection:
+        connection.executescript(SCHEMA)
+        connection.execute("insert into meta values ('id', ?)", (identity,))
+        connection.executemany(
+            f"insert into documents (row, {SELECTED})"
+            f" values (?, {', '.join('?' * len(RECORD_COLUMNS))})",
+            ((row, *_row(record)) for row, record in enumerate(records)),
+        )
+        connection.executemany(
+            "insert into postings values (?, ?, ?)",
+            (
+                (term, ids.tobytes(), weights.tobytes())
+                for term, (ids, weights) in postings(texts).items()
+            ),
+        )
+    connection.execute("vacuum")
+    connection.close()
+    shutil.rmtree(directory, ignore_errors=True)
+    partial.replace(directory)
 
 
-async def build(data: Path, budget: float) -> None:
-    entries = corpus.entries(corpus.select(mirror.load(data / "mirror.json")))
-    report = await enrich.enrich(entries, data / "index" / "enrichment.jsonl", budget)
-    print(
-        f"enrichment: {report.written} written, {report.failed_batches} failed batches,"
-        f" {report.skipped_batches} skipped batches, ${report.cost:.4f}"
-    )
-    texts = _texts(_documents(data))
-    async with openrouter.connect() as client:
-        for name, values in texts.items():
-            await _embed_missing(client, data / "index", name, values)
+class Index:
+    def __init__(self, directory: Path) -> None:
+        uri = f"{(directory / DATABASE).resolve().as_uri()}?immutable=1"
+        self.connection = sqlite3.connect(uri, uri=True, check_same_thread=False)
+        (self.id,) = self.connection.execute("select value from meta where name = 'id'").fetchone()
+        self.text = Quantized.load(directory, TEXT, mapped=False)
+        self.signature = Quantized.load(directory, SIGNATURE, mapped=True)
+        self.size = len(self.text.codes)
 
+    def semantic(self, vector: Vector) -> Scores:
+        return self.text.scores(vector)
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Enrich and embed the hottest packages.")
-    parser.add_argument("--data", type=Path, default=Path("data/hub"))
-    parser.add_argument("--budget", type=float, required=True, help="USD limit for enrichment")
-    args = parser.parse_args()
-    asyncio.run(build(args.data, args.budget))
+    def signature_scores(self, rows: Rows, vector: Vector) -> Scores:
+        return self.signature.row_scores(rows, vector)
 
+    def lexical(self, query: str) -> Scores:
+        scores = np.zeros(self.size, dtype=np.float32)
+        for term in sorted(set(tokens(query))):
+            found = self.connection.execute(
+                "select rows, weights from postings where term = ?", (term,)
+            ).fetchone()
+            if found is not None:
+                ids = np.frombuffer(found[0], dtype=np.int32)
+                np.add.at(scores, ids, np.frombuffer(found[1], dtype=np.float32))
+        return scores
 
-if __name__ == "__main__":
-    main()
+    def _select(self, columns: str, rows: Rows) -> list[tuple[Any, ...]]:
+        wanted: list[int] = rows.tolist()
+        found: dict[int, tuple[Any, ...]] = {
+            row[0]: row[1:]
+            for row in self.connection.execute(
+                f"select row, {columns} from documents"
+                " where row in (select value from json_each(?))",
+                (json.dumps(wanted),),
+            )
+        }
+        return [found[row] for row in wanted]
+
+    def names(self, rows: Rows) -> list[str]:
+        return [name for (name,) in self._select("name", rows)]
+
+    def keys(self, rows: Rows) -> list[str]:
+        return [key for (key,) in self._select("key", rows)]
+
+    def records(self, rows: Rows) -> list[Record]:
+        return [_record(row) for row in self._select(SELECTED, rows)]
+
+    def scan(self) -> Iterator[Record]:
+        for row in self.connection.execute(f"select {SELECTED} from documents order by row"):
+            yield _record(row)
+
+    def close(self) -> None:
+        self.connection.close()

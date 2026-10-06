@@ -18,7 +18,7 @@ enrichment; the model left out the other 20.
 
 ## Index time
 
-When a definition enters the index (`jend.index`):
+When a definition enters the index (`jend.build`):
 
 1. `deepseek/deepseek-v4-flash` writes an enrichment for the definition
    (`jend.enrich`). It sees the package and its description, the file, the
@@ -42,16 +42,31 @@ When a definition enters the index (`jend.index`):
 Cost of the full index, one time: enrichment $1.28, text vectors $0.07,
 signature vectors $0.03. A new definition costs approximately $0.000025.
 
-When the index loads, the server builds a BM25 keyword index of the full text,
-and one BM25 index for each field: name, doc comment, enrichment, signature
-and location (package, file and package description). Names are split into
-words.
+Then `jend.build` writes the search index (`jend.index`): a BM25 keyword index
+of the full text, the documents, and the two vectors as int8 with one scale for
+each dimension. Names are split into words.
+
+### Memory
+
+Each query compares its vector with all text vectors, so these stay in memory
+(55 MB as int8). Each query reads the other parts only for a few rows, so they
+stay on disk: the documents and the BM25 postings in SQLite, and the signature
+vectors in a memory-mapped file. The server process needs approximately 150 MB.
+The earlier design kept everything in memory as float32 and Python objects:
+approximately 680 MB.
+
+int8 against float32, on 164 queries (dev and benchmark): the top result is the
+same for every query, and the top 5 is the same set in 98% of the queries. The
+benchmark measures did not change (nDCG@10 0.747). float16 was equally exact at
+twice the size. Fewer dimensions cost accuracy: 512 dimensions, -0.017 nDCG@10
+on the dev set. The scan converts the int8 codes in blocks of 256 rows: the
+ranking takes approximately 35 ms for each query, against 10 ms with float32.
 
 ## Query time
 
 For each query (`jend.search`):
 
-1. The query vector comes from `embeddings.sqlite`, or from OpenRouter for a
+1. The query vector comes from `queries.sqlite`, or from OpenRouter for a
    new query.
 2. Vector search and BM25 each select their best 200 documents. The union is
    the candidate pool, approximately 320 documents. It holds 98% of the

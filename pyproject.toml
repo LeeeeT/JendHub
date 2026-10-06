@@ -20,7 +20,7 @@ dev = ["httpx>=0.28", "pyright", "pytest", "ruff"]
 
 [project.scripts]
 jend-mirror = "jend.mirror:main"
-jend-index = "jend.index:main"
+jend-build = "jend.build:main"
 jend-search = "jend.search:main"
 jend-evaluate = "jend.evaluate:main"
 jend-web = "jend.web:main"

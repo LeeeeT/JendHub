@@ -1,8 +1,11 @@
 from datetime import UTC, datetime
+from pathlib import Path
+
+import numpy as np
 
 from jend.corpus import Entry
-from jend.enrich import BATCH, batches
-from jend.index import Bm25, tokens
+from jend.enrich import BATCH, Role, batches
+from jend.index import Index, Quantized, Record, postings, tokens, write
 from jend.mirror import Package
 from jend.signatures import Definition, Kind
 
@@ -20,13 +23,68 @@ def test_tokens_split_identifiers_and_drop_stopwords() -> None:
     ]
 
 
-def test_bm25_ranks_the_rare_term_above_the_common_term() -> None:
-    index = Bm25(["parse json text", "parse toml text", "parse csv text"])
+def _record(row: int) -> Record:
+    return Record(
+        key=f"k{row}",
+        name=f"f{row}",
+        kind=Kind.DEF,
+        signature=f"def f{row}() -> U32",
+        line=row + 1,
+        path="a.bend",
+        package_hash="0xa",
+        package_name=None,
+        package_version=None,
+        package_rank=0,
+        is_base=False,
+        role=Role.API if row else None,
+        summary=f"summary {row}" if row else None,
+    )
 
-    scores = index.scores("parse json")
+
+def _index(directory: Path, texts: list[str]) -> Index:
+    records = [_record(row) for row in range(len(texts))]
+    vectors = np.eye(len(texts), 4, dtype=np.float32)
+    write(directory, records, texts, vectors, vectors, "test")
+    return Index(directory)
+
+
+def test_bm25_ranks_the_rare_term_above_the_common_term(tmp_path: Path) -> None:
+    index = _index(tmp_path / "index", ["parse json text", "parse toml text", "parse csv text"])
+
+    scores = index.lexical("parse json")
 
     assert scores.argmax() == 0
     assert scores[1] == scores[2] > 0
+    index.close()
+
+
+def test_postings_skip_terms_that_a_text_does_not_contain() -> None:
+    rows, _ = postings(["json", "toml json"])["toml"]
+
+    assert rows.tolist() == [1]
+
+
+def test_index_returns_records_in_the_order_of_the_rows(tmp_path: Path) -> None:
+    index = _index(tmp_path / "index", ["a", "b", "c"])
+
+    records = index.records(np.array([2, 0]))
+
+    assert records == [_record(2), _record(0)]
+    assert index.keys(np.array([1])) == ["k1"]
+    assert list(index.scan()) == [_record(0), _record(1), _record(2)]
+    index.close()
+
+
+def test_quantized_scores_stay_close_to_the_exact_scores() -> None:
+    generator = np.random.default_rng(0)
+    vectors = generator.normal(size=(1000, 64)).astype(np.float32)
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    query = vectors[7]
+
+    scores = Quantized.of(vectors).scores(query)
+
+    assert np.abs(scores - vectors @ query).max() < 0.02
+    assert scores.argmax() == 7
 
 
 def _entry(package: str, path: str, signature: str) -> Entry:

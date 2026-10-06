@@ -4,15 +4,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from jend import embed, openrouter
-from jend.index import Document, load
-from jend.score import Scorer, normalize, positions
+from jend.index import INDEX, Index, Record
+from jend.score import Scorer, normalize
 
 RESULTS = 50
 
 
 @dataclass(frozen=True)
 class Hit:
-    document: Document
+    record: Record
     score: float
 
 
@@ -30,27 +30,28 @@ class Engine:
     async def search(self, query: str) -> Result:
         vectors = await self.embedder.embed([normalize(query)])
         ranking = self.scorer.rank(query, vectors[0])
-        documents = self.scorer.index.documents
+        records = self.scorer.index.records(ranking.rows[:RESULTS])
         hits = tuple(
-            Hit(documents[row], float(score))
-            for row, score in zip(positions(ranking.rows[:RESULTS]), ranking.scores[:RESULTS])
+            Hit(record, float(score))
+            for record, score in zip(records, ranking.scores[:RESULTS], strict=True)
         )
         return Result(normalize(query), hits)
 
 
 async def _run(data: Path, query: str, top: int) -> None:
-    scorer = Scorer(load(data))
+    index = Index(data / INDEX)
     cache = embed.query_cache(data)
     async with openrouter.connect() as client:
-        result = await Engine(scorer, embed.QueryEmbedder(client, cache)).search(query)
+        result = await Engine(Scorer(index), embed.QueryEmbedder(client, cache)).search(query)
     cache.close()
+    index.close()
     print(f"results for {result.query!r}")
     for hit in result.ranking[:top]:
-        entry = hit.document.entry
-        print(f"{hit.score:5.2f}  {entry.package_label}/{entry.path}:{entry.definition.line}")
-        print(f"       {entry.definition.signature.splitlines()[0][:110]}")
-        if hit.document.enrichment is not None:
-            print(f"       {hit.document.enrichment.summary}")
+        record = hit.record
+        print(f"{hit.score:5.2f}  {record.package_label}/{record.path}:{record.line}")
+        print(f"       {record.signature.splitlines()[0][:110]}")
+        if record.summary is not None:
+            print(f"       {record.summary}")
 
 
 def main() -> None:
