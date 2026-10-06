@@ -5,11 +5,11 @@ from jend.search import RANKER_VERSION, ranking_sources, source_version
 
 def test_source_version_changes_when_a_ranking_source_changes(tmp_path: Path) -> None:
     first, second = tmp_path / "a.py", tmp_path / "b.py"
-    first.write_text("CANDIDATES = 50\n")
-    second.write_text("RRF_K = 60\n")
+    first.write_text("CANDIDATES = 50\n", encoding="utf-8")
+    second.write_text("RRF_K = 60\n", encoding="utf-8")
     before = source_version([first, second])
 
-    second.write_text("RRF_K = 30\n")
+    second.write_text("RRF_K = 30\n", encoding="utf-8")
 
     assert source_version([first, second]) != before
 

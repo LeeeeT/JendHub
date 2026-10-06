@@ -264,7 +264,7 @@ def main() -> None:
     stamp = run.created.strftime("%Y%m%d-%H%M%S")
     target = args.data / "runs" / f"{stamp}-{re.sub(r'[^A-Za-z0-9_.-]+', '-', run.label)}.json"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(run.model_dump_json())
+    target.write_text(run.model_dump_json(), encoding="utf-8")
     report(queries, run)
     print(f"\nsaved {target}")
     if args.against is not None:

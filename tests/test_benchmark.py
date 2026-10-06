@@ -72,7 +72,7 @@ def test_dump_writes_a_file_that_load_reads_back(tmp_path: Path) -> None:
     )
     path = tmp_path / "benchmark.json"
 
-    path.write_text(dump(queries))
+    path.write_text(dump(queries), encoding="utf-8")
 
     loaded = load(path)
     assert loaded[0].query == queries[0].query

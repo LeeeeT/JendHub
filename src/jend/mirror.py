@@ -56,7 +56,7 @@ def build(release: base.Release, listings: list[hub.Listing], cache: Path) -> Mi
 
 
 def _file(path: str, source: Path) -> File:
-    extraction = extract(source.read_text())
+    extraction = extract(source.read_text(encoding="utf-8"))
     return File(
         path=path,
         definitions=extraction.definitions,
@@ -90,7 +90,7 @@ async def sync(data: Path) -> Mirror:
     mirror = build(release, listings, data / "files")
     target = data / "mirror.json"
     partial = target.with_name(target.name + ".partial")
-    partial.write_text(mirror.model_dump_json())
+    partial.write_text(mirror.model_dump_json(), encoding="utf-8")
     partial.replace(target)
     return mirror
 

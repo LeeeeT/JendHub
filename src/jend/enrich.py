@@ -108,7 +108,10 @@ class Report:
 def load(path: Path) -> dict[str, Enrichment]:
     if not path.exists():
         return {}
-    records = (Enrichment.model_validate_json(line) for line in path.read_text().splitlines())
+    records = (
+        Enrichment.model_validate_json(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+    )
     return {record.key: record for record in records}
 
 
@@ -136,7 +139,7 @@ async def enrich(
     gate = asyncio.Semaphore(REQUESTS_IN_FLIGHT)
     store.parent.mkdir(parents=True, exist_ok=True)
     async with openrouter.connect() as client:
-        with store.open("a") as sink:
+        with store.open("a", encoding="utf-8") as sink:
 
             async def run(batch: list[Entry]) -> None:
                 async with gate:

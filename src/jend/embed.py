@@ -71,11 +71,11 @@ class Store:
     def load(self) -> tuple[list[str], Vectors]:
         if not self.keys_path.exists():
             return [], np.zeros((0, DIMENSIONS), dtype=np.float32)
-        keys: list[str] = json.loads(self.keys_path.read_text())
+        keys: list[str] = json.loads(self.keys_path.read_text(encoding="utf-8"))
         vectors: Vectors = np.load(self.vectors_path)
         return keys, vectors
 
     def save(self, keys: list[str], vectors: Vectors) -> None:
         self.keys_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(self.vectors_path, vectors)
-        self.keys_path.write_text(json.dumps(keys))
+        self.keys_path.write_text(json.dumps(keys), encoding="utf-8")
