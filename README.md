@@ -102,8 +102,8 @@ The server opens the index one time and serves four routes:
   line (`import Base` for Base), its declaration, the doc comment of its
   author, the summary, and the file URL with the line as `#L…`. The score is the value
   of the ranking formula: a higher score is a better match, but the scores of
-  two queries cannot be compared. When more results exist, the last line
-  gives the URL of the next results.
+  two queries cannot be compared. When more results exist, the last line is
+  `More results: ` and the URL of the next results.
 
   The first correct answer is in the best 10 for 94% of the dev queries and
   99% of the benchmark queries; ranks 11 to 20 add no query. A doc comment

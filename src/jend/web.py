@@ -89,7 +89,7 @@ def results_text(result: Result) -> str:
         return f"No results after {result.total}."
     end = result.start + len(shown)
     if end < result.total:
-        shown.append(f"/search.txt?{urlencode({'q': result.query, 'start': end})}")
+        shown.append(f"More results: /search.txt?{urlencode({'q': result.query, 'start': end})}")
     return "\n\n".join(shown)
 
 
@@ -192,8 +192,7 @@ The query tells what a definition does, or gives a name or a type, in at most
 the correct one is usually among them. Each result gives its rank, the name to
 use in code, its score (higher is better; the scores of two queries are not
 comparable), its import line, its declaration, the doc comment of its author, a
-summary and the source URL. When more results exist, the last line is the URL
-of the next results.
+summary and the source URL.
 
 To use a result, write its import line at the top of your Bend file and call
 it by its name. For example, after

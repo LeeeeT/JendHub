@@ -118,7 +118,7 @@ def test_text_results_give_each_result_its_import_line_in_rank_order() -> None:
         "   import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n"
         "   def f() -> U32\n"
         f"   source: {source_url(unzlib)}\n\n"
-        "/search.txt?q=gzip&start=3"
+        "More results: /search.txt?q=gzip&start=3"
     )
 
 
@@ -129,7 +129,7 @@ def test_text_results_stop_at_the_size_limit_and_link_to_the_rest() -> None:
     text = results_text(Result("q", 40, 10, hits))
 
     assert re.findall(r"^(\d+)\. ", text, re.MULTILINE) == ["11", "12"]
-    assert text.endswith("\n\n/search.txt?q=q&start=12")
+    assert text.endswith("\n\nMore results: /search.txt?q=q&start=12")
 
 
 def test_text_results_after_the_end_say_so() -> None:
@@ -186,7 +186,7 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
             for start in range(PAGE, size + PAGE, PAGE)
         ]
         answers = [client.get("/search.txt", params={"q": "sort a list"}).text]
-        while found := re.search(r"^(/search\.txt\S+)$", answers[-1], re.MULTILINE):
+        while found := re.search(r"^More results: (\S+)$", answers[-1], re.MULTILINE):
             answers.append(client.get(found[1]).text)
 
     shown = _signatures(first) + [signature for html in pages for signature in _signatures(html)]
