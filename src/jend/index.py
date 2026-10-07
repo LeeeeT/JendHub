@@ -1,7 +1,6 @@
 import json
 import math
 import re
-import shutil
 import sqlite3
 from collections import Counter, defaultdict
 from collections.abc import Iterator, Sequence
@@ -254,12 +253,10 @@ def write(
     signature_vectors: Vectors,
     identity: str,
 ) -> None:
-    partial = directory.with_name(directory.name + ".partial")
-    shutil.rmtree(partial, ignore_errors=True)
-    partial.mkdir(parents=True)
-    Quantized.of(text_vectors).save(partial, TEXT)
-    Quantized.of(signature_vectors).save(partial, SIGNATURE)
-    connection = sqlite3.connect(partial / DATABASE)
+    directory.mkdir(parents=True, exist_ok=True)
+    Quantized.of(text_vectors).save(directory, TEXT)
+    Quantized.of(signature_vectors).save(directory, SIGNATURE)
+    connection = sqlite3.connect(directory / DATABASE)
     with connection:
         connection.executescript(SCHEMA)
         connection.execute("insert into meta values ('id', ?)", (identity,))
@@ -277,8 +274,6 @@ def write(
         )
     connection.execute("vacuum")
     connection.close()
-    shutil.rmtree(directory, ignore_errors=True)
-    partial.replace(directory)
 
 
 class Index:

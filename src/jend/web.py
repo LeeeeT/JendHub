@@ -16,10 +16,11 @@ import uvicorn
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
-from jend import base, embed, openrouter
+from jend import embed, openrouter
 from jend.index import INDEX, Index, Record
 from jend.score import Scorer
 from jend.search import PAGE, Engine, Hit, Result
+from jend.sources import Sources
 
 MAX_QUERY_CHARS = 200
 TEXT_RESULTS = 10
@@ -28,7 +29,6 @@ ANSWER_CHARS = 16_000
 EMBEDDING_TIMEOUT = 15.0
 EXAMPLES = ("decompress gzip data", "String -> Bytes", "read a file", "parse JSON text")
 HUB = "https://hub.bend-lang.com"
-BASE_FILES = "https://raw.githubusercontent.com/bendlang/bend"
 
 
 class Refusal(Exception):
@@ -41,6 +41,7 @@ class Refusal(Exception):
 @dataclass(frozen=True)
 class Service:
     engine: Engine
+    sources: Sources
 
     async def search(self, query: str, start: int, count: int) -> Result:
         if len(query) > MAX_QUERY_CHARS:
@@ -70,18 +71,20 @@ def call_name(record: Record) -> str:
 
 
 def source_url(record: Record) -> str:
-    if record.is_base:
-        file = f"https://github.com/bendlang/bend/blob/{record.package_hash}/bend2/{base.PATH}"
-    else:
-        file = f"{HUB}/{record.package_hash}/{quote(record.path)}"
-    return f"{file}#L{record.line}"
+    path = quote(f"{record.package_label}/{record.path}", safe="/@")
+    return f"/src/{path}?{urlencode({'def': record.name})}"
 
 
-def plain_source_url(record: Record) -> str:
-    if record.is_base:
-        file = f"{BASE_FILES}/{record.package_hash}/bend2/{base.PATH}"
-        return f"{file}#L{record.line}"
-    return source_url(record)
+def source_text(sources: Sources, target: str, name: str | None) -> str | None:
+    package, _, path = target.partition("/")
+    if not package:
+        return "\n".join(f"{label}: {description}" for label, description in sources.packages())
+    if not path:
+        files = sources.files(package)
+        return None if files is None else "\n".join(files)
+    if name is None:
+        return sources.text(package, path)
+    return sources.definition(package, path, name)
 
 
 def results_text(result: Result) -> str:
@@ -121,7 +124,7 @@ def hit_text(rank: int, hit: Hit) -> str:
         lines.append(f"doc: {short_doc(record.doc)}")
     if record.summary is not None:
         lines.append(f"summary: {record.summary}")
-    lines.append(f"source: {plain_source_url(record)}")
+    lines.append(f"source: {source_url(record)}")
     return "\n   ".join(lines)
 
 
@@ -198,7 +201,11 @@ The query tells what a definition does, or gives a name or a type. The answer
 gives the best {TEXT_RESULTS} definitions, best first; the correct one is usually
 among them. Each result gives its rank, the name to use in code, its score
 (higher is better), its import line, its declaration, the doc comment of its
-author, a summary and the URL of its source file as plain text.
+author, a summary and the URL of its source.
+
+GET /src/ lists the packages, /src/<package>/ lists the files of a package,
+/src/<package>/<file> gives a file and /src/<package>/<file>?def=<name> gives
+one definition. The target of an import line is a path under /src/.
 
 Import a result only when it does exactly what you need: write its import line
 at the top of your Bend file and call it by its name. For example, after
@@ -297,11 +304,14 @@ def create_app(data: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
         index = Index(directory / INDEX)
+        sources = Sources(directory / INDEX)
         cache = embed.query_cache(directory)
         async with openrouter.connect(EMBEDDING_TIMEOUT) as client:
-            state["service"] = Service(Engine(Scorer(index), embed.QueryEmbedder(client, cache)))
+            engine = Engine(Scorer(index), embed.QueryEmbedder(client, cache))
+            state["service"] = Service(engine, sources)
             yield
         cache.close()
+        sources.close()
         index.close()
 
     app = FastAPI(title="JendHub", lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -341,6 +351,15 @@ def create_app(data: Path | None = None) -> FastAPI:
         except Refusal as refusal:
             return PlainTextResponse(refusal.message, status_code=refusal.status)
         return HTMLResponse(hits_html(result))
+
+    @app.get("/src/{target:path}", response_class=PlainTextResponse)
+    async def source(  # pyright: ignore[reportUnusedFunction]
+        target: str, name: Annotated[str | None, Query(alias="def")] = None
+    ) -> Response:
+        text = source_text(state["service"].sources, target, name)
+        if text is None:
+            return PlainTextResponse("Not found.", status_code=404)
+        return PlainTextResponse(text)
 
     @app.get("/llms.txt", response_class=PlainTextResponse)
     async def llms() -> str:  # pyright: ignore[reportUnusedFunction]

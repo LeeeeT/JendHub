@@ -8,6 +8,9 @@ from pydantic import BaseModel, ConfigDict
 from jend import base, hub
 from jend.signatures import Definition, extract
 
+MIRROR = "mirror.json"
+FILES = "files"
+
 
 class File(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -83,12 +86,12 @@ def load(path: Path) -> Mirror:
 
 
 async def sync(data: Path) -> Mirror:
-    release = await base.fetch(data / "files")
+    release = await base.fetch(data / FILES)
     async with hub.connect() as client:
         listings = await hub.fetch_listings(client)
-        await hub.download(client, listings, data / "files")
-    mirror = build(release, listings, data / "files")
-    target = data / "mirror.json"
+        await hub.download(client, listings, data / FILES)
+    mirror = build(release, listings, data / FILES)
+    target = data / MIRROR
     partial = target.with_name(target.name + ".partial")
     partial.write_text(mirror.model_dump_json(), encoding="utf-8")
     partial.replace(target)

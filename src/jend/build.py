@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import hashlib
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,10 +9,11 @@ from pathlib import Path
 import httpx2
 import numpy as np
 
-from jend import corpus, embed, enrich, index, mirror, openrouter
+from jend import corpus, embed, enrich, index, mirror, openrouter, sources
 from jend.corpus import Entry
 from jend.enrich import Enrichment
 from jend.index import Record, Vectors
+from jend.mirror import FILES, MIRROR
 
 SIGNATURE_TEXT_CHARS = 400
 CACHE = "cache"
@@ -70,7 +72,7 @@ class Document:
 
 
 def _entries(data: Path) -> list[Entry]:
-    return corpus.entries(corpus.select(mirror.load(data / "mirror.json")))
+    return corpus.entries(corpus.select(mirror.load(data / MIRROR)))
 
 
 def _documents(data: Path) -> list[Document]:
@@ -125,14 +127,21 @@ def compile_index(data: Path) -> None:
     texts = _texts(documents)
     keys = [embed.vector_key(text) for name in texts for text in texts[name]]
     identity = hashlib.sha256("\n".join([embed.MODEL, *keys]).encode()).hexdigest()[:16]
+    target = data / index.INDEX
+    partial = target.with_name(target.name + ".partial")
+    shutil.rmtree(partial, ignore_errors=True)
     index.write(
-        data / index.INDEX,
+        partial,
         [document.record() for document in documents],
         texts[index.TEXT],
         _vectors(data / CACHE, index.TEXT, texts[index.TEXT]),
         _vectors(data / CACHE, index.SIGNATURE, texts[index.SIGNATURE]),
         identity,
     )
+    snapshot = mirror.load(data / MIRROR)
+    sources.write(partial, snapshot, corpus.select(snapshot), data / FILES)
+    shutil.rmtree(target, ignore_errors=True)
+    partial.replace(target)
     print(f"index {identity}: {len(documents)} documents")
 
 

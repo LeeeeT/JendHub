@@ -1,4 +1,4 @@
-from jend.signatures import Definition, Kind, extract
+from jend.signatures import Definition, Kind, extract, spans
 
 SOURCE = """\
 import Base
@@ -72,3 +72,34 @@ def test_extract_reports_a_header_without_end() -> None:
 
     assert extraction.definitions == ()
     assert extraction.unparsed_lines == (1,)
+
+
+def test_spans_hold_the_doc_comment_and_the_body_but_not_the_next_comment() -> None:
+    source = """\
+import Base
+
+# Adds one.
+@unsafe
+def inc(x: U32) -> U32:
+  # Inside the body.
+  x + 1
+
+# Doubles.
+def double(x: U32) -> U32:
+  x * 2
+
+"""
+    lines = source.splitlines()
+
+    found = spans(source)
+
+    assert {name: lines[start:end] for name, (start, end) in found.items()} == {
+        "inc": [
+            "# Adds one.",
+            "@unsafe",
+            "def inc(x: U32) -> U32:",
+            "  # Inside the body.",
+            "  x + 1",
+        ],
+        "double": ["# Doubles.", "def double(x: U32) -> U32:", "  x * 2"],
+    }

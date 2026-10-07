@@ -63,6 +63,25 @@ def extract(source: str) -> Extraction:
     return Extraction(tuple(definitions), tuple(unparsed))
 
 
+def spans(source: str) -> dict[str, tuple[int, int]]:
+    lines = source.splitlines()
+    starts = [index for index, line in enumerate(lines) if _TOP_LEVEL.match(line)]
+    result: dict[str, tuple[int, int]] = {}
+    for position, start in enumerate(starts):
+        declaration = _DECLARATION.match(lines[start])
+        name = _NAME[Kind(declaration[1])].match(lines[start]) if declaration else None
+        if name is None:
+            continue
+        end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+        while end > start + 1 and (not lines[end - 1].strip() or lines[end - 1].startswith("#")):
+            end -= 1
+        first = start - 1 if start > 0 and lines[start - 1].strip() == "@unsafe" else start
+        while first > 0 and lines[first - 1].startswith("#"):
+            first -= 1
+        result.setdefault(name[1], (first, end))
+    return result
+
+
 def _block(block: list[str]) -> str:
     kept = list(block)
     while kept and (not kept[-1].strip() or kept[-1].startswith("#")):

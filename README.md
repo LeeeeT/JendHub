@@ -60,7 +60,7 @@ It sends only definitions that do not have a result yet, so a second run costs
 only the new work. A new definition costs approximately $0.000023 for the
 enrichment and $0.000002 for the two vectors.
 
-Then the command writes the search index to `data/hub/index/`. The search
+Then the command writes the search index to `data/hub/index/`. The server
 reads only this directory:
 
 - `index.sqlite`: the documents, one row for each document, and the BM25
@@ -68,6 +68,9 @@ reads only this directory:
 - `text.codes.npy`, `signature.codes.npy` and their `.scale.npy` files: the
   two vectors of each document as int8, with one scale for each dimension.
   int8 does not change the ranking measurably.
+- `sources.sqlite`: the text of every file of every package version in the
+  mirror, and the label (`name@version`, or the hash) of each package
+  version, approximately 70 MB.
 
 ## Search
 
@@ -88,7 +91,7 @@ gives it. Nothing is trained. The query vectors are in
 python -m jend.web --port 8000
 ```
 
-The server opens the index one time and serves four routes:
+The server opens the index one time and serves these routes:
 
 - `GET /?q=…`: an HTML page with the best 20 results. When the reader scrolls
   near the end of the list, a small script loads the next 20, until the end
@@ -100,8 +103,8 @@ The server opens the index one time and serves four routes:
   plain text for LLMs, best first. Each result gives its rank, the name to use
   in code (`Alias.name`, or the plain name for Base), its score, its import
   line (`import Base` for Base), its declaration, the doc comment of its
-  author, the summary, and the file URL with the line as `#L…`. The score is the value
-  of the ranking formula: a higher score is a better match, but the scores of
+  author, the summary, and the URL of its source under `/src/`. The score is
+  the value of the ranking formula: a higher score is a better match, but the scores of
   two queries cannot be compared. When more results exist, the last line is
   `More results: ` and the URL of the next results.
 
@@ -111,8 +114,17 @@ The server opens the index one time and serves four routes:
   before 16,000 characters of results, and its last line then links to the
   rest. On the dev and benchmark queries, the median answer has 3,800
   characters and the largest has 5,900.
-- `GET /llms.txt`: tells LLMs how to use `/search.txt`, and how to import and
-  call a result in Bend.
+- `GET /src/`: the packages of the search (Base and the 100 hottest), one
+  `label: description` line each, hottest first.
+- `GET /src/<package>/`: the files of a package version. `<package>` is the
+  label or the hash, so the target of any import line is a path under `/src/`.
+  All package versions of the mirror are available, also the ones that the
+  search does not cover, because files import exact versions.
+- `GET /src/<package>/<file>`: the file as plain text. With `?def=<name>`, only
+  that definition: its doc comment, its declaration and its body, up to the
+  next top-level item. The search results and the HTML page link to this form.
+- `GET /llms.txt`: tells LLMs how to use `/search.txt` and `/src/`, when to
+  import a result, and when to copy and change its code.
 
 A new query costs one query embedding, approximately $0.0000003, so the server
 has no rate limit and no budget. A query longer than 200 characters gets HTTP
@@ -122,9 +134,10 @@ results do not need a new ranking.
 
 Every response has a strict Content-Security-Policy (only the style and the
 script of the page, identified by their hashes), `X-Content-Type-Options`,
-`Referrer-Policy` and `Strict-Transport-Security`. `/robots.txt` keeps crawlers away from the HTML
-result pages. It allows `/search.txt` and `/llms.txt`, because some LLM tools
-do not fetch a URL that `robots.txt` disallows.
+`Referrer-Policy` and `Strict-Transport-Security`. `/robots.txt` keeps
+crawlers away from the HTML result pages. It allows `/search.txt`, `/src/`
+and `/llms.txt`, because some LLM tools do not fetch a URL that `robots.txt`
+disallows.
 
 ## Docker
 

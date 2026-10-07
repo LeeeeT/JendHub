@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import re
+from datetime import UTC, datetime
 from html import unescape
 from pathlib import Path
 from urllib.robotparser import RobotFileParser
@@ -9,8 +10,9 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from jend import embed
+from jend import embed, sources
 from jend.index import INDEX, Record, write
+from jend.mirror import File, Mirror, Package
 from jend.openrouter import KEY_VARIABLE
 from jend.search import PAGE, Hit, Result
 from jend.signatures import Kind
@@ -25,7 +27,6 @@ from jend.web import (
     hit_html,
     import_line,
     page,
-    plain_source_url,
     results_text,
     short_doc,
     source_url,
@@ -110,15 +111,15 @@ def test_text_results_give_each_result_its_import_line_in_rank_order() -> None:
         "   def gunzip(s: String)\n"
         "     -> String\n"
         "   doc: One member.\n"
-        f"   source: {plain_source_url(zlib)}\n\n"
+        f"   source: {source_url(zlib)}\n\n"
         "2. String.eq (score 4.00)\n"
         "   import Base\n"
         "   def String.eq() -> Bool\n"
-        f"   source: {plain_source_url(base)}\n\n"
+        f"   source: {source_url(base)}\n\n"
         "3. Zlib.unzlib (score 3.50)\n"
         "   import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n"
         "   def f() -> U32\n"
-        f"   source: {plain_source_url(unzlib)}\n\n"
+        f"   source: {source_url(unzlib)}\n\n"
         "More results: /search.txt?q=gzip&start=3"
     )
 
@@ -150,16 +151,11 @@ def test_short_doc_cuts_a_long_comment_at_a_sentence_end() -> None:
     assert short_doc("x" * 600) == "x" * DOC_CHARS + " …"
 
 
-def test_base_links_to_the_line_on_github() -> None:
-    assert source_url(_entry("Base", "base.bend", is_base=True)).endswith("/bend2/base.bend#L7")
-
-
-def test_plain_source_of_base_is_the_raw_file_and_of_a_package_is_the_hub_file() -> None:
-    base = _entry("Base", "base.bend", is_base=True)
-    package = _entry("p", "src/p.bend")
-    assert plain_source_url(base).startswith("https://raw.githubusercontent.com/bendlang/bend/")
-    assert plain_source_url(base).endswith("/bend2/base.bend#L7")
-    assert plain_source_url(package) == source_url(package)
+def test_source_links_to_the_definition_on_jendhub() -> None:
+    assert source_url(_entry("bend-kit-zlib", "src/zlib.bend", definition="inflate.words")) == (
+        "/src/bend-kit-zlib@1.2.0.0/src/zlib.bend?def=inflate.words"
+    )
+    assert source_url(_entry(None, "a b.bend")) == f"/src/0x{'a' * 32}/a%20b.bend?def=f"
 
 
 def test_html_escapes_signatures_and_queries() -> None:
@@ -180,9 +176,15 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     size = 2 * PAGE + 5
-    records = [_entry("p", f"f{row}.bend", signature=f"def f{row}() -> U32") for row in range(size)]
+    records = [
+        _entry("p", f"f{row}.bend", f"def f{row}() -> U32", definition=f"f{row}")
+        for row in range(size)
+    ]
     vectors = np.random.default_rng(0).standard_normal((size, 8)).astype(np.float32)
     write(tmp_path / INDEX, records, [r.signature for r in records], vectors, vectors, "test")
+    _write_sources(
+        tmp_path, {f"f{row}.bend": f"def f{row}() -> U32:\n  {row}\n" for row in range(size)}
+    )
     cache = embed.query_cache(tmp_path)
     cache.put([embed.query_text("sort a list")], [vectors[0]])
     cache.close()
@@ -197,6 +199,9 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
         answers = [client.get("/search.txt", params={"q": "sort a list"}).text]
         while found := re.search(r"^More results: (\S+)$", answers[-1], re.MULTILINE):
             answers.append(client.get(found[1]).text)
+        link = re.search(r"^   source: (\S+)$", answers[0], re.MULTILINE)
+        assert link is not None
+        definition = client.get(link[1]).text
 
     shown = _signatures(first) + [signature for html in pages for signature in _signatures(html)]
     assert f'data-query="sort a list" data-total="{size}"' in first
@@ -206,6 +211,34 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
     assert [re.findall(r"^   (def .*)$", text, re.MULTILINE) for text in answers] == [
         shown[start : start + TEXT_RESULTS] for start in range(0, size, TEXT_RESULTS)
     ]
+    assert definition.splitlines()[0] == shown[0] + ":"
+
+
+def _write_sources(data: Path, files: dict[str, str]) -> None:
+    published = datetime(2026, 1, 1, tzinfo=UTC)
+    base = Package(
+        hash="b" * 40,
+        name="Base",
+        version="b" * 12,
+        description="Base.",
+        published=published,
+        hot=None,
+        files=(),
+    )
+    package = Package(
+        hash="0x" + "a" * 32,
+        name="p",
+        version="1.2.0.0",
+        description="P.",
+        published=published,
+        hot=1.0,
+        files=tuple(File(path=path, definitions=(), unparsed_lines=()) for path in files),
+    )
+    for path, text in files.items():
+        file = data / "files" / package.hash / path
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(text, encoding="utf-8")
+    sources.write(data / INDEX, Mirror(base=base, packages=(package,)), [package], data / "files")
 
 
 def test_robots_allow_the_llm_routes_and_keep_crawlers_off_the_html_results() -> None:
@@ -213,5 +246,6 @@ def test_robots_allow_the_llm_routes_and_keep_crawlers_off_the_html_results() ->
     robots.parse(ROBOTS.splitlines())
     assert robots.can_fetch("*", "/search.txt?q=gzip")
     assert robots.can_fetch("*", "/llms.txt")
+    assert robots.can_fetch("*", "/src/p@1.0.0.0/p.bend?def=f")
     assert not robots.can_fetch("*", "/?q=gzip")
     assert not robots.can_fetch("*", "/more?q=gzip&start=20")
