@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from html import unescape
 from pathlib import Path
@@ -138,6 +139,11 @@ def test_text_results_after_the_end_say_so() -> None:
     assert results_text(Result("q", 40, 40, ())) == "No results after 40."
 
 
+def test_a_summary_that_repeats_the_doc_comment_is_left_out() -> None:
+    entry = replace(_entry("p", "p.bend", doc="Adds one."), summary="adds  one.")
+    assert "summary:" not in results_text(Result("q", 1, 0, (Hit(entry, 1.0),)))
+
+
 def test_short_doc_cuts_a_long_comment_at_a_sentence_end() -> None:
     sentence = "Word " * 20 + "end. "
     doc = sentence * 10
@@ -202,6 +208,7 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
         link = re.search(r"^   source: (\S+)$", answers[0], re.MULTILINE)
         assert link is not None
         definition = client.get(link[1]).text
+        refused = client.get("/search.txt", params={"q": "x", "start": -1})
 
     shown = _signatures(first) + [signature for html in pages for signature in _signatures(html)]
     assert f'data-query="sort a list" data-total="{size}"' in first
@@ -212,6 +219,10 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
         shown[start : start + TEXT_RESULTS] for start in range(0, size, TEXT_RESULTS)
     ]
     assert definition.splitlines()[0] == shown[0] + ":"
+    assert (refused.status_code, refused.text) == (
+        400,
+        "Invalid parameter start: Input should be greater than or equal to 0.",
+    )
 
 
 def _write_sources(data: Path, files: dict[str, str]) -> None:
@@ -238,7 +249,7 @@ def _write_sources(data: Path, files: dict[str, str]) -> None:
         file = data / "files" / package.hash / path
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(text, encoding="utf-8")
-    sources.write(data / INDEX, Mirror(base=base, packages=(package,)), [package], data / "files")
+    sources.write(data / INDEX, Mirror(base=base, packages=(package,)), data / "files")
 
 
 def test_robots_allow_the_llm_routes_and_keep_crawlers_off_the_html_results() -> None:

@@ -14,6 +14,7 @@ from urllib.parse import quote, urlencode
 import httpx2
 import uvicorn
 from fastapi import FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 from jend import embed, openrouter
@@ -77,8 +78,6 @@ def source_url(record: Record) -> str:
 
 def source_text(sources: Sources, target: str, name: str | None) -> str | None:
     package, _, path = target.partition("/")
-    if not package:
-        return "\n".join(f"{label}: {description}" for label, description in sources.packages())
     if not path:
         files = sources.files(package)
         return None if files is None else "\n".join(files)
@@ -122,10 +121,14 @@ def hit_text(rank: int, hit: Hit) -> str:
     ]
     if record.doc is not None:
         lines.append(f"doc: {short_doc(record.doc)}")
-    if record.summary is not None:
+    if record.summary is not None and not same_text(record.summary, record.doc):
         lines.append(f"summary: {record.summary}")
     lines.append(f"source: {source_url(record)}")
     return "\n   ".join(lines)
+
+
+def same_text(text: str, other: str | None) -> bool:
+    return other is not None and text.lower().split() == other.lower().split()
 
 
 STYLE = """
@@ -203,9 +206,9 @@ among them. Each result gives its rank, the name to use in code, its score
 (higher is better), its import line, its declaration, the doc comment of its
 author, a summary and the URL of its source.
 
-GET /src/ lists the packages, /src/<package>/ lists the files of a package,
-/src/<package>/<file> gives a file and /src/<package>/<file>?def=<name> gives
-one definition. The target of an import line is a path under /src/.
+GET /src/<package>/ lists the files of a package, /src/<package>/<file> gives a
+file and /src/<package>/<file>?def=<name> gives one definition. The target of an
+import line is a path under /src/.
 
 Import a result only when it does exactly what you need: write its import line
 at the top of your Bend file and call it by its name. For example, after
@@ -315,6 +318,13 @@ def create_app(data: Path | None = None) -> FastAPI:
         index.close()
 
     app = FastAPI(title="JendHub", lifespan=lifespan, docs_url=None, redoc_url=None)
+
+    @app.exception_handler(RequestValidationError)
+    async def refuse_parameters(  # pyright: ignore[reportUnusedFunction]
+        _: Request, error: RequestValidationError
+    ) -> Response:
+        problems = [f"{problem['loc'][-1]}: {problem['msg']}" for problem in error.errors()]
+        return PlainTextResponse(f"Invalid parameter {'; '.join(problems)}.", status_code=400)
 
     @app.middleware("http")
     async def add_security_headers(  # pyright: ignore[reportUnusedFunction]

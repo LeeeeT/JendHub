@@ -139,7 +139,7 @@ def compile_index(data: Path) -> None:
         identity,
     )
     snapshot = mirror.load(data / MIRROR)
-    sources.write(partial, snapshot, corpus.select(snapshot), data / FILES)
+    sources.write(partial, snapshot, data / FILES)
     shutil.rmtree(target, ignore_errors=True)
     partial.replace(target)
     print(f"index {identity}: {len(documents)} documents")

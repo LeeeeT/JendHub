@@ -70,7 +70,9 @@ reads only this directory:
   int8 does not change the ranking measurably.
 - `sources.sqlite`: the text of every file of every package version in the
   mirror, and the label (`name@version`, or the hash) of each package
-  version, approximately 70 MB.
+  version, approximately 70 MB. A relative import (`import ./x.bend as X`)
+  becomes an import of the package path (`import name@version/dir/x.bend as
+  X`), so copied code imports correctly from any project.
 
 ## Search
 
@@ -114,21 +116,22 @@ The server opens the index one time and serves these routes:
   before 16,000 characters of results, and its last line then links to the
   rest. On the dev and benchmark queries, the median answer has 3,800
   characters and the largest has 5,900.
-- `GET /src/`: the packages of the search (Base and the 100 hottest), one
-  `label: description` line each, hottest first.
 - `GET /src/<package>/`: the files of a package version. `<package>` is the
-  label or the hash, so the target of any import line is a path under `/src/`.
+  label or the hash, so the target of any import line in a result or a file
+  is a path under `/src/`.
   All package versions of the mirror are available, also the ones that the
   search does not cover, because files import exact versions.
 - `GET /src/<package>/<file>`: the file as plain text. With `?def=<name>`, only
-  that definition: its doc comment, its declaration and its body, up to the
-  next top-level item. The search results and the HTML page link to this form.
+  that definition: the import lines that its body uses (not Base), its doc
+  comment, its declaration and its body, up to the next top-level item. The
+  search results and the HTML page link to this form.
 - `GET /llms.txt`: tells LLMs how to use `/search.txt` and `/src/`, when to
   import a result, and when to copy and change its code.
 
 A new query costs one query embedding, approximately $0.0000003, so the server
 has no rate limit and no budget. A query longer than 200 characters gets HTTP
-400. When OpenRouter does not answer, the server returns HTTP 502. The server
+400. An invalid parameter also gets HTTP 400, with a short plain-text message.
+When OpenRouter does not answer, the server returns HTTP 502. The server
 keeps the rankings of the 256 most recent queries in memory, so the next 20
 results do not need a new ranking.
 
