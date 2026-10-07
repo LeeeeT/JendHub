@@ -11,6 +11,8 @@ services:
     image: jendhub:latest
     restart: unless-stopped
     env_file: app.env
+    environment:
+      JEND_ORIGIN: https://jend.leeeet.dev
     volumes:
       - ./data:/data
     mem_limit: 512m

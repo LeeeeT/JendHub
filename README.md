@@ -93,6 +93,11 @@ gives it. Nothing is trained. The query vectors are in
 python -m jend.web --port 8000
 ```
 
+The text answers for LLMs give full URLs, because some fetch tools accept no
+path without the host. `JEND_ORIGIN` sets the public origin of these URLs
+(`deploy/compose.yaml` sets `https://jend.leeeet.dev`). Without it, the server
+uses `http://<host>:<port>` from its arguments.
+
 The server opens the index one time and serves these routes:
 
 - `GET /?q=…`: an HTML page with the best 20 results. When the reader scrolls

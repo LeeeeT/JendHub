@@ -86,11 +86,11 @@ def source_text(sources: Sources, target: str, name: str | None) -> str | None:
     return sources.definition(package, path, name)
 
 
-def results_text(result: Result) -> str:
+def results_text(result: Result, origin: str) -> str:
     shown: list[str] = []
     size = 0
     for rank, hit in enumerate(result.hits, result.start + 1):
-        text = hit_text(rank, hit)
+        text = hit_text(rank, hit, origin)
         size += len(text)
         if shown and size > ANSWER_CHARS:
             break
@@ -99,7 +99,8 @@ def results_text(result: Result) -> str:
         return f"No results after {result.total}."
     end = result.start + len(shown)
     if end < result.total:
-        shown.append(f"More results: /search.txt?{urlencode({'q': result.query, 'start': end})}")
+        next_results = urlencode({"q": result.query, "start": end})
+        shown.append(f"More results: {origin}/search.txt?{next_results}")
     return "\n\n".join(shown)
 
 
@@ -112,7 +113,7 @@ def short_doc(doc: str) -> str:
     return f"{head[: end if end > 0 else DOC_CHARS].rstrip()} …"
 
 
-def hit_text(rank: int, hit: Hit) -> str:
+def hit_text(rank: int, hit: Hit, origin: str) -> str:
     record = hit.record
     lines = [
         f"{rank}. {call_name(record)} (score {hit.score:.2f})",
@@ -123,7 +124,7 @@ def hit_text(rank: int, hit: Hit) -> str:
         lines.append(f"doc: {short_doc(record.doc)}")
     if record.summary is not None and not same_text(record.summary, record.doc):
         lines.append(f"summary: {record.summary}")
-    lines.append(f"source: {source_url(record)}")
+    lines.append(f"source: {origin}{source_url(record)}")
     return "\n   ".join(lines)
 
 
@@ -194,11 +195,14 @@ SECURITY_HEADERS = {
     "Strict-Transport-Security": "max-age=31536000",
 }
 ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /more\n"
-LLMS = f"""# JendHub
+
+
+def llms_text(origin: str) -> str:
+    return f"""# JendHub
 
 > Search engine for the definitions of Base and of the BendHub packages ({HUB}).
 
-GET /search.txt?q=<query>
+GET {origin}/search.txt?q=<query>
 
 The query tells what a definition does, or gives a name or a type. The answer
 gives the best {TEXT_RESULTS} definitions, best first; the correct one is usually
@@ -206,9 +210,9 @@ among them. Each result gives its rank, the name to use in code, its score
 (higher is better), its import line, its declaration, the doc comment of its
 author, a summary and the URL of its source.
 
-GET /src/<package>/ lists the files of a package, /src/<package>/<file> gives a
-file and /src/<package>/<file>?def=<name> gives one definition. The target of an
-import line is a path under /src/.
+GET {origin}/src/<package>/ lists the files of a package, /src/<package>/<file>
+gives a file and /src/<package>/<file>?def=<name> gives one definition. The
+target of an import line is a path under /src/.
 
 Import a result only when it does exactly what you need: write its import line
 at the top of your Bend file and call it by its name. For example, after
@@ -300,7 +304,7 @@ def refusal_html(refusal: Refusal) -> str:
     return f'<p class="note"><strong>{escape(refusal.message)}</strong></p>'
 
 
-def create_app(data: Path | None = None) -> FastAPI:
+def create_app(origin: str, data: Path | None = None) -> FastAPI:
     directory = data or Path(os.environ.get("JEND_DATA", "data/hub"))
     state: dict[str, Service] = {}
 
@@ -373,7 +377,7 @@ def create_app(data: Path | None = None) -> FastAPI:
 
     @app.get("/llms.txt", response_class=PlainTextResponse)
     async def llms() -> str:  # pyright: ignore[reportUnusedFunction]
-        return LLMS
+        return llms_text(origin)
 
     @app.get("/search.txt", response_class=PlainTextResponse)
     async def search_text(  # pyright: ignore[reportUnusedFunction]
@@ -386,7 +390,7 @@ def create_app(data: Path | None = None) -> FastAPI:
             result = await state["service"].search(query, start, TEXT_RESULTS)
         except Refusal as refusal:
             return PlainTextResponse(refusal.message, status_code=refusal.status)
-        return PlainTextResponse(results_text(result))
+        return PlainTextResponse(results_text(result, origin))
 
     return app
 
@@ -398,8 +402,9 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
+    origin = os.environ.get("JEND_ORIGIN", f"http://{args.host}:{args.port}")
     uvicorn.run(
-        create_app(), host=args.host, port=args.port, proxy_headers=False, server_header=False
+        create_app(origin), host=args.host, port=args.port, proxy_headers=False, server_header=False
     )
 
 

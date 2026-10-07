@@ -33,6 +33,8 @@ from jend.web import (
     source_url,
 )
 
+ORIGIN = "https://jend.test"
+
 
 @pytest.mark.parametrize(("tag", "directive"), [("style", "style-src"), ("script", "script-src")])
 def test_content_security_policy_allows_the_page_style_and_script(tag: str, directive: str) -> None:
@@ -104,7 +106,7 @@ def test_text_results_give_each_result_its_import_line_in_rank_order() -> None:
     unzlib = _entry("bend-kit-zlib", "zlib.bend", definition="unzlib")
     hits = (Hit(zlib, 5.861), Hit(base, 4.0), Hit(unzlib, 3.5))
 
-    text = results_text(Result("gzip", 238, 0, hits))
+    text = results_text(Result("gzip", 238, 0, hits), ORIGIN)
 
     assert text == (
         "1. Zlib.gunzip (score 5.86)\n"
@@ -112,16 +114,16 @@ def test_text_results_give_each_result_its_import_line_in_rank_order() -> None:
         "   def gunzip(s: String)\n"
         "     -> String\n"
         "   doc: One member.\n"
-        f"   source: {source_url(zlib)}\n\n"
+        f"   source: {ORIGIN}{source_url(zlib)}\n\n"
         "2. String.eq (score 4.00)\n"
         "   import Base\n"
         "   def String.eq() -> Bool\n"
-        f"   source: {source_url(base)}\n\n"
+        f"   source: {ORIGIN}{source_url(base)}\n\n"
         "3. Zlib.unzlib (score 3.50)\n"
         "   import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n"
         "   def f() -> U32\n"
-        f"   source: {source_url(unzlib)}\n\n"
-        "More results: /search.txt?q=gzip&start=3"
+        f"   source: {ORIGIN}{source_url(unzlib)}\n\n"
+        f"More results: {ORIGIN}/search.txt?q=gzip&start=3"
     )
 
 
@@ -129,19 +131,19 @@ def test_text_results_stop_at_the_size_limit_and_link_to_the_rest() -> None:
     long = _entry("p", "p.bend", "def f() -> U32\n" + "x" * (ANSWER_CHARS // 3))
     hits = tuple(Hit(long, 1.0) for _ in range(5))
 
-    text = results_text(Result("q", 40, 10, hits))
+    text = results_text(Result("q", 40, 10, hits), ORIGIN)
 
     assert re.findall(r"^(\d+)\. ", text, re.MULTILINE) == ["11", "12"]
-    assert text.endswith("\n\nMore results: /search.txt?q=q&start=12")
+    assert text.endswith(f"\n\nMore results: {ORIGIN}/search.txt?q=q&start=12")
 
 
 def test_text_results_after_the_end_say_so() -> None:
-    assert results_text(Result("q", 40, 40, ())) == "No results after 40."
+    assert results_text(Result("q", 40, 40, ()), ORIGIN) == "No results after 40."
 
 
 def test_a_summary_that_repeats_the_doc_comment_is_left_out() -> None:
     entry = replace(_entry("p", "p.bend", doc="Adds one."), summary="adds  one.")
-    assert "summary:" not in results_text(Result("q", 1, 0, (Hit(entry, 1.0),)))
+    assert "summary:" not in results_text(Result("q", 1, 0, (Hit(entry, 1.0),)), ORIGIN)
 
 
 def test_short_doc_cuts_a_long_comment_at_a_sentence_end() -> None:
@@ -196,7 +198,7 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
     cache.close()
     monkeypatch.setenv(KEY_VARIABLE, "test")
 
-    with TestClient(create_app(tmp_path)) as client:
+    with TestClient(create_app("http://testserver", tmp_path)) as client:
         first = client.get("/", params={"q": "Sort  a list"}).text
         pages = [
             client.get("/more", params={"q": "sort a list", "start": start}).text
