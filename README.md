@@ -97,11 +97,10 @@ The server opens the index one time and serves four routes:
 - `GET /more?q=…&start=N`: the HTML list items of the results from position
   `N`, 20 at a time. The script of the page uses this route.
 - `GET /search.txt?q=…&start=N`: 10 results from position `N` (default 0) as
-  plain text for LLMs. The results are under their import line
-  (`import Base` for Base), in groups in the order of their best result. Each
-  result gives its rank, the name to use in code (`Alias.name`, or the plain
-  name for Base), its score, its declaration, the doc comment of its author,
-  the summary, and the file URL with the line as `#L…`. The score is the value
+  plain text for LLMs, best first. Each result gives its rank, the name to use
+  in code (`Alias.name`, or the plain name for Base), its score, its import
+  line (`import Base` for Base), its declaration, the doc comment of its
+  author, the summary, and the file URL with the line as `#L…`. The score is the value
   of the ranking formula: a higher score is a better match, but the scores of
   two queries cannot be compared. When more results exist, the last line
   gives the URL of the next results.
@@ -110,8 +109,8 @@ The server opens the index one time and serves four routes:
   99% of the benchmark queries; ranks 11 to 20 add no query. A doc comment
   longer than 500 characters ends at a sentence with "…". An answer stops
   before 16,000 characters of results, and its last line then links to the
-  rest. On the dev and benchmark queries, the median answer has 3,700
-  characters and the largest has 5,600.
+  rest. On the dev and benchmark queries, the median answer has 3,900
+  characters and the largest has 6,000.
 - `GET /llms.txt`: tells LLMs how to use `/search.txt`, and how to import and
   call a result in Bend.
 

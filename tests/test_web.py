@@ -94,7 +94,7 @@ def test_call_name_puts_the_import_alias_before_the_definition_name() -> None:
     )
 
 
-def test_text_results_group_by_import_line_and_keep_the_rank() -> None:
+def test_text_results_give_each_result_its_import_line_in_rank_order() -> None:
     signature = "def gunzip(s: String)\n  -> String"
     zlib = _entry("bend-kit-zlib", "zlib.bend", signature, definition="gunzip", doc="One member.")
     base = _entry("Base", "base.bend", "def String.eq() -> Bool", True, "String.eq")
@@ -106,19 +106,20 @@ def test_text_results_group_by_import_line_and_keep_the_rank() -> None:
     assert text == (
         "Bend definitions for “gzip”: results 1 to 3 of 238, best first."
         " A higher score is a better match.\n\n"
-        "import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n\n"
         "1. Zlib.gunzip (score 5.86)\n"
+        "   import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n"
         "   def gunzip(s: String)\n"
         "     -> String\n"
         "   doc: One member.\n"
         f"   source: {source_url(zlib)}\n\n"
-        "3. Zlib.unzlib (score 3.50)\n"
-        "   def f() -> U32\n"
-        f"   source: {source_url(unzlib)}\n\n"
-        "import Base\n\n"
         "2. String.eq (score 4.00)\n"
+        "   import Base\n"
         "   def String.eq() -> Bool\n"
         f"   source: {source_url(base)}\n\n"
+        "3. Zlib.unzlib (score 3.50)\n"
+        "   import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n"
+        "   def f() -> U32\n"
+        f"   source: {source_url(unzlib)}\n\n"
         "More results: /search.txt?q=gzip&start=3"
     )
 

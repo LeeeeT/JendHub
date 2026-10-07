@@ -77,23 +77,22 @@ def source_url(record: Record) -> str:
 
 
 def results_text(result: Result) -> str:
-    groups: dict[str, list[str]] = {}
+    shown: list[str] = []
     size = 0
     for rank, hit in enumerate(result.hits, result.start + 1):
-        line = import_line(hit.record)
         text = hit_text(rank, hit)
-        size += len(text) + (0 if line in groups else len(line))
-        if groups and size > ANSWER_CHARS:
+        size += len(text)
+        if shown and size > ANSWER_CHARS:
             break
-        groups.setdefault(line, []).append(text)
-    end = result.start + sum(len(hits) for hits in groups.values())
-    if end == result.start:
+        shown.append(text)
+    end = result.start + len(shown)
+    if not shown:
         return f"Bend definitions for “{result.query}”: {result.total} results, none after {end}."
     heading = (
         f"Bend definitions for “{result.query}”: results {result.start + 1} to {end}"
         f" of {result.total}, best first. A higher score is a better match."
     )
-    parts = [heading, *("\n\n".join([line, *hits]) for line, hits in groups.items())]
+    parts = [heading, *shown]
     if end < result.total:
         parts.append(f"More results: /search.txt?{urlencode({'q': result.query, 'start': end})}")
     return "\n\n".join(parts)
@@ -110,7 +109,11 @@ def short_doc(doc: str) -> str:
 
 def hit_text(rank: int, hit: Hit) -> str:
     record = hit.record
-    lines = [f"{rank}. {call_name(record)} (score {hit.score:.2f})", *record.signature.splitlines()]
+    lines = [
+        f"{rank}. {call_name(record)} (score {hit.score:.2f})",
+        import_line(record),
+        *record.signature.splitlines(),
+    ]
     if record.doc is not None:
         lines.append(f"doc: {short_doc(record.doc)}")
     if record.summary is not None:
@@ -192,10 +195,10 @@ LLMS = f"""# JendHub
 
 GET /search.txt?q=<query>
 
-The answer is plain text with the best {TEXT_RESULTS} definitions. Results that need the
-same import line are under that line. Each result gives its rank, the name to
-use in your code, its score, its declaration, the doc comment of its author when
-it has one, a summary, and the URL of its source. A higher score is a better
+The answer is plain text with the best {TEXT_RESULTS} definitions, best first. Each
+result gives its rank, the name to use in your code, its score, its import
+line, its declaration, the doc comment of its author when it has one, a
+summary, and the URL of its source. A higher score is a better
 match. You cannot compare the scores of two queries. A query has at most
 {MAX_QUERY_CHARS} characters.
 
