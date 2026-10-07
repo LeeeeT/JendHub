@@ -196,7 +196,8 @@ summary and the source URL. When more results exist, the last line is the URL
 of the next results.
 
 To use a result, write its import line at the top of your Bend file and call
-it by its name, for example `Zlib.gunzip(data)`.
+it by its name. For example, after
+`import package@0.1.0.0/module.bend as Module`, call `Module.function(x)`.
 """
 
 
