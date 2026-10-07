@@ -85,17 +85,12 @@ def results_text(result: Result) -> str:
         if shown and size > ANSWER_CHARS:
             break
         shown.append(text)
-    end = result.start + len(shown)
     if not shown:
-        return f"Bend definitions for “{result.query}”: {result.total} results, none after {end}."
-    heading = (
-        f"Bend definitions for “{result.query}”: results {result.start + 1} to {end}"
-        f" of {result.total}, best first. A higher score is a better match."
-    )
-    parts = [heading, *shown]
+        return f"No results after {result.total}."
+    end = result.start + len(shown)
     if end < result.total:
-        parts.append(f"More results: /search.txt?{urlencode({'q': result.query, 'start': end})}")
-    return "\n\n".join(parts)
+        shown.append(f"/search.txt?{urlencode({'q': result.query, 'start': end})}")
+    return "\n\n".join(shown)
 
 
 def short_doc(doc: str) -> str:
@@ -187,33 +182,21 @@ SECURITY_HEADERS = {
 ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /more\n"
 LLMS = f"""# JendHub
 
-> A search engine for Bend definitions. It searches Base and the latest
-> versions of the 100 hottest BendHub packages ({HUB}).
-> A query can tell what the definition does, give a name, or give a type.
-
-## Search
+> Search engine for the definitions of Base and of the latest versions of the
+> 100 hottest BendHub packages ({HUB}).
 
 GET /search.txt?q=<query>
 
-The answer is plain text with the best {TEXT_RESULTS} definitions, best first. Each
-result gives its rank, the name to use in your code, its score, its import
-line, its declaration, the doc comment of its author when it has one, a
-summary, and the URL of its source. A higher score is a better
-match. You cannot compare the scores of two queries. A query has at most
-{MAX_QUERY_CHARS} characters.
+The query tells what a definition does, or gives a name or a type, in at most
+{MAX_QUERY_CHARS} characters. The answer gives the best {TEXT_RESULTS} definitions, best first;
+the correct one is usually among them. Each result gives its rank, the name to
+use in code, its score (higher is better; the scores of two queries are not
+comparable), its import line, its declaration, the doc comment of its author, a
+summary and the source URL. When more results exist, the last line is the URL
+of the next results.
 
-The best answer is usually in the first {TEXT_RESULTS} results. When more results
-exist, the last line of the answer gives the URL of the next results. A doc
-comment longer than {DOC_CHARS} characters ends with "…"; the source has the full
-text.
-
-## Use a result in Bend
-
-Write the import line at the top of your file. Then use the name of the result:
-the alias of the import, a dot, and the name of the definition. For example,
-after `import bend-kit-zlib@0.2.0.0/zlib.bend as Zlib`, call `Zlib.gunzip(data)`.
-Definitions of Base need `import Base`, and you use their names without an
-alias, for example `String.eq(a, b)`.
+To use a result, write its import line at the top of your Bend file and call
+it by its name, for example `Zlib.gunzip(data)`.
 """
 
 

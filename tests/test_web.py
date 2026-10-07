@@ -104,8 +104,6 @@ def test_text_results_give_each_result_its_import_line_in_rank_order() -> None:
     text = results_text(Result("gzip", 238, 0, hits))
 
     assert text == (
-        "Bend definitions for “gzip”: results 1 to 3 of 238, best first."
-        " A higher score is a better match.\n\n"
         "1. Zlib.gunzip (score 5.86)\n"
         "   import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n"
         "   def gunzip(s: String)\n"
@@ -120,7 +118,7 @@ def test_text_results_give_each_result_its_import_line_in_rank_order() -> None:
         "   import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n"
         "   def f() -> U32\n"
         f"   source: {source_url(unzlib)}\n\n"
-        "More results: /search.txt?q=gzip&start=3"
+        "/search.txt?q=gzip&start=3"
     )
 
 
@@ -130,15 +128,12 @@ def test_text_results_stop_at_the_size_limit_and_link_to_the_rest() -> None:
 
     text = results_text(Result("q", 40, 10, hits))
 
-    assert len(re.findall(r"^\d+\. ", text, re.MULTILINE)) == 2
-    assert "results 11 to 12 of 40" in text
-    assert text.endswith("More results: /search.txt?q=q&start=12")
+    assert re.findall(r"^(\d+)\. ", text, re.MULTILINE) == ["11", "12"]
+    assert text.endswith("\n\n/search.txt?q=q&start=12")
 
 
 def test_text_results_after_the_end_say_so() -> None:
-    assert results_text(Result("q", 40, 40, ())) == (
-        "Bend definitions for “q”: 40 results, none after 40."
-    )
+    assert results_text(Result("q", 40, 40, ())) == "No results after 40."
 
 
 def test_short_doc_cuts_a_long_comment_at_a_sentence_end() -> None:
@@ -191,7 +186,7 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
             for start in range(PAGE, size + PAGE, PAGE)
         ]
         answers = [client.get("/search.txt", params={"q": "sort a list"}).text]
-        while found := re.search(r"^More results: (\S+)$", answers[-1], re.MULTILINE):
+        while found := re.search(r"^(/search\.txt\S+)$", answers[-1], re.MULTILINE):
             answers.append(client.get(found[1]).text)
 
     shown = _signatures(first) + [signature for html in pages for signature in _signatures(html)]

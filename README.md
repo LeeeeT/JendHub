@@ -109,8 +109,8 @@ The server opens the index one time and serves four routes:
   99% of the benchmark queries; ranks 11 to 20 add no query. A doc comment
   longer than 500 characters ends at a sentence with "…". An answer stops
   before 16,000 characters of results, and its last line then links to the
-  rest. On the dev and benchmark queries, the median answer has 3,900
-  characters and the largest has 6,000.
+  rest. On the dev and benchmark queries, the median answer has 3,800
+  characters and the largest has 5,900.
 - `GET /llms.txt`: tells LLMs how to use `/search.txt`, and how to import and
   call a result in Bend.
 
