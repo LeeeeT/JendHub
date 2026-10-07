@@ -182,8 +182,7 @@ SECURITY_HEADERS = {
 ROBOTS = "User-agent: *\nDisallow: /?\nDisallow: /more\n"
 LLMS = f"""# JendHub
 
-> Search engine for the definitions of Base and of the latest versions of the
-> 100 hottest BendHub packages ({HUB}).
+> Search engine for the definitions of Base and of the BendHub packages ({HUB}).
 
 GET /search.txt?q=<query>
 
