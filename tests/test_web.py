@@ -25,6 +25,7 @@ from jend.web import (
     hit_html,
     import_line,
     page,
+    plain_source_url,
     results_text,
     short_doc,
     source_url,
@@ -109,15 +110,15 @@ def test_text_results_give_each_result_its_import_line_in_rank_order() -> None:
         "   def gunzip(s: String)\n"
         "     -> String\n"
         "   doc: One member.\n"
-        f"   source: {source_url(zlib)}\n\n"
+        f"   source: {plain_source_url(zlib)}\n\n"
         "2. String.eq (score 4.00)\n"
         "   import Base\n"
         "   def String.eq() -> Bool\n"
-        f"   source: {source_url(base)}\n\n"
+        f"   source: {plain_source_url(base)}\n\n"
         "3. Zlib.unzlib (score 3.50)\n"
         "   import bend-kit-zlib@1.2.0.0/zlib.bend as Zlib\n"
         "   def f() -> U32\n"
-        f"   source: {source_url(unzlib)}\n\n"
+        f"   source: {plain_source_url(unzlib)}\n\n"
         "More results: /search.txt?q=gzip&start=3"
     )
 
@@ -151,6 +152,14 @@ def test_short_doc_cuts_a_long_comment_at_a_sentence_end() -> None:
 
 def test_base_links_to_the_line_on_github() -> None:
     assert source_url(_entry("Base", "base.bend", is_base=True)).endswith("/bend2/base.bend#L7")
+
+
+def test_plain_source_of_base_is_the_raw_file_and_of_a_package_is_the_hub_file() -> None:
+    base = _entry("Base", "base.bend", is_base=True)
+    package = _entry("p", "src/p.bend")
+    assert plain_source_url(base).startswith("https://raw.githubusercontent.com/bendlang/bend/")
+    assert plain_source_url(base).endswith("/bend2/base.bend#L7")
+    assert plain_source_url(package) == source_url(package)
 
 
 def test_html_escapes_signatures_and_queries() -> None:

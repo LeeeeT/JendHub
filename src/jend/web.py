@@ -28,6 +28,7 @@ ANSWER_CHARS = 16_000
 EMBEDDING_TIMEOUT = 15.0
 EXAMPLES = ("decompress gzip data", "String -> Bytes", "read a file", "parse JSON text")
 HUB = "https://hub.bend-lang.com"
+BASE_FILES = "https://raw.githubusercontent.com/bendlang/bend"
 
 
 class Refusal(Exception):
@@ -76,6 +77,13 @@ def source_url(record: Record) -> str:
     return f"{file}#L{record.line}"
 
 
+def plain_source_url(record: Record) -> str:
+    if record.is_base:
+        file = f"{BASE_FILES}/{record.package_hash}/bend2/{base.PATH}"
+        return f"{file}#L{record.line}"
+    return source_url(record)
+
+
 def results_text(result: Result) -> str:
     shown: list[str] = []
     size = 0
@@ -113,7 +121,7 @@ def hit_text(rank: int, hit: Hit) -> str:
         lines.append(f"doc: {short_doc(record.doc)}")
     if record.summary is not None:
         lines.append(f"summary: {record.summary}")
-    lines.append(f"source: {source_url(record)}")
+    lines.append(f"source: {plain_source_url(record)}")
     return "\n   ".join(lines)
 
 
@@ -190,11 +198,15 @@ The query tells what a definition does, or gives a name or a type. The answer
 gives the best {TEXT_RESULTS} definitions, best first; the correct one is usually
 among them. Each result gives its rank, the name to use in code, its score
 (higher is better), its import line, its declaration, the doc comment of its
-author, a summary and the source URL.
+author, a summary and the URL of its source file as plain text.
 
-To use a result, write its import line at the top of your Bend file and call
-it by its name. For example, after
+Import a result only when it does exactly what you need: write its import line
+at the top of your Bend file and call it by its name. For example, after
 `import package@0.1.0.0/module.bend as Module`, call `Module.function(x)`.
+
+When you are not sure that a result fits, read its source. When a result is
+close to what you need, copy its code into your project and change it. You can
+read and copy any code on BendHub.
 """
 
 
