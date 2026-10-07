@@ -187,12 +187,11 @@ LLMS = f"""# JendHub
 
 GET /search.txt?q=<query>
 
-The query tells what a definition does, or gives a name or a type, in at most
-{MAX_QUERY_CHARS} characters. The answer gives the best {TEXT_RESULTS} definitions, best first;
-the correct one is usually among them. Each result gives its rank, the name to
-use in code, its score (higher is better; the scores of two queries are not
-comparable), its import line, its declaration, the doc comment of its author, a
-summary and the source URL.
+The query tells what a definition does, or gives a name or a type. The answer
+gives the best {TEXT_RESULTS} definitions, best first; the correct one is usually
+among them. Each result gives its rank, the name to use in code, its score
+(higher is better), its import line, its declaration, the doc comment of its
+author, a summary and the source URL.
 
 To use a result, write its import line at the top of your Bend file and call
 it by its name. For example, after
