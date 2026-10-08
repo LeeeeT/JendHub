@@ -4,8 +4,8 @@ import numpy as np
 
 from jend.enrich import Role
 from jend.index import Index, Record, write
+from jend.parser import Kind
 from jend.score import Scorer, is_helper, is_outside_api, names_match
-from jend.signatures import Kind
 
 
 def test_helper_names_follow_the_usual_conventions() -> None:

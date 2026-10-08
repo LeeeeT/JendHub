@@ -6,7 +6,7 @@ import numpy.typing as npt
 
 from jend.enrich import Role
 from jend.index import Index, Record, Rows, Scores, Vector, tokens
-from jend.signatures import Kind
+from jend.parser import Kind
 
 POOL_DEPTH = 200
 STAGE_DEPTH = 100

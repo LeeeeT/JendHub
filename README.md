@@ -16,7 +16,7 @@ nix develop
 
 ## Mirror
 
-Mirror BendHub and extract the definition signatures:
+Mirror BendHub and read its definitions:
 
 ```sh
 python -m jend.mirror
@@ -26,15 +26,48 @@ The command downloads the `.bend` files of all packages to `data/hub/files/`.
 A package hash identifies its content, so the command downloads only files
 that are not in that directory. It also downloads Base (`bend2/base.bend`) from
 the latest commit on the `main` branch of `bendlang/bend`. It writes the
-signatures to `data/hub/mirror.json`.
+definitions to `data/hub/mirror.json`.
+
+The command reads each file with `jend.parser` and `jend.loader`, a Python
+port of the parser of Bend 2 (`bend2/bend.ts`, commit `d5fe656`). The port
+keeps Bend's grammar, desugaring, match flattening, import loading and name
+resolution, but it does not check types. A file sees its own names, the names
+of the files that it imports, and the names of Base only through
+`import Base`, as `bend check` of that file does. Bend rejects some files (346
+of 4331 on 2026-10-08, mostly old package versions): such a file keeps its
+reason in `error` and has no definitions, so the index leaves it out.
 
 For each declaration, the mirror keeps:
 
 - `def`: the header up to the `:` that starts the body. A `def` without a
-  return type fills a law with a proof, so the mirror skips it.
+  return type fills a law with a proof, so it is not a declaration.
 - `type`: the header and the constructors.
 - `law`: the full statement.
 - The `#` comment lines immediately above the declaration, as `doc`.
+- `key`: the name that Bend resolves, `0x<hash>/<path>:<name>`, or the bare
+  name for Base.
+- `refs`: the keys of the declarations that its own code uses (its signature
+  and body, the constructors of a type, or the statement of a law),
+  including the names that the parser adds, such as `U32.add` for
+  `(a + b : U32)`. A constructor counts as its type.
+- `proof_refs`: for a law, the keys that its proofs use.
+
+Bend has no mutual recursion of functions, so `refs` makes a graph without
+cycles, except where a type and a type-level function use each other (2 cases
+in the corpus, such as `Word.Con` and `Word`).
+
+`tools/conformance/check.py` compares the port with Bend's own parser, which
+runs in a Node container from a checkout of `bendlang/bend`, with a large
+stack. On all 4330 package files of the mirror, it finds no difference in the
+accepted files, the declarations or the `refs`. A law can also get `refs`
+from a proof in another file, which a check of the law's file alone does not
+load; the comparison allows those only in `proof_refs`. Run it again after an
+update of the port (`--all` checks every package version, not only the
+corpus):
+
+```sh
+python tools/conformance/check.py --bend ../bend
+```
 
 ## Index
 
@@ -75,9 +108,11 @@ reads only this directory:
   int8 does not change the ranking measurably.
 - `sources.sqlite`: the text of every file of every package version in the
   mirror, and the label (`name@version`, or the hash) of each package
-  version, approximately 70 MB. A relative import (`import ./x.bend as X`)
-  becomes an import of the package path (`import name@version/dir/x.bend as
-  X`), so copied code imports correctly from any project.
+  version, approximately 70 MB. Each import line names the file that Bend
+  resolves, as a package path (`import name@version/dir/x.bend as X`), so
+  copied code imports correctly from any project. For each definition, it
+  also keeps its lines and the import lines of the files that the definition
+  uses.
 
 ## Search
 
@@ -132,9 +167,9 @@ The server opens the index one time and serves these routes:
   All package versions of the mirror are available, also the ones that the
   search does not cover, because files import exact versions.
 - `GET /src/<package>/<file>`: the file as plain text. With `?def=<name>`, only
-  that definition: the import lines that its body uses (not Base), its doc
-  comment, its declaration and its body, up to the next top-level item. The
-  search results and the HTML page link to this form.
+  that definition: the import lines of the files that it uses (not Base), its
+  doc comment, its declaration and its body, up to its last token. The search
+  results and the HTML page link to this form.
 - `GET /llms.txt`: tells LLMs how to use `/search.txt` and `/src/`, when to
   import a result, and when to copy and change its code.
 

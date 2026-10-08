@@ -1,14 +1,13 @@
-import posixpath
-import re
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 from jend import hub
-from jend.mirror import Mirror, Package
-from jend.signatures import spans
+from jend.loader import Import, import_lines
+from jend.mirror import File, Mirror, Package
+from jend.parser import module_of
 
 DATABASE = "sources.sqlite"
-IMPORT = re.compile(r"^import (\S+) as (\w+)[ \t]*$", re.MULTILINE)
 
 SCHEMA = """
 create table packages (
@@ -21,6 +20,15 @@ create table files (
     text text not null,
     primary key (hash, path)
 ) without rowid;
+create table definitions (
+    hash text not null,
+    path text not null,
+    name text not null,
+    first_line integer not null,
+    last_line integer not null,
+    imports text not null,
+    primary key (hash, path, name)
+) without rowid;
 """
 
 
@@ -28,30 +36,39 @@ def label(package: Package) -> str:
     return package.hash if package.name is None else f"{package.name}@{package.version}"
 
 
-def absolute_imports(package: str, path: str, text: str) -> str:
-    folder = posixpath.dirname(path)
+def absolute_target(module: str, labels: dict[str, str]) -> str:
+    package, _, path = module.partition("/")
+    return f"{labels[package]}/{path}.bend"
 
-    def absolute(match: re.Match[str]) -> str:
-        target, alias = match[1], match[2]
-        if not target.startswith(("./", "../")):
-            return match[0]
-        resolved = posixpath.normpath(posixpath.join(folder, target))
-        if resolved.startswith("../"):
-            return match[0]
-        return f"import {package}/{resolved} as {alias}"
 
-    return IMPORT.sub(absolute, text)
+def absolute_imports(text: str, imports: tuple[Import, ...], labels: dict[str, str]) -> str:
+    if not imports:
+        return text
+    lines = text.split("\n")
+    aliased = [line for line in import_lines(text) if line.alias is not None]
+    for line, imported in zip(aliased, imports, strict=True):
+        ending = "\r" if lines[line.index].endswith("\r") else ""
+        target = absolute_target(imported.module, labels)
+        lines[line.index] = f"import {target} as {imported.alias}{ending}"
+    return "\n".join(lines)
+
+
+def used_imports(file: File, module: str, refs: tuple[str, ...], labels: dict[str, str]) -> str:
+    used = {module_of(ref) for ref in refs} - {"", module}
+    return "\n".join(
+        f"import {absolute_target(imported.module, labels)} as {imported.alias}"
+        for imported in file.imports
+        if imported.module in used
+    )
 
 
 def write(directory: Path, mirror: Mirror, files: Path) -> None:
     packages = [mirror.base, *mirror.packages]
+    labels = {package.hash: label(package) for package in packages}
     connection = sqlite3.connect(directory / DATABASE)
     with connection:
         connection.executescript(SCHEMA)
-        connection.executemany(
-            "insert into packages values (?, ?)",
-            ((package.hash, label(package)) for package in packages),
-        )
+        connection.executemany("insert into packages values (?, ?)", labels.items())
         connection.executemany(
             "insert into files values (?, ?, ?)",
             (
@@ -59,17 +76,36 @@ def write(directory: Path, mirror: Mirror, files: Path) -> None:
                     package.hash,
                     file.path,
                     absolute_imports(
-                        label(package),
-                        file.path,
                         hub.cached_path(files, package.hash, file.path).read_text(encoding="utf-8"),
+                        file.imports,
+                        labels,
                     ),
                 )
                 for package in packages
                 for file in package.files
             ),
         )
+        connection.executemany(
+            "insert into definitions values (?, ?, ?, ?, ?, ?)", _definitions(packages, labels)
+        )
     connection.execute("vacuum")
     connection.close()
+
+
+def _definitions(
+    packages: list[Package], labels: dict[str, str]
+) -> Iterator[tuple[str, str, str, int, int, str]]:
+    for package in packages:
+        for file in package.files:
+            for definition in file.definitions:
+                yield (
+                    package.hash,
+                    file.path,
+                    definition.name,
+                    definition.first_line,
+                    definition.last_line,
+                    used_imports(file, module_of(definition.key), definition.refs, labels),
+                )
 
 
 class Sources:
@@ -101,20 +137,20 @@ class Sources:
         return None if found is None else found[0]
 
     def definition(self, package: str, path: str, name: str) -> str | None:
-        text = self.text(package, path)
-        if text is None:
+        package_hash = self._hash(package)
+        if package_hash is None:
             return None
-        span = spans(text).get(name)
-        if span is None:
+        found = self.connection.execute(
+            "select first_line, last_line, imports, text from definitions join files"
+            " using (hash, path) where hash = ? and path = ? and name = ?",
+            (package_hash, path, name),
+        ).fetchone()
+        if found is None:
             return None
-        start, end = span
-        code = "\n".join(text.splitlines()[start:end])
-        used = [
-            f"import {target} as {alias}"
-            for target, alias in IMPORT.findall(text)
-            if re.search(rf"\b{re.escape(alias)}\.", code)
-        ]
-        return "\n".join([*used, "", code]) if used else code
+        first, last, imports, text = found
+        lines = text.split("\n")[first : last + 1]
+        code = "\n".join(line.removesuffix("\r") for line in lines)
+        return f"{imports}\n\n{code}" if imports else code
 
     def close(self) -> None:
         self.connection.close()

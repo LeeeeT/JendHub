@@ -12,7 +12,7 @@ import numpy as np
 import numpy.typing as npt
 
 from jend.enrich import Role
-from jend.signatures import Kind
+from jend.parser import Kind
 
 STOPWORDS = frozenset(
     [

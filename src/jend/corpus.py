@@ -1,8 +1,8 @@
 import hashlib
 from dataclasses import dataclass
 
+from jend.loader import Definition
 from jend.mirror import Mirror, Package
-from jend.signatures import Definition
 
 HOTTEST_PACKAGES = 100
 

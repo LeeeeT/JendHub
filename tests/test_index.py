@@ -6,8 +6,9 @@ import numpy as np
 from jend.corpus import Entry
 from jend.enrich import BATCH, MODEL, PROVIDER, Role, batches, request
 from jend.index import Index, Quantized, Record, postings, tokens, write
+from jend.loader import Definition
 from jend.mirror import Package
-from jend.signatures import Definition, Kind
+from jend.parser import Kind
 
 
 def test_tokens_split_identifiers_and_drop_stopwords() -> None:
@@ -98,7 +99,19 @@ def _entry(package: str, path: str, signature: str) -> Entry:
         hot=0.0,
         files=(),
     )
-    return Entry(owner, 0, path, Definition(Kind.DEF, "f", signature, "", 1))
+    definition = Definition(
+        kind=Kind.DEF,
+        name="f",
+        key=f"{package}/{path}:f",
+        signature=signature,
+        doc="",
+        line=1,
+        first_line=0,
+        last_line=0,
+        refs=(),
+        proof_refs=(),
+    )
+    return Entry(owner, 0, path, definition)
 
 
 def test_batches_send_each_content_once_grouped_by_file() -> None:

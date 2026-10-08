@@ -13,10 +13,11 @@ from fastapi.testclient import TestClient
 
 from jend import embed, sources
 from jend.index import INDEX, Record, write
-from jend.mirror import File, Mirror, Package
+from jend.loader import Library
+from jend.mirror import Mirror, Package, extract
 from jend.openrouter import KEY_VARIABLE
+from jend.parser import Kind
 from jend.search import PAGE, Hit, Result
-from jend.signatures import Kind
 from jend.web import (
     ANSWER_CHARS,
     DOC_CHARS,
@@ -229,14 +230,18 @@ def test_pages_continue_the_ranking_to_its_end_without_repeats(
 
 def _write_sources(data: Path, files: dict[str, str]) -> None:
     published = datetime(2026, 1, 1, tzinfo=UTC)
+    base_key = ("b" * 40, "base.bend")
+    texts = {base_key: "type U32 is Data:\n  U32{}\n"}
+    texts.update({("0x" + "a" * 32, path): text for path, text in files.items()})
+    extracted = extract(Library(texts, {}, base_key), list(texts))
     base = Package(
-        hash="b" * 40,
+        hash=base_key[0],
         name="Base",
         version="b" * 12,
         description="Base.",
         published=published,
         hot=None,
-        files=(),
+        files=(extracted[base_key],),
     )
     package = Package(
         hash="0x" + "a" * 32,
@@ -245,10 +250,10 @@ def _write_sources(data: Path, files: dict[str, str]) -> None:
         description="P.",
         published=published,
         hot=1.0,
-        files=tuple(File(path=path, definitions=(), unparsed_lines=()) for path in files),
+        files=tuple(file for key, file in extracted.items() if key != base_key),
     )
-    for path, text in files.items():
-        file = data / "files" / package.hash / path
+    for (owner, path), text in texts.items():
+        file = data / "files" / owner / path
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(text, encoding="utf-8")
     sources.write(data / INDEX, Mirror(base=base, packages=(package,)), data / "files")
