@@ -81,6 +81,15 @@ def import_lines(text: str) -> list[ImportLine]:
 
 
 @dataclass(frozen=True)
+class Place:
+    module: str
+    line: int
+    first_line: int
+    last_line: int
+    doc: str
+
+
+@dataclass(frozen=True)
 class Definition:
     kind: Kind
     name: str
@@ -91,6 +100,11 @@ class Definition:
     first_line: int
     last_line: int
     refs: tuple[str, ...]
+    fills: tuple[Place, ...]
+
+    @property
+    def full_doc(self) -> str:
+        return " ".join(doc for doc in (self.doc, *(fill.doc for fill in self.fills)) if doc)
 
 
 @dataclass(frozen=True)
@@ -214,43 +228,68 @@ class Loader:
                 refs.setdefault(declaration.key, set()).update(self.uses(declaration))
         return refs
 
-    def definitions(self, key: FileKey, refs: dict[str, set[str]]) -> tuple[Definition, ...]:
+    def fills(self) -> dict[str, list[Place]]:
+        found: dict[str, list[Place]] = {}
+        for module in self.modules.values():
+            for declaration in module.declarations:
+                if declaration.fills:
+                    found.setdefault(declaration.key, []).append(_place(module, declaration))
+        return found
+
+    def definitions(
+        self, key: FileKey, refs: dict[str, set[str]], fills: dict[str, list[Place]]
+    ) -> tuple[Definition, ...]:
         module = self.modules[key]
-        lines = module.text.split("\n")
         return tuple(
-            self._definition(module, lines, declaration, refs)
+            _definition(module, declaration, refs, fills)
             for declaration in module.declarations
             if not declaration.fills
         )
 
-    def _definition(
-        self, module: Module, lines: list[str], declaration: Declaration, refs: dict[str, set[str]]
-    ) -> Definition:
-        text = module.text
-        start_line = text.count("\n", 0, declaration.start)
-        keyword_line = text.count("\n", 0, declaration.keyword)
-        end_line = text.count("\n", 0, declaration.end)
-        doc_lines: list[str] = []
-        index = start_line - 1
-        while index >= 0 and lines[index].startswith("#"):
-            doc_lines.append(lines[index].lstrip("#").strip())
-            index -= 1
-        if declaration.kind is Kind.DEF:
-            signature = _collapse(_strip_comments(text[declaration.start : declaration.header_end]))
-        else:
-            block = text[declaration.start : declaration.end].split("\n")
-            signature = "\n".join(line.rstrip() for line in block if line.strip())
-        return Definition(
-            kind=declaration.kind,
-            name=declaration.name,
-            key=declaration.key,
-            signature=signature,
-            doc=" ".join(reversed(doc_lines)),
-            line=keyword_line + 1,
-            first_line=start_line - len(doc_lines),
-            last_line=end_line,
-            refs=tuple(sorted(refs.get(declaration.key, ()))),
-        )
+
+def _place(module: Module, declaration: Declaration) -> Place:
+    text = module.text
+    lines = text.split("\n")
+    start_line = text.count("\n", 0, declaration.start)
+    doc_lines: list[str] = []
+    index = start_line - 1
+    while index >= 0 and lines[index].startswith("#"):
+        doc_lines.append(lines[index].lstrip("#").strip())
+        index -= 1
+    return Place(
+        module=module.ns,
+        line=text.count("\n", 0, declaration.keyword) + 1,
+        first_line=start_line - len(doc_lines) + 1,
+        last_line=text.count("\n", 0, declaration.end) + 1,
+        doc=" ".join(reversed(doc_lines)),
+    )
+
+
+def _definition(
+    module: Module,
+    declaration: Declaration,
+    refs: dict[str, set[str]],
+    fills: dict[str, list[Place]],
+) -> Definition:
+    text = module.text
+    if declaration.kind is Kind.DEF:
+        signature = _collapse(_strip_comments(text[declaration.start : declaration.header_end]))
+    else:
+        block = text[declaration.start : declaration.end].split("\n")
+        signature = "\n".join(line.rstrip() for line in block if line.strip())
+    place = _place(module, declaration)
+    return Definition(
+        kind=declaration.kind,
+        name=declaration.name,
+        key=declaration.key,
+        signature=signature,
+        doc=place.doc,
+        line=place.line,
+        first_line=place.first_line,
+        last_line=place.last_line,
+        refs=tuple(sorted(refs.get(declaration.key, ()))),
+        fills=tuple(fills.get(declaration.key, ())),
+    )
 
 
 def load_all(library: Library, keys: list[FileKey]) -> Loader:

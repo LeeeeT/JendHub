@@ -45,6 +45,12 @@ For each declaration, the mirror keeps:
 - `type`: the header and the constructors.
 - `law`: the full statement.
 - The `#` comment lines immediately above the declaration, as `doc`.
+- `line` (the line of the keyword), `first_line` (the first line, with the
+  doc) and `last_line` (the line of the last token). Lines count from 1.
+- `fills`: for a law, the defs that fill it. Each gives its module, `line`,
+  `first_line`, `last_line` and `doc`. A fill can be in another file that
+  imports the law (1554 of 9097 fills on 2026-10-08). The search uses the doc
+  of a law followed by the docs of its fills.
 - `key`: the name that Bend resolves, `0x<hash>/<path>:<name>`, or the bare
   name for Base.
 - `refs`: the keys of the declarations that its code uses: the signature and
@@ -112,11 +118,12 @@ reads only this directory:
   int8 does not change the ranking measurably.
 - `sources.sqlite`: the text of every file of every package version in the
   mirror, and the label (`name@version`, or the hash) of each package
-  version, approximately 70 MB. Each import line names the file that Bend
+  version, approximately 100 MB. Each import line names the file that Bend
   resolves, as a package path (`import name@version/dir/x.bend as X`), so
   copied code imports correctly from any project. For each definition, it
-  also keeps its lines and the import lines of the files that the definition
-  uses.
+  also keeps one block for each file that holds its code: the lines of the
+  definition and of its fills in that file, and the import lines of that
+  file that the definition uses.
 
 ## Search
 
@@ -172,8 +179,10 @@ The server opens the index one time and serves these routes:
   search does not cover, because files import exact versions.
 - `GET /src/<package>/<file>`: the file as plain text. With `?def=<name>`, only
   that definition: the import lines of the files that it uses (not Base), its
-  doc comment, its declaration and its body, up to its last token. The search
-  results and the HTML page link to this form.
+  doc comment, its declaration and its body, up to its last token. A law
+  comes with the defs that fill it. A fill in another file follows as a second
+  block: a `# <URL of that file>` line, the import lines of that file that it
+  uses, and the fill. The search results and the HTML page link to this form.
 - `GET /llms.txt`: tells LLMs how to use `/search.txt` and `/src/`, when to
   import a result, and when to copy and change its code.
 

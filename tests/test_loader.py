@@ -1,6 +1,6 @@
 import pytest
 
-from jend.loader import Definition, Import, Library, import_lines
+from jend.loader import Definition, Import, Library, Place, import_lines
 from jend.mirror import File, extract
 from jend.parser import Kind
 
@@ -154,6 +154,35 @@ def test_a_law_references_what_its_statement_and_its_filling_def_use() -> None:
     assert list(found) == ["id", "helper", "id_same"]
 
 
+def test_a_law_keeps_the_place_and_the_doc_of_its_filling_def() -> None:
+    law = _one(
+        "import Base\n\n"
+        "# States it.\n"
+        "law same:\n  for x: U32\n  {x == x : U32}\n\n"
+        "# Proves it.\n"
+        "def same(x):\n  {==}\n"
+    )["same"]
+
+    assert (law.line, law.first_line, law.last_line, law.doc) == (4, 3, 6, "States it.")
+    assert law.fills == (Place(f"{PACKAGE}/a", 9, 8, 10, "Proves it."),)
+    assert law.full_doc == "States it. Proves it."
+
+
+def test_a_law_keeps_a_filling_def_from_another_file() -> None:
+    files = _files(
+        {
+            (PACKAGE, "a.bend"): "import Base\n\nlaw same:\n  for x: U32\n  {x == x : U32}\n",
+            (PACKAGE, "proof.bend"): (
+                "import Base\nimport ./a.bend as A\n\ndef A.same(x):\n  {==}\n"
+            ),
+        }
+    )
+
+    (law,) = files[(PACKAGE, "a.bend")].definitions
+    assert law.fills == (Place(f"{PACKAGE}/proof", 4, 4, 5, ""),)
+    assert files[(PACKAGE, "proof.bend")].definitions == ()
+
+
 def test_signatures_docs_and_spans() -> None:
     found = _one(
         "import Base\n\n"
@@ -170,10 +199,10 @@ def test_signatures_docs_and_spans() -> None:
 
     assert wrap.signature == "@unsafe def wrap(x: U32) -> Maybe<&2, U32>"
     assert wrap.doc == "Wraps a value. Second line."
-    assert (wrap.line, wrap.first_line, wrap.last_line) == (6, 2, 8)
+    assert (wrap.line, wrap.first_line, wrap.last_line) == (6, 3, 9)
     assert pair.signature == "type Pair is Data:\n  # the two halves\n  Pair{fst: U32, snd: U32}"
     assert pair.doc == "Comment of the next one."
-    assert (pair.line, pair.first_line, pair.last_line) == (12, 10, 13)
+    assert (pair.line, pair.first_line, pair.last_line) == (12, 11, 14)
 
 
 def test_import_lines_stop_at_the_first_declaration() -> None:

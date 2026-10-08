@@ -36,7 +36,7 @@ class Document:
 
     def text(self) -> str:
         definition = self.entry.definition
-        parts = [definition.name, definition.doc]
+        parts = [definition.name, definition.full_doc]
         if self.enrichment is not None:
             parts += [
                 self.enrichment.summary,
@@ -58,7 +58,7 @@ class Document:
             name=entry.definition.name,
             kind=entry.definition.kind,
             signature=entry.definition.signature,
-            doc=entry.definition.doc or None,
+            doc=entry.definition.full_doc or None,
             line=entry.definition.line,
             path=entry.path,
             package_hash=package.hash,

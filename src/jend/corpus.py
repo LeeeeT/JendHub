@@ -26,7 +26,7 @@ class Entry:
 
     @property
     def content_key(self) -> str:
-        text = f"{self.definition.signature}\0{self.definition.doc}"
+        text = f"{self.definition.signature}\0{self.definition.full_doc}"
         return hashlib.sha256(text.encode()).hexdigest()[:32]
 
 

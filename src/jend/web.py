@@ -76,14 +76,22 @@ def source_url(record: Record) -> str:
     return f"/src/{path}?{urlencode({'def': record.name})}"
 
 
-def source_text(sources: Sources, target: str, name: str | None) -> str | None:
+def source_text(sources: Sources, target: str, name: str | None, origin: str) -> str | None:
     package, _, path = target.partition("/")
     if not path:
         files = sources.files(package)
         return None if files is None else "\n".join(files)
     if name is None:
         return sources.text(package, path)
-    return sources.definition(package, path, name)
+    blocks = sources.definition(package, path, name)
+    if blocks is None:
+        return None
+    first, *others = blocks
+    elsewhere = (
+        f"# {origin}/src/{quote(f'{block.package}/{block.path}', safe='/@')}\n{block.text}"
+        for block in others
+    )
+    return "\n\n".join([first.text, *elsewhere])
 
 
 def results_text(result: Result, origin: str) -> str:
@@ -211,8 +219,10 @@ among them. Each result gives its rank, the name to use in code, its score
 author, a summary and the URL of its source.
 
 GET {origin}/src/<package>/ lists the files of a package, /src/<package>/<file>
-gives a file and /src/<package>/<file>?def=<name> gives one definition. The
-target of an import line is a path under /src/.
+gives a file and /src/<package>/<file>?def=<name> gives one definition. For a
+law, it also gives the def that proves or implements it; a def from another
+file follows after a comment with the URL of that file. The target of an import
+line is a path under /src/.
 
 Import a result only when it does exactly what you need: write its import line
 at the top of your Bend file and call it by its name. For example, after
@@ -370,7 +380,7 @@ def create_app(origin: str, data: Path | None = None) -> FastAPI:
     async def source(  # pyright: ignore[reportUnusedFunction]
         target: str, name: Annotated[str | None, Query(alias="def")] = None
     ) -> Response:
-        text = source_text(state["service"].sources, target, name)
+        text = source_text(state["service"].sources, target, name, origin)
         if text is None:
             return PlainTextResponse("Not found.", status_code=404)
         return PlainTextResponse(text)

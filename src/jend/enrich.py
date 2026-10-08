@@ -226,7 +226,7 @@ def request(model: str, provider: str, batch: list[Entry]) -> dict[str, object]:
         "definitions": [
             {
                 "id": f"d{index}",
-                "doc": entry.definition.doc,
+                "doc": entry.definition.full_doc,
                 "signature": entry.definition.signature[:SIGNATURE_CHARS],
             }
             for index, entry in enumerate(batch)
