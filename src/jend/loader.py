@@ -91,7 +91,6 @@ class Definition:
     first_line: int
     last_line: int
     refs: tuple[str, ...]
-    proof_refs: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -199,30 +198,33 @@ class Loader:
             raise LoadError(f"an import path of plain names: {target}")
         return package, path
 
-    def graph(self) -> "Graph":
+    def uses(self, declaration: Declaration) -> set[str]:
+        found: set[str] = set()
+        for name in _names(declaration.terms):
+            ctr = self.book.ctrs.get(name)
+            target = name if ctr is None else ctr.family
+            if target != declaration.key and target in self.book.tlds:
+                found.add(target)
+        return found
+
+    def references(self) -> dict[str, set[str]]:
         refs: dict[str, set[str]] = {}
-        proofs: dict[str, set[str]] = {}
         for module in self.modules.values():
             for declaration in module.declarations:
-                found = (proofs if declaration.fills else refs).setdefault(declaration.key, set())
-                for name in _names(declaration.terms):
-                    ctr = self.book.ctrs.get(name)
-                    target = name if ctr is None else ctr.family
-                    if target != declaration.key and target in self.book.tlds:
-                        found.add(target)
-        return Graph(refs, proofs)
+                refs.setdefault(declaration.key, set()).update(self.uses(declaration))
+        return refs
 
-    def definitions(self, key: FileKey, graph: "Graph") -> tuple[Definition, ...]:
+    def definitions(self, key: FileKey, refs: dict[str, set[str]]) -> tuple[Definition, ...]:
         module = self.modules[key]
         lines = module.text.split("\n")
         return tuple(
-            self._definition(module, lines, declaration, graph)
+            self._definition(module, lines, declaration, refs)
             for declaration in module.declarations
             if not declaration.fills
         )
 
     def _definition(
-        self, module: Module, lines: list[str], declaration: Declaration, graph: "Graph"
+        self, module: Module, lines: list[str], declaration: Declaration, refs: dict[str, set[str]]
     ) -> Definition:
         text = module.text
         start_line = text.count("\n", 0, declaration.start)
@@ -247,15 +249,8 @@ class Loader:
             line=keyword_line + 1,
             first_line=start_line - len(doc_lines),
             last_line=end_line,
-            refs=tuple(sorted(graph.refs.get(declaration.key, ()))),
-            proof_refs=tuple(sorted(graph.proofs.get(declaration.key, ()))),
+            refs=tuple(sorted(refs.get(declaration.key, ()))),
         )
-
-
-@dataclass(frozen=True)
-class Graph:
-    refs: dict[str, set[str]]
-    proofs: dict[str, set[str]]
 
 
 def load_all(library: Library, keys: list[FileKey]) -> Loader:

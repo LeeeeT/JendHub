@@ -40,30 +40,34 @@ reason in `error` and has no definitions, so the index leaves it out.
 For each declaration, the mirror keeps:
 
 - `def`: the header up to the `:` that starts the body. A `def` without a
-  return type fills a law with a proof, so it is not a declaration.
+  return type fills a law: it gives the law its body, a proof or an
+  implementation. It is part of the law, not a declaration of its own.
 - `type`: the header and the constructors.
 - `law`: the full statement.
 - The `#` comment lines immediately above the declaration, as `doc`.
 - `key`: the name that Bend resolves, `0x<hash>/<path>:<name>`, or the bare
   name for Base.
-- `refs`: the keys of the declarations that its own code uses (its signature
-  and body, the constructors of a type, or the statement of a law),
-  including the names that the parser adds, such as `U32.add` for
-  `(a + b : U32)`. A constructor counts as its type.
-- `proof_refs`: for a law, the keys that its proofs use.
+- `refs`: the keys of the declarations that its code uses: the signature and
+  body of a def, the constructors of a type, or the statement of a law and
+  the defs that fill it. It includes the names that the parser adds, such as
+  `U32.add` for `(a + b : U32)`. A constructor counts as its type.
 
-Bend has no mutual recursion of functions, so `refs` makes a graph without
-cycles, except where a type and a type-level function use each other (2 cases
-in the corpus, such as `Word.Con` and `Word`).
+`refs` makes a graph with cycles. Bend refuses mutual recursion in safe
+package code, but Base declares some functions with a `law` and fills them
+after a helper that calls them back (`String.cmp` and `String.cmp.fin`), and
+an `@unsafe` def can call a def below it. A type and a type-level function
+can also use each other (`Word.Con` and `Word`). The corpus has 14 cycles,
+each of 2 declarations: 12 in Base through a `law`, and 2 of a type and a
+function.
 
 `tools/conformance/check.py` compares the port with Bend's own parser, which
 runs in a Node container from a checkout of `bendlang/bend`, with a large
 stack. On all 4330 package files of the mirror, it finds no difference in the
-accepted files, the declarations or the `refs`. A law can also get `refs`
-from a proof in another file, which a check of the law's file alone does not
-load; the comparison allows those only in `proof_refs`. Run it again after an
-update of the port (`--all` checks every package version, not only the
-corpus):
+accepted files, the declarations or the `refs`. A law can also be filled in
+another file, which a check of the law's file alone does not load; the
+comparison allows the keys of such defs as the only extra `refs`. Run it again
+after an update of the port (`--all` checks every package version, not only
+the corpus):
 
 ```sh
 python tools/conformance/check.py --bend ../bend

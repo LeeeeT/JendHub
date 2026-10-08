@@ -47,14 +47,14 @@ class Mirror(BaseModel):
 
 def extract(library: Library, keys: Sequence[FileKey]) -> dict[FileKey, File]:
     loader = load_all(library, list(keys))
-    graph = loader.graph()
+    refs = loader.references()
     files: dict[FileKey, File] = {}
     for key in keys:
         module = loader.modules.get(key)
         if module is None:
             files[key] = File(path=key[1], error=loader.errors[key], imports=(), definitions=())
         else:
-            definitions = loader.definitions(key, graph)
+            definitions = loader.definitions(key, refs)
             files[key] = File(
                 path=key[1], error=None, imports=module.imports, definitions=definitions
             )

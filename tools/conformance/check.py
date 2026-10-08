@@ -12,6 +12,7 @@ from pathlib import Path
 
 from jend import corpus, hub, mirror
 from jend.loader import Library, load_all
+from jend.parser import module_of
 
 HERE = Path(__file__).parent
 NODE_IMAGE = "node:26-slim"
@@ -110,7 +111,12 @@ def main() -> None:
     loader = load_all(
         Library(sources, names, (snapshot.base.hash, snapshot.base.files[0].path)), targets
     )
-    graph = loader.graph()
+    refs = loader.references()
+    elsewhere: dict[str, set[str]] = {}
+    for module in loader.modules.values():
+        for declaration in module.declarations:
+            if declaration.fills and module_of(declaration.key) != module.ns:
+                elsewhere.setdefault(declaration.key, set()).update(loader.uses(declaration))
 
     failures = 0
     for target in targets:
@@ -123,18 +129,18 @@ def main() -> None:
         if not accepted:
             continue
         module = loader.modules[target]
-        refs = bend["refs"]
-        assert isinstance(refs, dict)
-        own = {d.key for d in module.declarations if d.key.startswith(module.ns + ":")}
-        if own != set(refs):
+        expected_refs = bend["refs"]
+        assert isinstance(expected_refs, dict)
+        own = {d.key for d in module.declarations if module_of(d.key) == module.ns}
+        if own != set(expected_refs):
             failures += 1
             print(f"{target[1]}: other declarations")
-        for key in own & set(refs):
-            used = graph.refs.get(key, set())
-            proved = used | graph.proofs.get(key, set())
-            if not used <= set(refs[key]) <= proved:
+        for key in own & set(expected_refs):
+            used = refs.get(key, set())
+            seen = set(expected_refs[key])
+            if not seen <= used or not used - seen <= elsewhere.get(key, set()):
                 failures += 1
-                print(f"{key}: Bend {refs[key]}, jend {sorted(used)}")
+                print(f"{key}: Bend {sorted(seen)}, jend {sorted(used)}")
     print(f"{len(targets)} files, {failures} differences")
     sys.exit(1 if failures else 0)
 

@@ -140,7 +140,7 @@ def test_names_without_import_base_stay_in_the_file() -> None:
     assert _one("import Base\n\ndef f(x: Nat) -> Nat:\n  x\n")["f"].refs == ("Nat",)
 
 
-def test_a_proof_references_apart_from_the_statement_of_its_law() -> None:
+def test_a_law_references_what_its_statement_and_its_filling_def_use() -> None:
     found = _one(
         "import Base\n\n"
         "def id(x: U32) -> U32:\n  x\n\n"
@@ -150,8 +150,7 @@ def test_a_proof_references_apart_from_the_statement_of_its_law() -> None:
     )
 
     assert found["id_same"].kind is Kind.LAW
-    assert found["id_same"].refs == (_key("id"), "U32")
-    assert found["id_same"].proof_refs == (_key("helper"),)
+    assert found["id_same"].refs == (_key("helper"), _key("id"), "U32")
     assert list(found) == ["id", "helper", "id_same"]
 
 

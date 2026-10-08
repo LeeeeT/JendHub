@@ -109,7 +109,6 @@ def _entry(package: str, path: str, signature: str) -> Entry:
         first_line=0,
         last_line=0,
         refs=(),
-        proof_refs=(),
     )
     return Entry(owner, 0, path, definition)
 
