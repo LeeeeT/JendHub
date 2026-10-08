@@ -50,15 +50,20 @@ The command keeps the paid results in `data/hub/cache/`. Do not delete this
 directory: a new enrichment of all definitions costs approximately $1.30.
 
 - `enrichment.jsonl`: for each definition, its role (`api`, `helper`, `local`
-  or `test`), a summary, and for API definitions 3 likely queries and 2 or 3
-  keywords.
+  or `test`), a summary, for API definitions 3 likely queries and 2 or 3
+  keywords, and the model and provider endpoint that wrote it. The
+  enrichment uses only the `open-inference/fp4` endpoint of
+  `deepseek/deepseek-v4-flash` (`enrich.PROVIDER`). When that endpoint does
+  not answer, its batches fail, and the next run sends them again.
 - `text.npy` and `text.keys.json`: a vector of the full document text.
 - `signature.npy` and `signature.keys.json`: a vector of the name and the
   signature.
 
 It sends only definitions that do not have a result yet, so a second run costs
 only the new work. A new definition costs approximately $0.000023 for the
-enrichment and $0.000002 for the two vectors.
+enrichment and $0.000002 for the two vectors. These costs were measured
+before the enrichment used one provider; the price of `open-inference/fp4`
+can make them different.
 
 Then the command writes the search index to `data/hub/index/`. The server
 reads only this directory:

@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from jend.corpus import Entry
-from jend.enrich import BATCH, Role, batches
+from jend.enrich import BATCH, MODEL, PROVIDER, Role, batches, request
 from jend.index import Index, Quantized, Record, postings, tokens, write
 from jend.mirror import Package
 from jend.signatures import Definition, Kind
@@ -114,3 +114,9 @@ def test_batches_send_each_content_once_grouped_by_file() -> None:
         [entry.id for entry in many[:BATCH]],
         [many[BATCH].id],
     ]
+
+
+def test_request_uses_only_the_chosen_provider() -> None:
+    body = request(MODEL, PROVIDER, [_entry("0xa", "a.bend", "def f() -> U32")])
+
+    assert body["provider"] == {"order": ["open-inference/fp4"], "allow_fallbacks": False}

@@ -35,6 +35,13 @@ When a definition enters the index (`jend.build`):
 
    The enrichment model sometimes returns the list of items without the
    `items` object; `jend.enrich` accepts both forms.
+
+   OpenRouter serves this model through many providers, with different
+   prices and with fp4 or fp8 weights. Each request goes only to the
+   `open-inference/fp4` endpoint, with no fallback, and each enrichment
+   records that endpoint. The enrichments before 2026-10-08 went to the
+   provider that OpenRouter selected for each request, which is not known;
+   their provider is `null`.
 2. `qwen/qwen3-embedding-8b` makes two 1024-dimension vectors (`jend.embed`):
    one of the full document text (name, doc comment, summary, queries,
    keywords, signature, package), and one of the name and the signature only.
@@ -190,7 +197,8 @@ for each query, and Jev adds +0.08 to +0.12 nDCG@10 for $0.19 or more.
     rebuilt index, the role penalty adds +0.036 nDCG@5 (interval +0.022 to
     +0.052) and +0.044 MRR on the benchmark, and +0.032 nDCG@5 on the dev
     set. The role labels are not always right; the model is not
-    deterministic at temperature 0.
+    deterministic at temperature 0. One cause: these requests went to
+    different providers, with fp4 or fp8 weights.
 
 ## Open questions
 

@@ -12,6 +12,7 @@ from jend import openrouter
 from jend.corpus import Entry
 
 MODEL = "deepseek/deepseek-v4-flash"
+PROVIDER = "open-inference/fp4"
 BATCH = 24
 FILE_NAMES = 120
 REQUESTS_IN_FLIGHT = 48
@@ -106,6 +107,7 @@ class Enrichment(BaseModel):
     queries: tuple[str, ...]
     keywords: tuple[str, ...]
     model: str
+    provider: str | None
 
 
 class _Item(BaseModel):
@@ -174,7 +176,11 @@ def batches(entries: Iterable[Entry], done: set[str]) -> list[list[Entry]]:
 
 
 async def enrich(
-    entries: Iterable[Entry], store: Path, budget: float, model: str = MODEL
+    entries: Iterable[Entry],
+    store: Path,
+    budget: float,
+    model: str = MODEL,
+    provider: str = PROVIDER,
 ) -> Report:
     done = set(load(store))
     work = batches(entries, done)
@@ -190,7 +196,7 @@ async def enrich(
                         report.skipped_batches += 1
                         return
                     try:
-                        records, cost = await _ask(client, model, batch)
+                        records, cost = await _ask(client, model, provider, batch)
                     except (httpx2.HTTPError, ValueError):
                         report.failed_batches += 1
                         return
@@ -210,7 +216,7 @@ def _file_names(entry: Entry) -> list[str]:
     return []
 
 
-def request(model: str, batch: list[Entry]) -> dict[str, object]:
+def request(model: str, provider: str, batch: list[Entry]) -> dict[str, object]:
     first = batch[0]
     prompt = {
         "package": first.package_label,
@@ -228,6 +234,7 @@ def request(model: str, batch: list[Entry]) -> dict[str, object]:
     }
     return {
         "model": model,
+        "provider": {"order": [provider], "allow_fallbacks": False},
         "temperature": 0,
         "reasoning": {"enabled": False},
         "messages": [
@@ -242,10 +249,10 @@ def request(model: str, batch: list[Entry]) -> dict[str, object]:
 
 
 async def _ask(
-    client: httpx2.AsyncClient, model: str, batch: list[Entry]
+    client: httpx2.AsyncClient, model: str, provider: str, batch: list[Entry]
 ) -> tuple[list[Enrichment], float]:
     completion = _Completion.model_validate_json(
-        await openrouter.post(client, "/chat/completions", request(model, batch))
+        await openrouter.post(client, "/chat/completions", request(model, provider, batch))
     )
     answer = _ANSWER.validate_json(completion.choices[0].message.content)
     items = answer.items if isinstance(answer, _Items) else answer
@@ -258,6 +265,7 @@ async def _ask(
             queries=tuple(query.strip() for query in item.queries if query.strip()),
             keywords=tuple(keyword.strip() for keyword in item.keywords if keyword.strip()),
             model=model,
+            provider=provider,
         )
         for item in items
         if item.id in by_id
