@@ -293,10 +293,9 @@ def build(commit: str, listings: list[hub.Listing], cache: Path) -> Mirror:
         if listing.name is not None and listing.version is not None
     }
     files = extract(Library(sources, names, base_key), keys, commit)
-    packages = (_package(listing, files) for listing in listings)
     return Mirror(
         base=Base(commit=commit, file=files[base_key]),
-        packages=tuple(package for package in packages if package.files),
+        packages=tuple(_package(listing, files) for listing in listings),
     )
 
 

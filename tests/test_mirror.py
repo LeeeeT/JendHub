@@ -259,7 +259,7 @@ def test_texts_use_line_feeds() -> None:
     assert (file.tlds[0].doc, file.tlds[0].code) == ("# Zero.", "def z() -> U32:\n  0")
 
 
-def test_the_mirror_leaves_out_a_package_without_an_accepted_file(tmp_path: Path) -> None:
+def test_a_package_keeps_only_its_accepted_files(tmp_path: Path) -> None:
     texts = {
         BASE: BASE_TEXT,
         (PACKAGE, "a.bend"): "import Base\n\ndef f(x: U32) -> U32:\n  x\n",
@@ -283,8 +283,10 @@ def test_the_mirror_leaves_out_a_package_without_an_accepted_file(tmp_path: Path
 
     mirror = build(BASE[0], listings, tmp_path)
 
-    assert [package.hash for package in mirror.packages] == [PACKAGE]
-    assert mirror.packages[0].label == Named(name="good", version="1.0.0.0")
+    good, bad = mirror.packages
+    assert [file.path for file in good.files] == ["a.bend"]
+    assert good.label == Named(name="good", version="1.0.0.0")
+    assert (bad.hash, bad.label, bad.files) == (OTHER, None, ())
     assert mirror.base.file.path == "base.bend"
 
 

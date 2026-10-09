@@ -37,7 +37,8 @@ resolution, but it does not check types. A file sees its own names, the names
 of the files that it imports, and the names of Base only through
 `import Base`, as `bend check` of that file does. Bend rejects some files (346
 of 4331 on 2026-10-08, mostly old package versions). The mirror leaves out
-such a file, and a package version without an accepted file (40 of 501).
+such a file. A package version keeps only its accepted files, so 40 of 501
+have none.
 
 The mirror (`jend.mirror`) holds:
 
