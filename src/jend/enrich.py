@@ -216,7 +216,7 @@ def _file_names(entry: Entry) -> list[str]:
 def request(model: str, provider: str, batch: list[Entry]) -> dict[str, object]:
     first = batch[0]
     prompt = {
-        "package": first.package_label,
+        "package": first.package_title,
         "package_description": first.description,
         "file": first.file.path,
         "file_definitions": _file_names(first),

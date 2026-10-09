@@ -45,7 +45,7 @@ class Document:
             ]
         parts += [
             tld.declaration[:800],
-            self.entry.package_label,
+            self.entry.package_title,
             self.entry.description[:200],
         ]
         return "\n".join(part for part in parts if part)

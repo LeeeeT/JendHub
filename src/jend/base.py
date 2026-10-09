@@ -8,6 +8,7 @@ from jend import hub
 COMMIT_URL = "https://api.github.com/repos/bendlang/bend/commits/main"
 SOURCE_URL = "https://raw.githubusercontent.com/bendlang/bend/{sha}/bend2/base.bend"
 PATH = "base.bend"
+NAME = "Base"
 DESCRIPTION = "Bend's standard library. Every program imports it with `import Base`."
 
 

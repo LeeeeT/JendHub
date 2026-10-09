@@ -23,8 +23,8 @@ class Entry:
         return origin_hash(self.origin)
 
     @property
-    def package_label(self) -> str:
-        return label(self.origin)
+    def package_title(self) -> str:
+        return base.NAME if isinstance(self.origin, Base) else label(self.origin)
 
     @property
     def description(self) -> str:
