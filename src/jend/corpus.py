@@ -1,54 +1,56 @@
 import hashlib
 from dataclasses import dataclass
 
-from jend.loader import Definition
-from jend.mirror import Mirror, Package
+from jend import base
+from jend.mirror import Base, File, Mirror, Origin, Package, Tld, files, label, origin_hash
 
 HOTTEST_PACKAGES = 100
 
 
 @dataclass(frozen=True)
 class Entry:
-    package: Package
+    origin: Origin
     rank: int
-    path: str
-    definition: Definition
+    file: File
+    tld: Tld
 
     @property
-    def id(self) -> str:
-        return f"{self.package.hash}/{self.path}:{self.definition.line}"
+    def is_base(self) -> bool:
+        return isinstance(self.origin, Base)
+
+    @property
+    def package_hash(self) -> str:
+        return origin_hash(self.origin)
 
     @property
     def package_label(self) -> str:
-        if self.package.name is None:
-            return self.package.hash
-        return f"{self.package.name}@{self.package.version}"
+        return label(self.origin)
+
+    @property
+    def description(self) -> str:
+        return base.DESCRIPTION if isinstance(self.origin, Base) else self.origin.description
 
     @property
     def content_key(self) -> str:
-        text = f"{self.definition.signature}\0{self.definition.full_doc}"
+        text = f"{self.tld.declaration}\0{self.tld.full_doc}"
         return hashlib.sha256(text.encode()).hexdigest()[:32]
 
 
-def select(mirror: Mirror, limit: int = HOTTEST_PACKAGES) -> list[Package]:
+def select(mirror: Mirror, limit: int = HOTTEST_PACKAGES) -> list[Origin]:
     latest: dict[str, Package] = {}
     for package in mirror.packages:
-        key = package.name or package.hash
+        key = package.hash if package.label is None else package.label.name
         current = latest.get(key)
         if current is None or package.published > current.published:
             latest[key] = package
-    hottest = sorted(
-        latest.values(),
-        key=lambda package: float("-inf") if package.hot is None else package.hot,
-        reverse=True,
-    )
+    hottest = sorted(latest.values(), key=lambda package: package.hot, reverse=True)
     return [mirror.base, *hottest[:limit]]
 
 
-def entries(packages: list[Package]) -> list[Entry]:
+def entries(origins: list[Origin]) -> list[Entry]:
     return [
-        Entry(package, rank, file.path, definition)
-        for rank, package in enumerate(packages)
-        for file in package.files
-        for definition in file.definitions
+        Entry(origin, rank, file, tld)
+        for rank, origin in enumerate(origins)
+        for file in files(origin)
+        for tld in file.tlds
     ]

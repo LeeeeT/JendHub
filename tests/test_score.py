@@ -4,7 +4,7 @@ import numpy as np
 
 from jend.enrich import Role
 from jend.index import Index, Record, write
-from jend.parser import Kind
+from jend.parser import Tag
 from jend.score import Scorer, is_helper, is_outside_api, names_match
 
 
@@ -39,10 +39,9 @@ def _record(name: str, path: str, role: Role | None = None) -> Record:
     return Record(
         key=f"{path}:{name}",
         name=name,
-        kind=Kind.DEF,
+        kind=Tag.DEF,
         signature=f"def {name}(b: Bytes) -> U64",
         doc=None,
-        line=1,
         path=path,
         package_hash="0x" + "b" * 32,
         package_name="bend-kit-hash",

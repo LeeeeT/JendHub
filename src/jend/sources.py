@@ -1,13 +1,24 @@
-import json
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from jend import base, hub
-from jend.loader import BASE, Definition, FileKey, Import, import_lines
-from jend.mirror import File, Mirror, Package
-from jend.parser import module_of
+from jend.loader import import_lines
+from jend.mirror import (
+    BaseFile,
+    File,
+    FileRef,
+    Import,
+    Law,
+    Mirror,
+    Origin,
+    PackageFile,
+    Tld,
+    file_ref,
+    files,
+    label,
+    origin_hash,
+)
 
 DATABASE = "sources.sqlite"
 
@@ -29,8 +40,7 @@ create table blocks (
     block integer not null,
     source_hash text not null,
     source_path text not null,
-    imports text not null,
-    spans text not null,
+    text text not null,
     primary key (hash, path, name, block)
 ) without rowid;
 """
@@ -43,39 +53,22 @@ class Block:
     text: str
 
 
-def label(package: Package) -> str:
-    return package.hash if package.name is None else f"{package.name}@{package.version}"
-
-
-def absolute_target(module: str, labels: dict[str, str]) -> str:
-    package, _, path = module.partition("/")
-    return f"{labels[package]}/{path}.bend"
+def absolute_target(file: PackageFile, labels: dict[str, str]) -> str:
+    return f"{labels[file.package]}/{file.path}"
 
 
 def absolute_imports(text: str, imports: tuple[Import, ...], labels: dict[str, str]) -> str:
-    if not imports:
-        return text
     lines = text.split("\n")
     aliased = [line for line in import_lines(text) if line.alias is not None]
     for line, imported in zip(aliased, imports, strict=True):
-        ending = "\r" if lines[line.index].endswith("\r") else ""
-        target = absolute_target(imported.module, labels)
-        lines[line.index] = f"import {target} as {imported.alias}{ending}"
+        lines[line.index] = f"import {absolute_target(imported.file, labels)} as {imported.alias}"
     return "\n".join(lines)
 
 
-def used_imports(file: File, module: str, definition: Definition, labels: dict[str, str]) -> str:
-    used = {module_of(ref) for ref in (*definition.refs, definition.key)} - {BASE, module}
-    return "\n".join(
-        f"import {absolute_target(imported.module, labels)} as {imported.alias}"
-        for imported in file.imports
-        if imported.module in used
-    )
-
-
-def write(directory: Path, mirror: Mirror, files: Path) -> None:
-    packages = [mirror.base, *mirror.packages]
-    labels = {package.hash: label(package) for package in packages}
+def write(directory: Path, mirror: Mirror) -> None:
+    origins: list[Origin] = [mirror.base, *mirror.packages]
+    labels = {origin_hash(origin): label(origin) for origin in origins}
+    by_ref = {file_ref(origin, file): file for origin in origins for file in files(origin)}
     connection = sqlite3.connect(directory / DATABASE)
     with connection:
         connection.executescript(SCHEMA)
@@ -83,62 +76,62 @@ def write(directory: Path, mirror: Mirror, files: Path) -> None:
         connection.executemany(
             "insert into files values (?, ?, ?)",
             (
-                (
-                    package.hash,
-                    file.path,
-                    absolute_imports(
-                        hub.cached_path(files, package.hash, file.path).read_text(encoding="utf-8"),
-                        file.imports,
-                        labels,
-                    ),
-                )
-                for package in packages
-                for file in package.files
+                (origin_hash(origin), file.path, absolute_imports(file.text, file.imports, labels))
+                for origin in origins
+                for file in files(origin)
             ),
         )
         connection.executemany(
-            "insert into blocks values (?, ?, ?, ?, ?, ?, ?, ?)", _blocks(mirror, labels)
+            "insert into blocks values (?, ?, ?, ?, ?, ?, ?)", _blocks(by_ref, labels)
         )
     connection.execute("vacuum")
     connection.close()
 
 
 def _blocks(
-    mirror: Mirror, labels: dict[str, str]
-) -> Iterator[tuple[str, str, str, int, str, str, str, str]]:
-    packages = [mirror.base, *mirror.packages]
-    files = {(package.hash, file.path): file for package in packages for file in package.files}
-    base_file = (mirror.base.hash, base.PATH)
-    for package in packages:
-        for file in package.files:
-            for definition in file.definitions:
-                for index, (module, spans) in enumerate(_spans(definition)):
-                    source = _file(module, base_file)
-                    yield (
-                        package.hash,
-                        file.path,
-                        definition.name,
-                        index,
-                        *source,
-                        used_imports(files[source], module, definition, labels),
-                        json.dumps(spans),
-                    )
+    files: dict[FileRef, File], labels: dict[str, str]
+) -> Iterator[tuple[str, str, str, int, str, str, str]]:
+    for home, file in files.items():
+        for tld in file.tlds:
+            for index, (source, text) in enumerate(_view(tld, home, files, labels)):
+                yield (_ref_hash(home), file.path, tld.name, index, _ref_hash(source),
+                       files[source].path, text)  # fmt: skip
 
 
-def _spans(definition: Definition) -> list[tuple[str, list[tuple[int, int]]]]:
-    home = module_of(definition.key)
-    spans = {home: [(definition.first_line, definition.last_line)]}
-    for fill in definition.fills:
-        spans.setdefault(fill.module, []).append((fill.first_line, fill.last_line))
-    others = sorted(module for module in spans if module != home)
-    return [(module, spans[module]) for module in [home, *others]]
+def _view(
+    tld: Tld, home: FileRef, files: dict[FileRef, File], labels: dict[str, str]
+) -> list[tuple[FileRef, str]]:
+    used = {home, *(key.file for key in tld.refs)}
+    head = ["import Base"] if any(isinstance(file, BaseFile) for file in used - {home}) else []
+    fill = tld.kind.fill if isinstance(tld.kind, Law) else None
+    pieces = [_piece(tld.doc, tld.code)]
+    if fill is not None and fill.file == home:
+        pieces.append(_piece(fill.doc, fill.code))
+    blocks = [(home, _block([*head, *_import_lines(files[home], used, labels)], pieces))]
+    if fill is not None and fill.file != home:
+        lines = _import_lines(files[fill.file], used, labels)
+        blocks.append((fill.file, _block(lines, [_piece(fill.doc, fill.code)])))
+    return blocks
 
 
-def _file(module: str, base_file: FileKey) -> FileKey:
-    if module == BASE:
-        return base_file
-    package, _, path = module.partition("/")
-    return package, f"{path}.bend"
+def _import_lines(file: File, used: set[FileRef], labels: dict[str, str]) -> list[str]:
+    return [
+        f"import {absolute_target(imported.file, labels)} as {imported.alias}"
+        for imported in file.imports
+        if imported.file in used
+    ]
+
+
+def _block(head: list[str], pieces: list[str]) -> str:
+    return "\n\n".join(["\n".join(head), *pieces] if head else pieces)
+
+
+def _piece(doc: str, code: str) -> str:
+    return f"{doc}\n{code}" if doc else code
+
+
+def _ref_hash(file: FileRef) -> str:
+    return file.commit if isinstance(file, BaseFile) else file.package
 
 
 class Sources:
@@ -174,27 +167,14 @@ class Sources:
         if package_hash is None:
             return None
         rows = self.connection.execute(
-            "select label, source_path, imports, spans, text from blocks"
-            " join files on files.hash = source_hash and files.path = source_path"
+            "select label, source_path, text from blocks"
             " join packages on packages.hash = source_hash"
             " where blocks.hash = ? and blocks.path = ? and name = ? order by block",
             (package_hash, path, name),
         ).fetchall()
         if not rows:
             return None
-        return [
-            Block(source_label, source_path, _block_text(imports, json.loads(spans), text))
-            for source_label, source_path, imports, spans, text in rows
-        ]
+        return [Block(source_label, source_path, text) for source_label, source_path, text in rows]
 
     def close(self) -> None:
         self.connection.close()
-
-
-def _block_text(imports: str, spans: list[list[int]], text: str) -> str:
-    lines = text.split("\n")
-    parts = [
-        "\n".join(line.removesuffix("\r") for line in lines[first - 1 : last])
-        for first, last in spans
-    ]
-    return "\n\n".join([imports, *parts] if imports else parts)

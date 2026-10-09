@@ -6,7 +6,7 @@ import numpy.typing as npt
 
 from jend.enrich import Role
 from jend.index import Index, Record, Rows, Scores, Vector, tokens
-from jend.parser import Kind
+from jend.parser import Tag
 
 POOL_DEPTH = 200
 STAGE_DEPTH = 100
@@ -101,7 +101,7 @@ class Scorer:
         package_rank: list[int] = []
         for record in index.scan():
             prior.append(_prior(record))
-            law.append(record.kind is Kind.LAW)
+            law.append(record.kind is Tag.LAW)
             package_rank.append(record.package_rank)
         self.prior = np.array(prior, dtype=np.float64)
         self.law = np.array(law, dtype=np.bool_)

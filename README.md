@@ -26,7 +26,9 @@ The command downloads the `.bend` files of all packages to `data/hub/files/`.
 A package hash identifies its content, so the command downloads only files
 that are not in that directory. It also downloads Base (`bend2/base.bend`) from
 the latest commit on the `main` branch of `bendlang/bend`. It writes the
-definitions to `data/hub/mirror.json`.
+mirror to `data/hub/mirror.json` (approximately 225 MB). The mirror holds all
+the information that the later steps use, the text of each file too, so they
+do not read `data/hub/files/`.
 
 The command reads each file with `jend.parser` and `jend.loader`, a Python
 port of the parser of Bend 2 (`bend2/bend.ts`, commit `d5fe656`). The port
@@ -34,46 +36,54 @@ keeps Bend's grammar, desugaring, match flattening, import loading and name
 resolution, but it does not check types. A file sees its own names, the names
 of the files that it imports, and the names of Base only through
 `import Base`, as `bend check` of that file does. Bend rejects some files (346
-of 4331 on 2026-10-08, mostly old package versions): such a file keeps its
-reason in `error` and has no definitions, so the index leaves it out.
+of 4331 on 2026-10-08, mostly old package versions). The mirror leaves out
+such a file, and a package version without an accepted file (40 of 501).
 
-For each declaration, the mirror keeps:
+The mirror (`jend.mirror`) holds:
 
-- `def`: the header up to the `:` that starts the body. A `def` without a
-  return type fills a law: it gives the law its body, a proof or an
-  implementation. It is part of the law, not a declaration of its own.
-- `type`: the header and the constructors.
-- `law`: the full statement.
-- The `#` comment lines immediately above the declaration, as `doc`.
-- `line` (the line of the keyword), `first_line` (the first line, with the
-  doc) and `last_line` (the line of the last token). Lines count from 1.
-- `fills`: for a law, the defs that fill it. Each gives its module, `line`,
-  `first_line`, `last_line` and `doc`. A fill can be in another file that
-  imports the law (1554 of 9097 fills on 2026-10-08). The search uses the doc
-  of a law followed by the docs of its fills.
-- `key`: the name that Bend resolves, `0x<hash>/<path>:<name>`, or the bare
-  name for Base.
-- `refs`: the keys of the declarations that its code uses: the signature and
-  body of a def, the constructors of a type, or the statement of a law and
-  the defs that fill it. It includes the names that the parser adds, such as
-  `U32.add` for `(a + b : U32)`. A constructor counts as its type.
+- `base`: the commit of Base and its file.
+- `packages`: for each package version, its hash, its label (name and
+  version, or none), description, publication time, `hot` score and files.
+- For each file: its path, its text, its imports (the alias and the file that
+  Bend resolves for each `import <path> as <Name>` line) and its top-level
+  definitions (TLDs). `import Base` is not an import: it only makes the names
+  of Base visible.
+- For each TLD, with Bend's names for the three kinds:
+  - `name`, and `doc`: the `#` lines immediately above it, as written.
+  - `code`: the text from its first attribute or keyword to its last token.
+  - `refs`: the keys of the TLDs that its code uses. A key is a file and a
+    name; its text is the bare name for Base, otherwise
+    `0x<hash>/<path>:<name>`. A recursive TLD refers to itself. A constructor
+    counts as its ADT, but the constructors that an ADT declares are not
+    uses. The names that the parser adds are uses, such as `U32.add` for
+    `(a + b : U32)` and `Nat` for `0n`.
+  - `kind`: `def` with its signature (the header without comments, on one
+    line), `adt`, or `law` with its fill.
+- A fill is a `def` without a return type that gives a law its body, a proof
+  or an implementation. It is part of the law, not a TLD of its own. The law
+  keeps its file, doc and code. It can be in another file that imports the
+  law (1554 of 9097 fills on 2026-10-08). The `refs` of a law are what its
+  statement and its fill use, and the search uses the doc of a law followed
+  by the doc of its fill. Bend permits two fills of one law in two files that
+  do not see each other. No package does this, and the mirror keeps at most
+  one fill for each law: for a second fill, the result is not defined.
 
 `refs` makes a graph with cycles. Bend refuses mutual recursion in safe
 package code, but Base declares some functions with a `law` and fills them
 after a helper that calls them back (`String.cmp` and `String.cmp.fin`), and
 an `@unsafe` def can call a def below it. A type and a type-level function
-can also use each other (`Word.Con` and `Word`). The corpus has 14 cycles,
-each of 2 declarations: 12 in Base through a `law`, and 2 of a type and a
-function.
+can also use each other (`Word.Con` and `Word`). The corpus has 14 cycles of
+2 TLDs: 12 in Base through a `law`, and 2 of a type and a function.
 
 `tools/conformance/check.py` compares the port with Bend's own parser, which
 runs in a Node container from a checkout of `bendlang/bend`, with a large
-stack. On all 4330 package files of the mirror, it finds no difference in the
-accepted files, the declarations or the `refs`. A law can also be filled in
-another file, which a check of the law's file alone does not load; the
-comparison allows the keys of such defs as the only extra `refs`. Run it again
-after an update of the port (`--all` checks every package version, not only
-the corpus):
+stack. On the package files of the corpus, it finds no difference in the
+accepted files, the TLDs or the `refs`. A law can also be filled in another
+file, which a check of the law's file alone does not load; the comparison
+allows the keys that such fills use as the only extra `refs`. The check reads
+the files in `data/hub/files/`, because the mirror does not keep the rejected
+ones. Run it again after an update of the port (`--all` checks every package
+version, not only the corpus):
 
 ```sh
 python tools/conformance/check.py --bend ../bend
@@ -116,14 +126,13 @@ reads only this directory:
 - `text.codes.npy`, `signature.codes.npy` and their `.scale.npy` files: the
   two vectors of each document as int8, with one scale for each dimension.
   int8 does not change the ranking measurably.
-- `sources.sqlite`: the text of every file of every package version in the
-  mirror, and the label (`name@version`, or the hash) of each package
-  version, approximately 100 MB. Each import line names the file that Bend
-  resolves, as a package path (`import name@version/dir/x.bend as X`), so
-  copied code imports correctly from any project. For each definition, it
-  also keeps one block for each file that holds its code: the lines of the
-  definition and of its fills in that file, and the import lines of that
-  file that the definition uses.
+- `sources.sqlite`: the text of every file of the mirror, and the label of
+  each package version (`name@version`, the hash, or the commit of Base).
+  Each import line names the file that Bend resolves, as a package path
+  (`import name@version/dir/x.bend as X`), so copied code imports correctly
+  from any project. For each TLD, it also keeps one block for each file that
+  holds its code: the TLD or its fill with their docs, after the import lines
+  of that file that the TLD uses.
 
 ## Search
 
@@ -176,11 +185,12 @@ The server opens the index one time and serves these routes:
   label or the hash, so the target of any import line in a result or a file
   is a path under `/src/`.
   All package versions of the mirror are available, also the ones that the
-  search does not cover, because files import exact versions.
+  search does not cover, because files import exact versions. Files that Bend
+  rejects are not available.
 - `GET /src/<package>/<file>`: the file as plain text. With `?def=<name>`, only
-  that definition: the import lines of the files that it uses (not Base), its
-  doc comment, its declaration and its body, up to its last token. A law
-  comes with the defs that fill it. A fill in another file follows as a second
+  that TLD: `import Base` when it uses a name of Base from another file, the
+  import lines of the other files that it uses, its doc comment and its code.
+  A law comes with its fill. A fill in another file follows as a second
   block: a `# <URL of that file>` line, the import lines of that file that it
   uses, and the fill. The search results and the HTML page link to this form.
 - `GET /llms.txt`: tells LLMs how to use `/search.txt` and `/src/`, when to

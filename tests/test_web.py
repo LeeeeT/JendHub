@@ -14,9 +14,9 @@ from fastapi.testclient import TestClient
 from jend import embed, sources
 from jend.index import INDEX, Record, write
 from jend.loader import Library
-from jend.mirror import Mirror, Package, extract
+from jend.mirror import Base, Mirror, Named, Package, extract
 from jend.openrouter import KEY_VARIABLE
-from jend.parser import Kind
+from jend.parser import Tag
 from jend.search import PAGE, Hit, Result
 from jend.web import (
     ANSWER_CHARS,
@@ -63,10 +63,9 @@ def _entry(
     return Record(
         key="k",
         name=definition,
-        kind=Kind.DEF,
+        kind=Tag.DEF,
         signature=signature,
         doc=doc,
-        line=7,
         path=path,
         package_hash="0x" + "a" * 32,
         package_name=name,
@@ -233,30 +232,17 @@ def _write_sources(data: Path, files: dict[str, str]) -> None:
     base_key = ("b" * 40, "base.bend")
     texts = {base_key: "type U32 is Data:\n  U32{}\n"}
     texts.update({("0x" + "a" * 32, path): text for path, text in files.items()})
-    extracted = extract(Library(texts, {}, base_key), list(texts))
-    base = Package(
-        hash=base_key[0],
-        name="Base",
-        version="b" * 12,
-        description="Base.",
-        published=published,
-        hot=None,
-        files=(extracted[base_key],),
-    )
+    extracted = extract(Library(texts, {}, base_key), list(texts), base_key[0])
     package = Package(
         hash="0x" + "a" * 32,
-        name="p",
-        version="1.2.0.0",
+        label=Named(name="p", version="1.2.0.0"),
         description="P.",
         published=published,
         hot=1.0,
         files=tuple(file for key, file in extracted.items() if key != base_key),
     )
-    for (owner, path), text in texts.items():
-        file = data / "files" / owner / path
-        file.parent.mkdir(parents=True, exist_ok=True)
-        file.write_text(text, encoding="utf-8")
-    sources.write(data / INDEX, Mirror(base=base, packages=(package,)), data / "files")
+    base = Base(commit=base_key[0], file=extracted[base_key])
+    sources.write(data / INDEX, Mirror(base=base, packages=(package,)))
 
 
 def test_robots_allow_the_llm_routes_and_keep_crawlers_off_the_html_results() -> None:

@@ -297,7 +297,7 @@ def hit_html(hit: Hit) -> str:
         f'<pre class="sig"><code>{escape(record.signature)}</code></pre>'
         f"{summary}"
         f'<p class="m"><a href="{escape(source_url(record))}">{escape(record.package_label)}'
-        f"/{escape(record.path)}</a> line {record.line}</p>"
+        f"/{escape(record.path)}</a></p>"
         f'<pre class="i"><code>{escape(import_line(record))}</code></pre></div></li>'
     )
 

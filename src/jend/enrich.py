@@ -167,7 +167,7 @@ def batches(entries: Iterable[Entry], done: set[str]) -> list[list[Entry]]:
         if entry.content_key in scheduled:
             continue
         scheduled.add(entry.content_key)
-        by_file.setdefault((entry.package.hash, entry.path), []).append(entry)
+        by_file.setdefault((entry.package_hash, entry.file.path), []).append(entry)
     return [
         group[start : start + BATCH]
         for group in by_file.values()
@@ -210,24 +210,21 @@ async def enrich(
 
 
 def _file_names(entry: Entry) -> list[str]:
-    for file in entry.package.files:
-        if file.path == entry.path:
-            return [definition.name for definition in file.definitions][:FILE_NAMES]
-    return []
+    return [tld.name for tld in entry.file.tlds][:FILE_NAMES]
 
 
 def request(model: str, provider: str, batch: list[Entry]) -> dict[str, object]:
     first = batch[0]
     prompt = {
         "package": first.package_label,
-        "package_description": first.package.description,
-        "file": first.path,
+        "package_description": first.description,
+        "file": first.file.path,
         "file_definitions": _file_names(first),
         "definitions": [
             {
                 "id": f"d{index}",
-                "doc": entry.definition.full_doc,
-                "signature": entry.definition.signature[:SIGNATURE_CHARS],
+                "doc": entry.tld.full_doc,
+                "signature": entry.tld.declaration[:SIGNATURE_CHARS],
             }
             for index, entry in enumerate(batch)
         ],

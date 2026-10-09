@@ -53,7 +53,7 @@ for (const [hash, path] of targets) {
       const used = new Set<string>();
       for (const n of names(terms)) {
         const target = Bend.FAM[n] ?? n;
-        if (target !== k && book.tlds[target] !== undefined) {
+        if (book.tlds[target] !== undefined) {
           used.add(target);
         }
       }

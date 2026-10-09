@@ -6,9 +6,8 @@ import numpy as np
 from jend.corpus import Entry
 from jend.enrich import BATCH, MODEL, PROVIDER, Role, batches, request
 from jend.index import Index, Quantized, Record, postings, tokens, write
-from jend.loader import Definition
-from jend.mirror import Package
-from jend.parser import Kind
+from jend.mirror import Def, File, Package, Tld
+from jend.parser import Tag
 
 
 def test_tokens_split_identifiers_and_drop_stopwords() -> None:
@@ -28,10 +27,9 @@ def _record(row: int) -> Record:
     return Record(
         key=f"k{row}",
         name=f"f{row}",
-        kind=Kind.DEF,
+        kind=Tag.DEF,
         signature=f"def f{row}() -> U32",
         doc=None,
-        line=row + 1,
         path="a.bend",
         package_hash="0xa",
         package_name=None,
@@ -90,28 +88,17 @@ def test_quantized_scores_stay_close_to_the_exact_scores() -> None:
 
 
 def _entry(package: str, path: str, signature: str) -> Entry:
+    tld = Tld(name="f", doc="", code=f"{signature}:\n  0", refs=(), kind=Def(signature=signature))
+    file = File(path=path, text=tld.code, imports=(), tlds=(tld,))
     owner = Package(
         hash=package,
-        name=None,
-        version=None,
+        label=None,
         description="",
         published=datetime(2026, 1, 1, tzinfo=UTC),
         hot=0.0,
-        files=(),
+        files=(file,),
     )
-    definition = Definition(
-        kind=Kind.DEF,
-        name="f",
-        key=f"{package}/{path}:f",
-        signature=signature,
-        doc="",
-        line=1,
-        first_line=1,
-        last_line=1,
-        refs=(),
-        fills=(),
-    )
-    return Entry(owner, 0, path, definition)
+    return Entry(owner, 0, file, tld)
 
 
 def test_batches_send_each_content_once_grouped_by_file() -> None:
@@ -122,11 +109,7 @@ def test_batches_send_each_content_once_grouped_by_file() -> None:
 
     work = batches([shared, copy, done, *many], {done.content_key})
 
-    assert [[entry.id for entry in batch] for batch in work] == [
-        [shared.id],
-        [entry.id for entry in many[:BATCH]],
-        [many[BATCH].id],
-    ]
+    assert work == [[shared], many[:BATCH], [many[BATCH]]]
 
 
 def test_request_uses_only_the_chosen_provider() -> None:

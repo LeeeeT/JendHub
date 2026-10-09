@@ -60,9 +60,9 @@ TYPE_OPERATOR = re.compile(r"(->|[&|](?![&|]))")
 NON_SPACE = re.compile(r"\S")
 
 
-class Kind(StrEnum):
+class Tag(StrEnum):
     DEF = "def"
-    TYPE = "type"
+    ADT = "adt"
     LAW = "law"
 
 
@@ -288,7 +288,7 @@ class CtrInfo:
 
 @dataclass(frozen=True, slots=True)
 class Declaration:
-    kind: Kind
+    tag: Tag
     name: str
     key: str
     start: int
@@ -1198,7 +1198,7 @@ class Parser:
                 info.has_value = True
         self.declarations.append(
             Declaration(
-                Kind.DEF,
+                Tag.DEF,
                 nm,
                 k,
                 start,
@@ -1235,12 +1235,11 @@ class Parser:
             self.eat("{")
             n1 = len(self.stk)
             fields = self.tele("}")
-            tip = Adt(k, [Var(cell[1], cell[2]) for cell in params])
-            terms.append(tele_bind(params + fields, tip))
+            terms.append(tele_bind(params + fields, K))
             self.close(n1)
             self.view.book.ctrs[c] = CtrInfo(module=self.ns, n=len(fields), family=k)
         self.declarations.append(
-            Declaration(Kind.TYPE, nm, k, start, keyword, -1, self.last, tuple(terms))
+            Declaration(Tag.ADT, nm, k, start, keyword, -1, self.last, tuple(terms))
         )
 
     def parse_law(self, start: int) -> None:
@@ -1285,7 +1284,7 @@ class Parser:
                 statement = App(exists, Lam(c, i, statement, s=s), s=s)
         self.declare(k, DefInfo(module=self.ns, x=tc, base=False, law=True))
         self.declarations.append(
-            Declaration(Kind.LAW, nm, k, start, keyword, -1, self.last, (statement,))
+            Declaration(Tag.LAW, nm, k, start, keyword, -1, self.last, (statement,))
         )
 
     def book(self) -> list[Declaration]:

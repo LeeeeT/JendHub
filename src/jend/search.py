@@ -67,7 +67,7 @@ async def _run(data: Path, query: str, top: int) -> None:
     print(f"{result.total} results for {result.query!r}")
     for hit in result.hits:
         record = hit.record
-        print(f"{hit.score:5.2f}  {record.package_label}/{record.path}:{record.line}")
+        print(f"{hit.score:5.2f}  {record.package_label}/{record.path}:{record.name}")
         print(f"       {record.signature.splitlines()[0][:110]}")
         if record.summary is not None:
             print(f"       {record.summary}")

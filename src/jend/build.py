@@ -13,7 +13,7 @@ from jend import corpus, embed, enrich, index, mirror, openrouter, sources
 from jend.corpus import Entry
 from jend.enrich import Enrichment
 from jend.index import Record, Vectors
-from jend.mirror import FILES, MIRROR
+from jend.mirror import MIRROR, Base
 
 SIGNATURE_TEXT_CHARS = 400
 CACHE = "cache"
@@ -31,12 +31,12 @@ class Document:
         return self.entries[0]
 
     def signature_text(self) -> str:
-        definition = self.entry.definition
-        return f"{definition.name}\n{definition.signature[:SIGNATURE_TEXT_CHARS]}"
+        tld = self.entry.tld
+        return f"{tld.name}\n{tld.declaration[:SIGNATURE_TEXT_CHARS]}"
 
     def text(self) -> str:
-        definition = self.entry.definition
-        parts = [definition.name, definition.full_doc]
+        tld = self.entry.tld
+        parts = [tld.name, tld.full_doc]
         if self.enrichment is not None:
             parts += [
                 self.enrichment.summary,
@@ -44,28 +44,27 @@ class Document:
                 " ".join(self.enrichment.keywords),
             ]
         parts += [
-            definition.signature[:800],
+            tld.declaration[:800],
             self.entry.package_label,
-            self.entry.package.description[:200],
+            self.entry.description[:200],
         ]
         return "\n".join(part for part in parts if part)
 
     def record(self) -> Record:
         entry = self.entry
-        package = entry.package
+        named = None if isinstance(entry.origin, Base) else entry.origin.label
         return Record(
             key=self.key,
-            name=entry.definition.name,
-            kind=entry.definition.kind,
-            signature=entry.definition.signature,
-            doc=entry.definition.full_doc or None,
-            line=entry.definition.line,
-            path=entry.path,
-            package_hash=package.hash,
-            package_name=package.name,
-            package_version=package.version,
+            name=entry.tld.name,
+            kind=entry.tld.kind.tag,
+            signature=entry.tld.declaration,
+            doc=entry.tld.full_doc or None,
+            path=entry.file.path,
+            package_hash=entry.package_hash,
+            package_name=None if named is None else named.name,
+            package_version=None if named is None else named.version,
             package_rank=entry.rank,
-            is_base=package.is_base,
+            is_base=entry.is_base,
             role=None if self.enrichment is None else self.enrichment.role,
             summary=None if self.enrichment is None else self.enrichment.summary,
         )
@@ -139,7 +138,7 @@ def compile_index(data: Path) -> None:
         identity,
     )
     snapshot = mirror.load(data / MIRROR)
-    sources.write(partial, snapshot, data / FILES)
+    sources.write(partial, snapshot)
     shutil.rmtree(target, ignore_errors=True)
     partial.replace(target)
     print(f"index {identity}: {len(documents)} documents")

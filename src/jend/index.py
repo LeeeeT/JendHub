@@ -12,7 +12,7 @@ import numpy as np
 import numpy.typing as npt
 
 from jend.enrich import Role
-from jend.parser import Kind
+from jend.parser import Tag
 
 STOPWORDS = frozenset(
     [
@@ -65,7 +65,6 @@ create table documents (
     kind text not null,
     signature text not null,
     doc text,
-    line integer not null,
     path text not null,
     package_hash text not null,
     package_name text,
@@ -84,10 +83,9 @@ create table postings (term text primary key, rows blob not null, weights blob n
 class Record:
     key: str
     name: str
-    kind: Kind
+    kind: Tag
     signature: str
     doc: str | None
-    line: int
     path: str
     package_hash: str
     package_name: str | None
@@ -110,7 +108,6 @@ RECORD_COLUMNS = (
     "kind",
     "signature",
     "doc",
-    "line",
     "path",
     "package_hash",
     "package_name",
@@ -130,7 +127,6 @@ def _row(record: Record) -> tuple[object, ...]:
         record.kind.value,
         record.signature,
         record.doc,
-        record.line,
         record.path,
         record.package_hash,
         record.package_name,
@@ -149,7 +145,6 @@ def _record(row: Sequence[Any]) -> Record:
         kind,
         signature,
         doc,
-        line,
         path,
         package_hash,
         package_name,
@@ -162,10 +157,9 @@ def _record(row: Sequence[Any]) -> Record:
     return Record(
         key=key,
         name=name,
-        kind=Kind(kind),
+        kind=Tag(kind),
         signature=signature,
         doc=doc,
-        line=line,
         path=path,
         package_hash=package_hash,
         package_name=package_name,

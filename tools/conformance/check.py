@@ -10,8 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from jend import corpus, hub, mirror
-from jend.loader import Library, load_all
+from jend import base, corpus, hub, mirror
+from jend.loader import FileKey, Library, load_all
+from jend.mirror import Base, label
 from jend.parser import module_of
 
 HERE = Path(__file__).parent
@@ -31,7 +32,10 @@ RECORDS = [
     ),
     (
         "T: term_higher(tele_bind(params.concat(fs), tip)) };",
-        "T: term_higher(REC(k, tele_bind(params.concat(fs), tip))) };\n        FAM[c] = k;",
+        (
+            "T: term_higher((REC(k, tele_bind(params.concat(fs), K)),"
+            " tele_bind(params.concat(fs), tip))) };\n        FAM[c] = k;"
+        ),
     ),
     ("T: term_higher(T), v: null, x: tc", "T: term_higher(REC(k, T)), v: null, x: tc"),
 ]
@@ -48,7 +52,17 @@ export function REC(k: Name, t: LTerm): LTerm {
 """
 
 
-def prepare(bend: Path, snapshot: mirror.Mirror, data: Path, work: Path) -> None:
+def packages(files: Path, commit: str) -> dict[str, list[str]]:
+    return {
+        folder.name: sorted(path.relative_to(folder).as_posix() for path in folder.rglob("*.bend"))
+        for folder in sorted(files.iterdir())
+        if folder.is_dir() and folder.name != commit
+    }
+
+
+def prepare(
+    bend: Path, files: Path, commit: str, hashes: list[str], names: dict[str, str], work: Path
+) -> None:
     shutil.rmtree(work, ignore_errors=True)
     shutil.copytree(bend / "bend2", work / "bend2")
     source = (bend / "bend2" / "bend.ts").read_text(encoding="utf-8")
@@ -58,16 +72,12 @@ def prepare(bend: Path, snapshot: mirror.Mirror, data: Path, work: Path) -> None
         source = source.replace(old, new)
     (work / "bend2" / "bend_ref.ts").write_text(source + RECORDER, encoding="utf-8", newline="\n")
     shutil.copy(HERE / "reference.ts", work / "bend2" / "reference.ts")
-    shutil.copy(
-        hub.cached_path(data / mirror.FILES, snapshot.base.hash, snapshot.base.files[0].path),
-        work / "bend2" / "base.bend",
-    )
+    shutil.copy(hub.cached_path(files, commit, base.PATH), work / "bend2" / "base.bend")
     (work / "lib" / "names").mkdir(parents=True)
-    for package in snapshot.packages:
-        shutil.copytree(data / mirror.FILES / package.hash, work / "lib" / package.hash)
-        if package.name is not None:
-            names = work / "lib" / "names" / f"{package.name}@{package.version}"
-            names.write_text(package.hash + "\n", encoding="utf-8")
+    for package_hash in hashes:
+        shutil.copytree(files / package_hash, work / "lib" / package_hash)
+    for name, package_hash in names.items():
+        (work / "lib" / "names" / name).write_text(package_hash + "\n", encoding="utf-8")
 
 
 def reference(work: Path) -> dict[tuple[str, str], dict[str, object]]:
@@ -92,25 +102,27 @@ def main() -> None:
     parser.add_argument("--work", type=Path, default=Path("data/hub/conformance"))
     parser.add_argument("--all", action="store_true", help="all package versions, not the corpus")
     args = parser.parse_args()
+    files = args.data / mirror.FILES
     snapshot = mirror.load(args.data / mirror.MIRROR)
-    packages = [*snapshot.packages] if args.all else corpus.select(snapshot)[1:]
-    targets = [(package.hash, file.path) for package in packages for file in package.files]
-    prepare(args.bend, snapshot, args.data, args.work)
+    commit = snapshot.base.commit
+    on_disk = packages(files, commit)
+    chosen = [origin.hash for origin in corpus.select(snapshot) if not isinstance(origin, Base)]
+    targets = [
+        (package_hash, path)
+        for package_hash in (on_disk if args.all else chosen)
+        for path in on_disk[package_hash]
+    ]
+    names = {
+        label(package): package.hash for package in snapshot.packages if package.label is not None
+    }
+    prepare(args.bend, files, commit, list(on_disk), names, args.work)
     (args.work / "targets.json").write_text(json.dumps(targets), encoding="utf-8")
     expected = reference(args.work)
 
-    every = [snapshot.base, *snapshot.packages]
-    sources = {
-        (package.hash, file.path): hub.cached_path(
-            args.data / mirror.FILES, package.hash, file.path
-        ).read_text(encoding="utf-8")
-        for package in every
-        for file in package.files
-    }
-    names = {f"{p.name}@{p.version}": p.hash for p in snapshot.packages if p.name is not None}
-    loader = load_all(
-        Library(sources, names, (snapshot.base.hash, snapshot.base.files[0].path)), targets
-    )
+    base_key: FileKey = (commit, base.PATH)
+    keys = [base_key, *((h, path) for h, paths in on_disk.items() for path in paths)]
+    sources = {key: hub.cached_path(files, *key).read_text(encoding="utf-8") for key in keys}
+    loader = load_all(Library(sources, names, base_key), targets)
     refs = loader.references()
     elsewhere: dict[str, set[str]] = {}
     for module in loader.modules.values():

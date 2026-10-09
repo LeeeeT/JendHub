@@ -15,7 +15,6 @@ from jend.parser import (
     Ctr,
     Declaration,
     Eql,
-    Kind,
     Lam,
     Let,
     Mat,
@@ -52,13 +51,6 @@ class LoadError(Exception):
 
 
 @dataclass(frozen=True)
-class Import:
-    target: str
-    alias: str
-    module: str
-
-
-@dataclass(frozen=True)
 class ImportLine:
     index: int
     target: str
@@ -81,36 +73,9 @@ def import_lines(text: str) -> list[ImportLine]:
 
 
 @dataclass(frozen=True)
-class Place:
-    module: str
-    line: int
-    first_line: int
-    last_line: int
-    doc: str
-
-
-@dataclass(frozen=True)
-class Definition:
-    kind: Kind
-    name: str
-    key: str
-    signature: str
-    doc: str
-    line: int
-    first_line: int
-    last_line: int
-    refs: tuple[str, ...]
-    fills: tuple[Place, ...]
-
-    @property
-    def full_doc(self) -> str:
-        return " ".join(doc for doc in (self.doc, *(fill.doc for fill in self.fills)) if doc)
-
-
-@dataclass(frozen=True)
 class Module:
     ns: str
-    imports: tuple[Import, ...]
+    aliases: dict[str, str]
     closure: frozenset[str]
     text: str
     declarations: tuple[Declaration, ...]
@@ -160,7 +125,6 @@ class Loader:
         ns = BASE if is_base else f"{key[0]}/{key[1].removesuffix('.bend')}"
         body = text.split("\n")
         aliases: dict[str, str] = {}
-        imports: list[Import] = []
         closure = {ns}
         for line in import_lines(text):
             body[line.index] = ""
@@ -175,7 +139,6 @@ class Loader:
             dependency = self._resolve(key, target)
             module = self.load(dependency)
             aliases[alias] = module.ns
-            imports.append(Import(target, alias, module.ns))
             closure |= module.closure
         parse_text = "\n".join(body)
         visible = frozenset(closure)
@@ -187,7 +150,7 @@ class Loader:
             for info in self.book.tlds.values():
                 if info.module == BASE:
                     info.base = True
-        return Module(ns, tuple(imports), visible, parse_text, tuple(declarations))
+        return Module(ns, aliases, visible, parse_text, tuple(declarations))
 
     def _resolve(self, importer: FileKey, target: str) -> FileKey:
         named = re.match(r"([^/]*@[^/]*)/", target)
@@ -217,7 +180,7 @@ class Loader:
         for name in _names(declaration.terms):
             ctr = self.book.ctrs.get(name)
             target = name if ctr is None else ctr.family
-            if target != declaration.key and target in self.book.tlds:
+            if target in self.book.tlds:
                 found.add(target)
         return found
 
@@ -227,69 +190,6 @@ class Loader:
             for declaration in module.declarations:
                 refs.setdefault(declaration.key, set()).update(self.uses(declaration))
         return refs
-
-    def fills(self) -> dict[str, list[Place]]:
-        found: dict[str, list[Place]] = {}
-        for module in self.modules.values():
-            for declaration in module.declarations:
-                if declaration.fills:
-                    found.setdefault(declaration.key, []).append(_place(module, declaration))
-        return found
-
-    def definitions(
-        self, key: FileKey, refs: dict[str, set[str]], fills: dict[str, list[Place]]
-    ) -> tuple[Definition, ...]:
-        module = self.modules[key]
-        return tuple(
-            _definition(module, declaration, refs, fills)
-            for declaration in module.declarations
-            if not declaration.fills
-        )
-
-
-def _place(module: Module, declaration: Declaration) -> Place:
-    text = module.text
-    lines = text.split("\n")
-    start_line = text.count("\n", 0, declaration.start)
-    doc_lines: list[str] = []
-    index = start_line - 1
-    while index >= 0 and lines[index].startswith("#"):
-        doc_lines.append(lines[index].lstrip("#").strip())
-        index -= 1
-    return Place(
-        module=module.ns,
-        line=text.count("\n", 0, declaration.keyword) + 1,
-        first_line=start_line - len(doc_lines) + 1,
-        last_line=text.count("\n", 0, declaration.end) + 1,
-        doc=" ".join(reversed(doc_lines)),
-    )
-
-
-def _definition(
-    module: Module,
-    declaration: Declaration,
-    refs: dict[str, set[str]],
-    fills: dict[str, list[Place]],
-) -> Definition:
-    text = module.text
-    if declaration.kind is Kind.DEF:
-        signature = _collapse(_strip_comments(text[declaration.start : declaration.header_end]))
-    else:
-        block = text[declaration.start : declaration.end].split("\n")
-        signature = "\n".join(line.rstrip() for line in block if line.strip())
-    place = _place(module, declaration)
-    return Definition(
-        kind=declaration.kind,
-        name=declaration.name,
-        key=declaration.key,
-        signature=signature,
-        doc=place.doc,
-        line=place.line,
-        first_line=place.first_line,
-        last_line=place.last_line,
-        refs=tuple(sorted(refs.get(declaration.key, ()))),
-        fills=tuple(fills.get(declaration.key, ())),
-    )
 
 
 def load_all(library: Library, keys: list[FileKey]) -> Loader:
@@ -375,30 +275,3 @@ def _walk(terms: tuple[Term, ...]) -> Iterator[Term]:
                 stack.extend((x, annotation))
             case _:
                 pass
-
-
-def _strip_comments(text: str) -> str:
-    out: list[str] = []
-    index = 0
-    while index < len(text):
-        char = text[index]
-        if char in "'\"":
-            end = index + 1
-            while end < len(text) and text[end] != char:
-                end += 2 if text[end] == "\\" else 1
-            out.append(text[index : end + 1])
-            index = end + 1
-            continue
-        if char == "#" and (index == 0 or text[index - 1] in " \t\n"):
-            newline = text.find("\n", index)
-            index = len(text) if newline < 0 else newline
-            continue
-        out.append(char)
-        index += 1
-    return "".join(out)
-
-
-def _collapse(text: str) -> str:
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"([(\[{])\s", r"\1", text)
-    return re.sub(r"\s([)\]}])", r"\1", text).strip()
