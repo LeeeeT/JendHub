@@ -128,7 +128,8 @@ def main() -> None:
     for module in loader.modules.values():
         for declaration in module.declarations:
             if declaration.fills and module_of(declaration.key) != module.ns:
-                elsewhere.setdefault(declaration.key, set()).update(loader.uses(declaration))
+                used = loader.resolve(module.names[declaration.key])
+                elsewhere.setdefault(declaration.key, set()).update(used)
 
     failures = 0
     for target in targets:

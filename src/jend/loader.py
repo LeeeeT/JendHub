@@ -79,6 +79,7 @@ class Module:
     closure: frozenset[str]
     text: str
     declarations: tuple[Declaration, ...]
+    names: dict[str, set[str]]
 
 
 @dataclass
@@ -143,14 +144,14 @@ class Loader:
         parse_text = "\n".join(body)
         visible = frozenset(closure)
         declarations = Parser(View(self.book, visible), parse_text, ns, aliases).book()
+        names: dict[str, set[str]] = {}
         for declaration in declarations:
-            for term in declaration.terms:
-                _check_operators(term)
+            names.setdefault(declaration.key, set()).update(_names(declaration.terms))
         if is_base:
             for info in self.book.tlds.values():
                 if info.module == BASE:
                     info.base = True
-        return Module(ns, aliases, visible, parse_text, tuple(declarations))
+        return Module(ns, aliases, visible, parse_text, tuple(declarations), names)
 
     def _resolve(self, importer: FileKey, target: str) -> FileKey:
         named = re.match(r"([^/]*@[^/]*)/", target)
@@ -175,9 +176,9 @@ class Loader:
             raise LoadError(f"an import path of plain names: {target}")
         return package, path
 
-    def uses(self, declaration: Declaration) -> set[str]:
+    def resolve(self, names: set[str]) -> set[str]:
         found: set[str] = set()
-        for name in _names(declaration.terms):
+        for name in names:
             ctr = self.book.ctrs.get(name)
             target = name if ctr is None else ctr.family
             if target in self.book.tlds:
@@ -187,8 +188,8 @@ class Loader:
     def references(self) -> dict[str, set[str]]:
         refs: dict[str, set[str]] = {}
         for module in self.modules.values():
-            for declaration in module.declarations:
-                refs.setdefault(declaration.key, set()).update(self.uses(declaration))
+            for key, names in module.names.items():
+                refs.setdefault(key, set()).update(self.resolve(names))
         return refs
 
 
@@ -219,14 +220,10 @@ def _plain(path: str) -> bool:
     return PLAIN_PATH.fullmatch(HUB.sub("", path, count=1)) is not None
 
 
-def _check_operators(term: Term) -> None:
-    for node in _walk((term,)):
-        if isinstance(node, Ref) and node.k.rfind(".") == 0:
-            raise LoadError(f"a type for the operator {node.k[1:]} (write (a op b : T))")
-
-
 def _names(terms: tuple[Term, ...]) -> Iterator[str]:
     for node in _walk(terms):
+        if isinstance(node, Ref) and node.k.rfind(".") == 0:
+            raise LoadError(f"a type for the operator {node.k[1:]} (write (a op b : T))")
         if isinstance(node, Ref | Adt | Ctr | Mat):
             yield node.k
         elif isinstance(node, Sub):
@@ -244,8 +241,12 @@ def _pattern_names(pattern: Patt) -> Iterator[str]:
 
 def _walk(terms: tuple[Term, ...]) -> Iterator[Term]:
     stack: list[Term] = list(terms)
+    seen: set[int] = set()
     while stack:
         node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
         yield node
         match node:
             case Var(v=v) if v is not None:
