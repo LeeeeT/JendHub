@@ -12,23 +12,28 @@ design first, then measure one time.
 
 ## Queries
 
-The 132 queries are in the style of LLM coding agents that write Bend
+The 112 queries are in the style of LLM coding agents that write Bend
 programs. They do not contain typos or half-remembered names. Each query has a
 `style` and a `topic`.
 
 | Style | Queries | Example |
 | - | - | - |
-| task | 56 | `parse an ISO 8601 date-time string with a UTC offset` |
-| word | 25 | `hash` |
-| keywords | 21 | `HMAC-SHA256`, `hash bytes` |
-| statement | 11 | `reverse (reverse xs) == xs` |
+| task | 47 | `parse an ISO 8601 date-time string with a UTC offset` |
+| word | 21 | `hash` |
+| keywords | 19 | `HMAC-SHA256`, `hash bytes` |
 | identifier | 10 | `Map.get` |
-| signature | 7 | `Maybe<A> -> A -> A` |
+| statement | 7 | `reverse (reverse xs) == xs` |
+| signature | 6 | `Maybe<A> -> A -> A` |
 | question | 2 | `how do I read the whole contents of a file into a string?` |
 
 Queries q001 to q100 were written first. Queries q101 to q132 are short
 queries (one word, two or three words, or a bare name) that were added after
 a manual test showed that the first set had no query such as `hash`.
+
+On 2026-10-09, 20 queries were removed, because some of their answers are in
+files that Bend rejects, and the mirror does not keep such files: q007, q030,
+q042 to q046, q049, q051, q067, q076, q082 to q084, q086, q102, q104, q105,
+q114 and q122.
 
 The topics cover Base (lists, strings, numbers, maps, Maybe and Result, IO,
 files, threads and channels, TCP), the libraries of the indexed packages
@@ -134,37 +139,38 @@ rewards a ranking that shows the copies instead of `Maybe.default`.
 
 ## Results of the current design
 
-Run of 2026-10-06 on the index of Base and the latest versions of the 100
-hottest packages (index `75cb8f3f48f45154`), with the role-aware enrichment:
+Run of 2026-10-09 on the index of Base and the latest versions of the 100
+hottest packages (index `002af78b7b5be9f5`). The mirror of this index reads
+the files with the port of Bend's parser and leaves out the files that Bend
+rejects.
 
-| Measure, 124 queries with an answer | Formula | Formula without the role penalty |
-| - | - | - |
-| nDCG@5 | 0.728 | 0.692 |
-| nDCG@10 | 0.747 | 0.711 |
-| Grade 3 first | 0.653 | 0.621 |
-| MRR | 0.849 | 0.805 |
-| Recall@20 | 0.808 | 0.770 |
+| Measure, 104 queries with an answer | Formula |
+| - | - |
+| nDCG@10 | 0.748 |
+| Grade 3 first | 0.673 |
+| MRR | 0.843 |
+| Recall@20 | 0.824 |
 
-The role penalty adds +0.036 nDCG@5 (95% interval +0.022 to +0.052; better
-on 52 queries, worse on 15). The corpus grew from 50 to 100 packages and some
-queries got answers, so these numbers do not compare directly with the
-earlier runs (0.753 nDCG@10 on 121 queries with the 50 hottest packages).
+On the same 104 queries, the run of 2026-10-06 (index `75cb8f3f48f45154`,
+before the port) gets 0.741 nDCG@10: +0.007 (95% interval +0.001 to +0.014;
+better on 31 queries, worse on 18). On that run, the role penalty added
++0.036 nDCG@5 (95% interval +0.022 to +0.052).
 
 Share of the answers (grade 2 or 3) that each stage finds:
 
 | Stage | @10 | @25 | @50 | @100 |
 | - | - | - | - | - |
-| BM25 | 0.486 | 0.624 | 0.727 | 0.808 |
-| Vector search | 0.550 | 0.739 | 0.834 | 0.903 |
-| Formula | 0.693 | 0.842 | 0.922 | 0.952 |
+| BM25 | 0.514 | 0.642 | 0.731 | 0.815 |
+| Vector search | 0.570 | 0.754 | 0.852 | 0.919 |
+| Formula | 0.712 | 0.848 | 0.927 | 0.958 |
 
-nDCG@10 for each style: `identifier` 0.883, `statement` 0.802, `task` 0.789,
-`keywords` 0.742, `question` 0.701, `signature` 0.654, `word` 0.608.
+nDCG@10 for each style: `identifier` 0.879, `statement` 0.808, `task` 0.772,
+`question` 0.748, `keywords` 0.737, `signature` 0.657, `word` 0.648.
 
 The worst queries: `hash` (the `hash` functions of the package manager `ezx`
 come first), `hex` (local hex utilities), `parse int`, and `unicode general
 category of a code point` (table entries come first). The best score does
-not separate queries with an answer from queries without one (AUC 0.64).
+not separate queries with an answer from queries without one (AUC 0.66).
 
 ## Dev queries
 

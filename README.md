@@ -256,7 +256,7 @@ ssh root@host 'cd /opt/jendhub && docker compose up -d'
 
 ## Evaluation
 
-`data/benchmark.json` holds 100 queries in the style of LLM coding agents, with
+`data/benchmark.json` holds 112 queries in the style of LLM coding agents, with
 graded relevance judgments. Each judgment gives a document key, a grade, the
 definition and the reason for the grade:
 
