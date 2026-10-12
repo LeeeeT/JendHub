@@ -2,7 +2,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 
-from jendhub.declarations import declared_names
+from jendhub.definitions import corpus_definitions, source_files
 from jendhub.errors import JendHubError
 from jendhub.hub import Json
 from jendhub.mirror import Mirror
@@ -30,27 +30,8 @@ class Query:
     answers: list[Answer]
 
 
-@dataclass(frozen=True)
-class SourceFile:
-    prefix: str
-    source: str
-
-
-def source_files(corpus: Mirror) -> list[SourceFile]:
-    files = [SourceFile("", corpus.base_source.read_text(encoding="utf-8"))]
-    for release, hash_ in corpus.releases().items():
-        for path, content in sorted(corpus.read_package(hash_).items()):
-            module = path.removesuffix(".bend")
-            files.append(SourceFile(f"{release}/{module}:", content.decode()))
-    return files
-
-
 def definition_ids(corpus: Mirror) -> set[str]:
-    return {
-        f"{file.prefix}{name}"
-        for file in source_files(corpus)
-        for name in declared_names(file.source)
-    }
+    return {definition.id for definition in corpus_definitions(corpus)}
 
 
 def corpus_text(corpus: Mirror) -> str:

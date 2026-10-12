@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 
 from jendhub.base import fetch_base
-from jendhub.declarations import declared_names
+from jendhub.definitions import SourceFile, extract
 from jendhub.errors import JendHubError
 from jendhub.http import http_client
 from jendhub.hub import Json, Listing, Package, Release, listings, parse_listing
@@ -75,7 +75,7 @@ def parse_dev_package(item: Json) -> DevPackage:
 
 
 def count_definitions(files: dict[str, bytes]) -> int:
-    return sum(len(declared_names(content.decode())) for content in files.values())
+    return sum(len(extract(SourceFile("", content.decode()))) for content in files.values())
 
 
 def budget_used(budget: Budget, packages: int, definitions: int) -> int:
