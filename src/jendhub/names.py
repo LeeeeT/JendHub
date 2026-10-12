@@ -19,7 +19,7 @@ class NameMatch:
             for token in name:
                 self.index[token].append(document)
 
-    def search(self, query: str, limit: int) -> list[str]:
+    def ranking(self, query: str, limit: int) -> list[str]:
         wanted = set(tokens(query))
         candidates = sorted({d for token in wanted for d in self.index.get(token, [])})
         scores = {d: overlap(wanted, self.names[d]) for d in candidates}
@@ -27,6 +27,14 @@ class NameMatch:
         ranked = sorted(matches, key=lambda document: -scores[document])
         return [self.ids[document] for document in ranked[:limit]]
 
-    def scores(self, query: str, ids: list[str]) -> list[float]:
+    def search(self, queries: list[str], limit: int) -> list[list[str]]:
+        return [self.ranking(query, limit) for query in queries]
+
+    def overlaps(self, query: str, ids: list[str]) -> list[float]:
         wanted = set(tokens(query))
         return [overlap(wanted, self.names[self.positions[id_]]) for id_ in ids]
+
+    def scores(self, queries: list[str], ids: list[list[str]]) -> list[list[float]]:
+        return [
+            self.overlaps(query, query_ids) for query, query_ids in zip(queries, ids, strict=True)
+        ]

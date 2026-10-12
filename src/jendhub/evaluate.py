@@ -1,19 +1,14 @@
 import math
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
 from jendhub.bench import BenchError, Query
-from jendhub.definitions import Definition
 
 ALL_KINDS = "all"
 
 
 class Pipeline(Protocol):
-    def search(self, query: str, limit: int) -> list[str]: ...
-
-
-type PipelineBuilder = Callable[[list[Definition]], Pipeline]
+    def search(self, queries: list[str], limit: int) -> list[list[str]]: ...
 
 
 @dataclass(frozen=True)
@@ -38,11 +33,16 @@ def ndcg(query: Query, ranking: list[str], k: int) -> float:
     return dcg(found) / dcg(ideal)
 
 
-def rank(pipeline: Pipeline, query: Query, limit: int) -> list[str]:
-    ranking = pipeline.search(query.query, limit)
-    if len(set(ranking)) != len(ranking):
-        raise BenchError(f"the pipeline returned an id two times for {query.query!r}")
-    return ranking
+def rank(pipeline: Pipeline, queries: list[Query], limit: int) -> list[list[str]]:
+    rankings = pipeline.search([query.query for query in queries], limit)
+    if len(rankings) != len(queries):
+        raise BenchError(
+            f"the pipeline returned {len(rankings)} rankings for {len(queries)} queries"
+        )
+    for query, ranking in zip(queries, rankings, strict=True):
+        if len(set(ranking)) != len(ranking):
+            raise BenchError(f"the pipeline returned an id two times for {query.query!r}")
+    return rankings
 
 
 def mean_ndcg(queries: list[Query], rankings: list[list[str]], k: int) -> float:
@@ -51,7 +51,7 @@ def mean_ndcg(queries: list[Query], rankings: list[list[str]], k: int) -> float:
 
 
 def evaluate(pipeline: Pipeline, queries: list[Query], ks: list[int]) -> list[Score]:
-    rankings = [rank(pipeline, query, max(ks)) for query in queries]
+    rankings = rank(pipeline, queries, max(ks))
     groups: dict[str, list[int]] = {ALL_KINDS: list(range(len(queries)))}
     for index, query in enumerate(queries):
         groups.setdefault(query.kind, []).append(index)

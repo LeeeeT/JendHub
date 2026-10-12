@@ -51,12 +51,20 @@ class Bm25:
                 scores[documents] += impacts
         return scores
 
-    def search(self, query: str, limit: int) -> list[str]:
+    def ranking(self, query: str, limit: int) -> list[str]:
         scores = self.document_scores(query)
         matches = np.flatnonzero(scores)
         order = matches[np.lexsort((matches, -scores[matches]))]
         return [self.ids[document] for document in order[:limit]]
 
-    def scores(self, query: str, ids: list[str]) -> list[float]:
+    def search(self, queries: list[str], limit: int) -> list[list[str]]:
+        return [self.ranking(query, limit) for query in queries]
+
+    def id_scores(self, query: str, ids: list[str]) -> list[float]:
         scores = self.document_scores(query)
         return [float(scores[self.positions[id_]]) for id_ in ids]
+
+    def scores(self, queries: list[str], ids: list[list[str]]) -> list[list[float]]:
+        return [
+            self.id_scores(query, query_ids) for query, query_ids in zip(queries, ids, strict=True)
+        ]

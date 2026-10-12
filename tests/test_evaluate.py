@@ -13,8 +13,13 @@ class FixedPipeline:
     def __init__(self, rankings: dict[str, list[str]]) -> None:
         self.rankings = rankings
 
-    def search(self, query: str, limit: int) -> list[str]:
-        return self.rankings[query][:limit]
+    def search(self, queries: list[str], limit: int) -> list[list[str]]:
+        return [self.rankings[query][:limit] for query in queries]
+
+
+class MissingRankingPipeline:
+    def search(self, queries: list[str], limit: int) -> list[list[str]]:
+        return []
 
 
 def test_ndcg_is_one_for_the_ideal_ranking() -> None:
@@ -49,6 +54,11 @@ def test_evaluate_refuses_a_ranking_with_a_repeated_id() -> None:
     pipeline = FixedPipeline({ZIP.query: ["List.zip", "List.zip"]})
     with pytest.raises(BenchError):
         evaluate(pipeline, [ZIP], [10])
+
+
+def test_evaluate_refuses_a_missing_ranking() -> None:
+    with pytest.raises(BenchError):
+        evaluate(MissingRankingPipeline(), [ZIP], [10])
 
 
 def test_format_scores_prints_one_row_for_each_kind() -> None:

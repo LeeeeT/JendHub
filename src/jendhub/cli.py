@@ -15,14 +15,16 @@ from jendhub.dev import (
     build,
     select,
 )
+from jendhub.embeddings import OpenRouterEmbedder
 from jendhub.errors import JendHubError
 from jendhub.evaluate import evaluate, format_scores
 from jendhub.mirror import Mirror
-from jendhub.pipelines import PIPELINES
+from jendhub.pipelines import PIPELINES, Resources
 from jendhub.sync import describe_plan, plan, sync
 
 DEV_CORPUS_LIST = Path("bench/dev.json")
 QUERIES = Path("bench/queries.jsonl")
+EMBEDDINGS = Path("embeddings.sqlite")
 DEFAULT_K = 10
 
 
@@ -116,9 +118,10 @@ def check_queries(corpus: Mirror) -> None:
     sys.stdout.write(summary(checked_queries(corpus)) + "\n")
 
 
-def run_pipeline(corpus: Mirror, name: str, ks: list[int]) -> None:
+def run_pipeline(corpus: Mirror, embeddings: Path, name: str, ks: list[int]) -> None:
     queries = checked_queries(corpus)
-    pipeline = PIPELINES[name](corpus_definitions(corpus))
+    resources = Resources(corpus_definitions(corpus), OpenRouterEmbedder(embeddings))
+    pipeline = PIPELINES[name](resources)
     sys.stdout.write(format_scores(evaluate(pipeline, queries, ks), ks) + "\n")
 
 
@@ -150,7 +153,10 @@ def run(arguments: argparse.Namespace) -> None:
             check_queries(Mirror(arguments.data / "dev"))
         case "bench", "run":
             run_pipeline(
-                Mirror(arguments.data / "dev"), arguments.pipeline, arguments.k or [DEFAULT_K]
+                Mirror(arguments.data / "dev"),
+                arguments.data / EMBEDDINGS,
+                arguments.pipeline,
+                arguments.k or [DEFAULT_K],
             )
         case command:
             raise AssertionError(command)
