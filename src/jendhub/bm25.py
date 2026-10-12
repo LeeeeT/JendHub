@@ -20,6 +20,7 @@ def inverse_document_frequency(total: int, matching: int) -> float:
 class Bm25:
     def __init__(self, documents: list[tuple[str, str]]) -> None:
         self.ids = [id_ for id_, _ in documents]
+        self.positions = {id_: position for position, id_ in enumerate(self.ids)}
         counts = [Counter(tokens(text)) for _, text in documents]
         lengths = np.array([count.total() for count in counts], dtype=np.float64)
         average = float(lengths.mean()) if lengths.any() else 1.0
@@ -42,12 +43,20 @@ class Bm25:
         idf = inverse_document_frequency(total, len(entries))
         return documents, idf * frequencies * (K1 + 1) / (frequencies + norms[documents])
 
-    def search(self, query: str, limit: int) -> list[str]:
+    def document_scores(self, query: str) -> Impacts:
         scores = np.zeros(len(self.ids))
         for term in set(tokens(query)):
             if term in self.impacts:
                 documents, impacts = self.impacts[term]
                 scores[documents] += impacts
+        return scores
+
+    def search(self, query: str, limit: int) -> list[str]:
+        scores = self.document_scores(query)
         matches = np.flatnonzero(scores)
         order = matches[np.lexsort((matches, -scores[matches]))]
         return [self.ids[document] for document in order[:limit]]
+
+    def scores(self, query: str, ids: list[str]) -> list[float]:
+        scores = self.document_scores(query)
+        return [float(scores[self.positions[id_]]) for id_ in ids]

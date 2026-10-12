@@ -35,3 +35,10 @@ def test_search_breaks_ties_by_document_order() -> None:
 
 def test_an_empty_index_returns_no_results() -> None:
     assert Bm25([]).search("map", 10) == []
+
+
+def test_scores_match_the_search_order() -> None:
+    index = Bm25(DOCUMENTS)
+    scores = index.scores("list map", ["Nat.add", "List.zip", "List.map"])
+    assert scores[0] == 0.0
+    assert scores[2] > scores[1] > 0.0
