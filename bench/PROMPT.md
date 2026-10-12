@@ -41,24 +41,52 @@ or a namespace.
 
 ## Queries
 
-Write queries that an AI agent could send while it writes Bend code. Use many
-kinds of queries. For example:
+Write queries that an AI agent could send while it writes Bend code. The agent
+knows its task. It does not know which package can help, the name of the
+definition, the names of the parameters, or the edge cases that the definition
+handles. It searches before it finds the answer. Thus most real queries are
+short and vague.
 
-- an exact name or a partial name
-- a type signature
-- keywords
-- a few words
-- a question
-- a description of a need
+Write each query from the need that the target satisfies, not from the text of
+the target. Do not copy details from the comment or the code of the target.
+Spread the targets across Base and all 20 packages.
 
-Give each query a short `kind` label in lowercase, for example `name`,
-`signature`, `keywords`, `phrase`, `question` or `description`. Use the same
-label for the same kind of query every time. Use each kind many times.
+Give each query a `kind` label. Use these kinds and follow their rules:
 
-Write each query for one target definition. Spread the targets across Base and
-all 20 packages. Include easy queries and hard queries. A query of a
-descriptive kind must describe the need in your own words. It must not contain
-the identifiers of the target.
+- `name`: a guessed or partial identifier, as the agent expects it to be, for
+  example `Json.Value` or `add_comm`. Write an identifier, not a phrase. Never
+  include the package name.
+- `signature`: approximate types, as a user writes them. Do not include
+  parameter names or levels such as `&2`.
+- `keywords`: 2 to 5 words.
+- `phrase`: 2 to 6 words of natural language.
+- `question`: one short question about the need.
+- `description`: one or two sentences about the task. State the need, not the
+  special behavior of the target.
+- `exact-name`: the exact name of the target, from an agent that saw it
+  before.
+- `exact-signature`: the exact signature of the target, from an agent that
+  saw it before. Write the name, the parameters and the return type. Do not
+  include `def`, `type`, `law` or the final colon.
+
+The `exact-name` and `exact-signature` queries together must be about 15% of
+all queries. Use each other kind many times. If a query does not fit any of
+these kinds, give it a new short label in lowercase, and use the same label
+for the same kind of query every time.
+
+These pairs show queries to avoid and the realistic queries to write instead:
+
+| Kind | Avoid | Prefer |
+|---|---|---|
+| `name` | `bend-kit-dns resolve.all` | `dns.resolve` |
+| `name` | `bend-kit-time Duration.of_ms` | `Duration.from_ms` |
+| `name` | `natural addition commutativity` | `add_comm` |
+| `exact-signature` | `def String.trim(s: String) -> String:` | `String.trim(s: String) -> String` |
+| `signature` | `(s: String) -> Maybe<&2, Nat>` | `String -> Maybe<Nat>` |
+| `keywords` | `JSON object duplicate key last member lookup` | `json get field` |
+| `phrase` | `random floating point value from zero inclusive to one exclusive` | `random float` |
+| `question` | `How can I permute a list with Fisher-Yates and retain the updated generator?` | `How do I shuffle a list?` |
+| `description` | `Format an instant as UTC RFC 3339 with unnecessary fractional zeros removed.` | `I need to print a timestamp in RFC 3339 format.` |
 
 ## Targets
 
@@ -95,9 +123,13 @@ Grade each definition that answers the query:
 - `2`: the definition is a good answer.
 - `1`: the definition is related and useful.
 
-Each query must have at least one answer with grade `3`. Search the full
-corpus, Base included, for other good answers, and grade them too. Do not list
-a definition two times in one query. Do not write the same query two times.
+Each query must have at least one answer with grade `3`. A vague query can
+have more than one answer with grade `3`.
+
+A vague query fits many definitions. For each query, search the full corpus,
+Base included, and grade every definition that an agent with this query could
+use. Do not grade only the target. Do not list a definition two times in one
+query. Do not write the same query two times.
 
 ## Output
 
