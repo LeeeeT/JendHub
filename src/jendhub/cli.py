@@ -17,7 +17,7 @@ from jendhub.dev import (
 )
 from jendhub.embeddings import OpenRouterEmbedder
 from jendhub.errors import JendHubError
-from jendhub.evaluate import evaluate, format_scores
+from jendhub.evaluate import compare, evaluate, format_comparisons, format_scores
 from jendhub.mirror import Mirror
 from jendhub.pipelines import PIPELINES, Resources
 from jendhub.sync import describe_plan, plan, sync
@@ -62,6 +62,14 @@ def parse_arguments() -> argparse.Namespace:
         type=int,
         action="append",
         help=f"the cutoff of nDCG@k; repeat it for more cutoffs (default: {DEFAULT_K})",
+    )
+    compare_parser = bench_commands.add_parser(
+        "compare", help="compare two search pipelines query by query on the dev corpus"
+    )
+    compare_parser.add_argument("baseline", choices=sorted(PIPELINES), help="pipeline A")
+    compare_parser.add_argument("candidate", choices=sorted(PIPELINES), help="pipeline B")
+    compare_parser.add_argument(
+        "--k", type=int, default=DEFAULT_K, help="the cutoff of nDCG@k (default: %(default)s)"
     )
     return parser.parse_args()
 
@@ -118,11 +126,25 @@ def check_queries(corpus: Mirror) -> None:
     sys.stdout.write(summary(checked_queries(corpus)) + "\n")
 
 
+def resources_for(corpus: Mirror, embeddings: Path) -> Resources:
+    return Resources(corpus_definitions(corpus), OpenRouterEmbedder(embeddings))
+
+
 def run_pipeline(corpus: Mirror, embeddings: Path, name: str, ks: list[int]) -> None:
     queries = checked_queries(corpus)
-    resources = Resources(corpus_definitions(corpus), OpenRouterEmbedder(embeddings))
-    pipeline = PIPELINES[name](resources)
+    pipeline = PIPELINES[name](resources_for(corpus, embeddings))
     sys.stdout.write(format_scores(evaluate(pipeline, queries, ks), ks) + "\n")
+
+
+def compare_pipelines(
+    corpus: Mirror, embeddings: Path, baseline: str, candidate: str, k: int
+) -> None:
+    queries = checked_queries(corpus)
+    resources = resources_for(corpus, embeddings)
+    comparisons = compare(
+        PIPELINES[baseline](resources), PIPELINES[candidate](resources), queries, k
+    )
+    sys.stdout.write(f"A: {baseline}\nB: {candidate}\n{format_comparisons(comparisons, k)}\n")
 
 
 def main() -> None:
@@ -157,6 +179,14 @@ def run(arguments: argparse.Namespace) -> None:
                 arguments.data / EMBEDDINGS,
                 arguments.pipeline,
                 arguments.k or [DEFAULT_K],
+            )
+        case "bench", "compare":
+            compare_pipelines(
+                Mirror(arguments.data / "dev"),
+                arguments.data / EMBEDDINGS,
+                arguments.baseline,
+                arguments.candidate,
+                arguments.k,
             )
         case command:
             raise AssertionError(command)

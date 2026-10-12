@@ -3,7 +3,15 @@ import math
 import pytest
 
 from jendhub.bench import Answer, BenchError, Query
-from jendhub.evaluate import Score, evaluate, format_scores, ndcg
+from jendhub.evaluate import (
+    Comparison,
+    Score,
+    compare,
+    evaluate,
+    format_comparisons,
+    format_scores,
+    ndcg,
+)
 
 MAP = Query("map a list", "phrase", [Answer("List.map", 3), Answer("List.foldr", 1)])
 ZIP = Query("zip", "name", [Answer("List.zip", 3)])
@@ -59,6 +67,39 @@ def test_evaluate_refuses_a_ranking_with_a_repeated_id() -> None:
 def test_evaluate_refuses_a_missing_ranking() -> None:
     with pytest.raises(BenchError):
         evaluate(MissingRankingPipeline(), [ZIP], [10])
+
+
+def test_compare_of_a_pipeline_with_itself_shows_no_change() -> None:
+    pipeline = FixedPipeline({MAP.query: ["List.foldr"], ZIP.query: ["List.zip"]})
+    [all_kinds, *_] = compare(pipeline, pipeline, [MAP, ZIP], 10)
+    assert all_kinds == Comparison("all", 2, all_kinds.baseline, all_kinds.baseline, 0, 0, 0, 0)
+
+
+def test_compare_counts_the_better_and_the_worse_queries() -> None:
+    baseline = FixedPipeline({MAP.query: ["List.foldr"], ZIP.query: ["List.zip"]})
+    candidate = FixedPipeline({MAP.query: ["List.map", "List.foldr"], ZIP.query: []})
+    comparisons = compare(baseline, candidate, [MAP, ZIP], 10)
+    assert [(c.kind, c.better, c.worse) for c in comparisons] == [
+        ("all", 1, 1),
+        ("name", 0, 1),
+        ("phrase", 1, 0),
+    ]
+
+
+def test_compare_gives_an_interval_around_the_mean_change() -> None:
+    baseline = FixedPipeline({MAP.query: ["List.foldr"], ZIP.query: []})
+    candidate = FixedPipeline({MAP.query: ["List.map", "List.foldr"], ZIP.query: ["List.zip"]})
+    [all_kinds, *_] = compare(baseline, candidate, [MAP, ZIP], 10)
+    change = all_kinds.candidate - all_kinds.baseline
+    assert 0 < all_kinds.low <= change <= all_kinds.high
+
+
+def test_format_comparisons_prints_one_row_for_each_kind() -> None:
+    comparisons = [Comparison("all", 200, 0.5, 0.625, 0.1, 0.15, 30, 12)]
+    assert format_comparisons(comparisons, 10).splitlines() == [
+        "kind  queries    A@10    B@10   B - A      95% interval  better  worse",
+        "all      200   0.500   0.625  +0.125  [+0.100, +0.150]      30     12",
+    ]
 
 
 def test_format_scores_prints_one_row_for_each_kind() -> None:

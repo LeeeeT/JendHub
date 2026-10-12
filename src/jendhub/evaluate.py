@@ -2,9 +2,15 @@ import math
 from dataclasses import dataclass
 from typing import Protocol
 
+import numpy as np
+import numpy.typing as npt
+
 from jendhub.bench import BenchError, Query
 
 ALL_KINDS = "all"
+BOOTSTRAP_SAMPLES = 10_000
+CONFIDENCE = 0.95
+SEED = 0
 
 
 class Pipeline(Protocol):
@@ -16,6 +22,18 @@ class Score:
     kind: str
     queries: int
     ndcg: dict[int, float]
+
+
+@dataclass(frozen=True)
+class Comparison:
+    kind: str
+    queries: int
+    baseline: float
+    candidate: float
+    low: float
+    high: float
+    better: int
+    worse: int
 
 
 def gain(grade: int) -> float:
@@ -45,23 +63,58 @@ def rank(pipeline: Pipeline, queries: list[Query], limit: int) -> list[list[str]
     return rankings
 
 
-def mean_ndcg(queries: list[Query], rankings: list[list[str]], k: int) -> float:
+def query_ndcgs(pipeline: Pipeline, queries: list[Query], k: int) -> npt.NDArray[np.float64]:
+    rankings = rank(pipeline, queries, k)
     pairs = zip(queries, rankings, strict=True)
-    return sum(ndcg(query, ranking, k) for query, ranking in pairs) / len(queries)
+    return np.array([ndcg(query, ranking, k) for query, ranking in pairs])
+
+
+def groups(queries: list[Query]) -> list[tuple[str, list[int]]]:
+    indexes: dict[str, list[int]] = {ALL_KINDS: list(range(len(queries)))}
+    for index, query in enumerate(queries):
+        indexes.setdefault(query.kind, []).append(index)
+    return sorted(indexes.items(), key=lambda item: (item[0] != ALL_KINDS, item[0]))
 
 
 def evaluate(pipeline: Pipeline, queries: list[Query], ks: list[int]) -> list[Score]:
     rankings = rank(pipeline, queries, max(ks))
-    groups: dict[str, list[int]] = {ALL_KINDS: list(range(len(queries)))}
-    for index, query in enumerate(queries):
-        groups.setdefault(query.kind, []).append(index)
-    scores: list[Score] = []
-    for kind, indexes in sorted(groups.items(), key=lambda item: (item[0] != ALL_KINDS, item[0])):
-        group = [queries[i] for i in indexes]
-        group_rankings = [rankings[i] for i in indexes]
-        ndcgs = {k: mean_ndcg(group, group_rankings, k) for k in ks}
-        scores.append(Score(kind, len(indexes), ndcgs))
-    return scores
+    pairs = list(zip(queries, rankings, strict=True))
+    values = {k: np.array([ndcg(query, ranking, k) for query, ranking in pairs]) for k in ks}
+    return [
+        Score(kind, len(indexes), {k: float(values[k][indexes].mean()) for k in ks})
+        for kind, indexes in groups(queries)
+    ]
+
+
+def bootstrap_interval(differences: npt.NDArray[np.float64]) -> tuple[float, float]:
+    generator = np.random.default_rng(SEED)
+    samples = generator.choice(differences, size=(BOOTSTRAP_SAMPLES, len(differences)))
+    low, high = np.quantile(samples.mean(axis=1), [(1 - CONFIDENCE) / 2, (1 + CONFIDENCE) / 2])
+    return float(low), float(high)
+
+
+def compare(
+    baseline: Pipeline, candidate: Pipeline, queries: list[Query], k: int
+) -> list[Comparison]:
+    baseline_values = query_ndcgs(baseline, queries, k)
+    candidate_values = query_ndcgs(candidate, queries, k)
+    comparisons: list[Comparison] = []
+    for kind, indexes in groups(queries):
+        differences = candidate_values[indexes] - baseline_values[indexes]
+        low, high = bootstrap_interval(differences)
+        comparisons.append(
+            Comparison(
+                kind,
+                len(indexes),
+                float(baseline_values[indexes].mean()),
+                float(candidate_values[indexes].mean()),
+                low,
+                high,
+                int((differences > 0).sum()),
+                int((differences < 0).sum()),
+            )
+        )
+    return comparisons
 
 
 def format_scores(scores: list[Score], ks: list[int]) -> str:
@@ -71,5 +124,21 @@ def format_scores(scores: list[Score], ks: list[int]) -> str:
         f"{score.kind:<{width}}  {score.queries:>7}"
         + "".join(f"  {score.ndcg[k]:>8.3f}" for k in ks)
         for score in scores
+    ]
+    return "\n".join([header, *rows])
+
+
+def format_comparisons(comparisons: list[Comparison], k: int) -> str:
+    width = max(len(comparison.kind) for comparison in comparisons)
+    interval = f"{CONFIDENCE:.0%} interval"
+    header = (
+        f"{'kind':<{width}}  queries  {f'A@{k}':>6}  {f'B@{k}':>6}   B - A"
+        f"  {interval:>16}  better  worse"
+    )
+    rows = [
+        f"{c.kind:<{width}}  {c.queries:>7}  {c.baseline:>6.3f}  {c.candidate:>6.3f}"
+        f"  {c.candidate - c.baseline:>+6.3f}  {f'[{c.low:+.3f}, {c.high:+.3f}]':>16}"
+        f"  {c.better:>6}  {c.worse:>5}"
+        for c in comparisons
     ]
     return "\n".join([header, *rows])
