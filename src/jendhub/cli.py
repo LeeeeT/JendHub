@@ -4,7 +4,8 @@ import logging
 import sys
 from pathlib import Path
 
-from jendhub.bench import BenchError, check, corpus_text, definition_ids, summary
+from jendhub.bench import BenchError, Query, check, corpus_text, definition_ids, summary
+from jendhub.definitions import corpus_definitions
 from jendhub.dev import (
     Budget,
     DefinitionBudget,
@@ -15,11 +16,14 @@ from jendhub.dev import (
     select,
 )
 from jendhub.errors import JendHubError
+from jendhub.evaluate import evaluate, format_scores
 from jendhub.mirror import Mirror
+from jendhub.pipelines import PIPELINES
 from jendhub.sync import describe_plan, plan, sync
 
 DEV_CORPUS_LIST = Path("bench/dev.json")
 QUERIES = Path("bench/queries.jsonl")
+DEFAULT_K = 10
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -49,6 +53,14 @@ def parse_arguments() -> argparse.Namespace:
     bench_commands = bench_parser.add_subparsers(dest="subcommand", required=True)
     bench_commands.add_parser("corpus", help="write the dev corpus as one text file")
     bench_commands.add_parser("check", help=f"check {QUERIES} against the dev corpus")
+    run_parser = bench_commands.add_parser("run", help="score a search pipeline on the dev corpus")
+    run_parser.add_argument("pipeline", choices=sorted(PIPELINES))
+    run_parser.add_argument(
+        "--k",
+        type=int,
+        action="append",
+        help=f"the cutoff of nDCG@k; repeat it for more cutoffs (default: {DEFAULT_K})",
+    )
     return parser.parse_args()
 
 
@@ -88,16 +100,26 @@ def write_corpus_text(corpus: Mirror, output: Path) -> None:
     sys.stdout.write(f"wrote {output}: {len(text)} characters\n")
 
 
-def check_queries(corpus: Mirror) -> None:
+def checked_queries(corpus: Mirror) -> list[Query]:
     require_corpus(corpus)
     if not QUERIES.is_file():
         raise BenchError(f"{QUERIES} does not exist")
     queries, problems = check(QUERIES.read_text(encoding="utf-8"), definition_ids(corpus))
     for problem in problems:
         sys.stdout.write(f"{QUERIES}: {problem}\n")
-    sys.stdout.write(summary(queries) + "\n")
     if problems:
-        raise BenchError(f"{len(problems)} problems in {QUERIES}")
+        raise BenchError(f"{len(problems)} problems in {QUERIES}: run jendhub bench check")
+    return queries
+
+
+def check_queries(corpus: Mirror) -> None:
+    sys.stdout.write(summary(checked_queries(corpus)) + "\n")
+
+
+def run_pipeline(corpus: Mirror, name: str, ks: list[int]) -> None:
+    queries = checked_queries(corpus)
+    pipeline = PIPELINES[name](corpus_definitions(corpus))
+    sys.stdout.write(format_scores(evaluate(pipeline, queries, ks), ks) + "\n")
 
 
 def main() -> None:
@@ -126,5 +148,9 @@ def run(arguments: argparse.Namespace) -> None:
             write_corpus_text(Mirror(arguments.data / "dev"), arguments.data / "dev-corpus.txt")
         case "bench", "check":
             check_queries(Mirror(arguments.data / "dev"))
+        case "bench", "run":
+            run_pipeline(
+                Mirror(arguments.data / "dev"), arguments.pipeline, arguments.k or [DEFAULT_K]
+            )
         case command:
             raise AssertionError(command)
