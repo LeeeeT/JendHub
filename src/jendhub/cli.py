@@ -4,6 +4,7 @@ import logging
 import sys
 from pathlib import Path
 
+from jendhub.bench import BenchError, check, corpus_text, definition_ids, summary
 from jendhub.dev import (
     Budget,
     DefinitionBudget,
@@ -18,6 +19,7 @@ from jendhub.mirror import Mirror
 from jendhub.sync import describe_plan, plan, sync
 
 DEV_CORPUS_LIST = Path("bench/dev.json")
+QUERIES = Path("bench/queries.jsonl")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -31,7 +33,7 @@ def parse_arguments() -> argparse.Namespace:
         "--dry-run", action="store_true", help="print the plan and change nothing"
     )
     dev_parser = commands.add_parser("dev", help="manage the dev corpus")
-    dev_commands = dev_parser.add_subparsers(dest="dev_command", required=True)
+    dev_commands = dev_parser.add_subparsers(dest="subcommand", required=True)
     select_parser = dev_commands.add_parser(
         "select", help=f"select the hottest release of each named package into {DEV_CORPUS_LIST}"
     )
@@ -40,9 +42,13 @@ def parse_arguments() -> argparse.Namespace:
     budget.add_argument(
         "--definitions",
         type=int,
-        help="the minimum number of top-level def, type and law declarations",
+        help="the maximum number of top-level def, type and law declarations",
     )
     dev_commands.add_parser("build", help=f"build the dev corpus from {DEV_CORPUS_LIST}")
+    bench_parser = commands.add_parser("bench", help="manage the benchmark")
+    bench_commands = bench_parser.add_subparsers(dest="subcommand", required=True)
+    bench_commands.add_parser("corpus", help="write the dev corpus as one text file")
+    bench_commands.add_parser("check", help=f"check {QUERIES} against the dev corpus")
     return parser.parse_args()
 
 
@@ -55,7 +61,7 @@ def budget_from(arguments: argparse.Namespace) -> Budget:
 def select_dev_corpus(full: Mirror, budget: Budget) -> None:
     selection = asyncio.run(select(full, budget))
     DEV_CORPUS_LIST.parent.mkdir(parents=True, exist_ok=True)
-    DEV_CORPUS_LIST.write_text(selection.corpus.to_json())
+    DEV_CORPUS_LIST.write_text(selection.corpus.to_json(), newline="\n")
     sys.stdout.write(
         f"selected {len(selection.corpus.packages)} packages"
         f" with {selection.definitions} definitions into {DEV_CORPUS_LIST}\n"
@@ -68,6 +74,30 @@ def build_dev_corpus(full: Mirror, dev_root: Path) -> None:
     corpus = DevCorpus.from_json(DEV_CORPUS_LIST.read_text())
     asyncio.run(build(full, dev_root, corpus))
     sys.stdout.write(f"built {dev_root} with {len(corpus.packages)} packages\n")
+
+
+def require_corpus(corpus: Mirror) -> None:
+    if corpus.stored_base_tag() is None:
+        raise BenchError(f"{corpus.root} has no corpus: run jendhub dev build first")
+
+
+def write_corpus_text(corpus: Mirror, output: Path) -> None:
+    require_corpus(corpus)
+    text = corpus_text(corpus)
+    output.write_text(text, encoding="utf-8", newline="\n")
+    sys.stdout.write(f"wrote {output}: {len(text)} characters\n")
+
+
+def check_queries(corpus: Mirror) -> None:
+    require_corpus(corpus)
+    if not QUERIES.is_file():
+        raise BenchError(f"{QUERIES} does not exist")
+    queries, problems = check(QUERIES.read_text(encoding="utf-8"), definition_ids(corpus))
+    for problem in problems:
+        sys.stdout.write(f"{QUERIES}: {problem}\n")
+    sys.stdout.write(summary(queries) + "\n")
+    if problems:
+        raise BenchError(f"{len(problems)} problems in {QUERIES}")
 
 
 def main() -> None:
@@ -83,7 +113,7 @@ def main() -> None:
 
 def run(arguments: argparse.Namespace) -> None:
     full = Mirror(arguments.data / "full")
-    match arguments.command, getattr(arguments, "dev_command", None):
+    match arguments.command, getattr(arguments, "subcommand", None):
         case "sync", _ if arguments.dry_run:
             sys.stdout.write(describe_plan(asyncio.run(plan(full))) + "\n")
         case "sync", _:
@@ -92,5 +122,9 @@ def run(arguments: argparse.Namespace) -> None:
             select_dev_corpus(full, budget_from(arguments))
         case "dev", "build":
             build_dev_corpus(full, arguments.data / "dev")
+        case "bench", "corpus":
+            write_corpus_text(Mirror(arguments.data / "dev"), arguments.data / "dev-corpus.txt")
+        case "bench", "check":
+            check_queries(Mirror(arguments.data / "dev"))
         case command:
             raise AssertionError(command)

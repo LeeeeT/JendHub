@@ -56,6 +56,12 @@ class Mirror:
             return set()
         return {entry.name for entry in self.lib.iterdir() if HASH.fullmatch(entry.name)}
 
+    def releases(self) -> dict[str, str]:
+        names = self.lib / "names"
+        if not names.is_dir():
+            return {}
+        return {entry.name: entry.read_text().strip() for entry in sorted(names.iterdir())}
+
     def read_package(self, hash_: str) -> dict[str, bytes]:
         root = self.lib / hash_
         if not root.is_dir():

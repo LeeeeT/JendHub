@@ -1,5 +1,4 @@
 import json
-import re
 import shutil
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -8,12 +7,11 @@ from pathlib import Path
 import httpx
 
 from jendhub.base import fetch_base
+from jendhub.declarations import declared_names
 from jendhub.errors import JendHubError
 from jendhub.http import http_client
 from jendhub.hub import Json, Listing, Package, Release, listings, parse_listing
 from jendhub.mirror import Mirror, replace
-
-DEFINITION = re.compile(rb"^(?:def|type|law) ", re.MULTILINE)
 
 
 class DevError(JendHubError):
@@ -77,7 +75,7 @@ def parse_dev_package(item: Json) -> DevPackage:
 
 
 def count_definitions(files: dict[str, bytes]) -> int:
-    return sum(len(DEFINITION.findall(content)) for content in files.values())
+    return sum(len(declared_names(content.decode())) for content in files.values())
 
 
 def budget_used(budget: Budget, packages: int, definitions: int) -> int:
