@@ -1,0 +1,2 @@
+class JendHubError(Exception):
+    pass

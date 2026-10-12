@@ -1,0 +1,105 @@
+{
+  "base": "v2.0.36",
+  "packages": [
+    {
+      "hash": "0x6a946b742ab6f76f0ba5b90b14da52ad",
+      "name": "bend-kit-http",
+      "version": "0.32.0.0"
+    },
+    {
+      "hash": "0xe00bbf72c3ff9dc6d7b077524522b3a8",
+      "name": "bend-kit-time",
+      "version": "0.1.2.1"
+    },
+    {
+      "hash": "0x5f997a9351e7133e43ba9611e734f8a6",
+      "name": "bend-kit-hairpin",
+      "version": "0.3.0.0"
+    },
+    {
+      "hash": "0x49814d83de8f70993a43e1002be29ecd",
+      "name": "bend-kit-bytes",
+      "version": "0.3.0.0"
+    },
+    {
+      "hash": "0xf33eec520d9fe4851fd0d1e29eaf0166",
+      "name": "bend-kit-crypto",
+      "version": "0.2.2.1"
+    },
+    {
+      "hash": "0x12d3bb9bb57264f1d5e2fcf763dbe13b",
+      "name": "bend-kit-retry",
+      "version": "0.1.0.0"
+    },
+    {
+      "hash": "0x584fc27920487ceab242392391418d7f",
+      "name": "bend-kit-json",
+      "version": "0.5.0.1"
+    },
+    {
+      "hash": "0x1f2d80f53f971b16c6de6a65cb1918ae",
+      "name": "bend-kit-url",
+      "version": "0.4.1.0"
+    },
+    {
+      "hash": "0xcfc8be7b076f41f95c8e118383892d55",
+      "name": "bend-kit-encoding",
+      "version": "0.3.0.0"
+    },
+    {
+      "hash": "0x1afdf90dbe41c30b1df4594db039b02a",
+      "name": "bend-kit-wire",
+      "version": "0.4.6.1"
+    },
+    {
+      "hash": "0x4eed9d7ac6ece61523d747a9d804e4f0",
+      "name": "bend-kit-int",
+      "version": "0.2.0.0"
+    },
+    {
+      "hash": "0x75e7d19d0e4887c8e9651d356bafc276",
+      "name": "bend-kit-http2",
+      "version": "0.1.2.0"
+    },
+    {
+      "hash": "0x9bf2c4100bf9328348d215e7ae1657de",
+      "name": "bend-kit-dns",
+      "version": "0.6.0.2"
+    },
+    {
+      "hash": "0xa7aa06c09e97c6747c12cc64bb5203d9",
+      "name": "bend-ml-nat-lemmas",
+      "version": "0.1.0.0"
+    },
+    {
+      "hash": "0x9c5a51d7f05acfc6ef075fa6810ffa30",
+      "name": "bend-kit-concurrency",
+      "version": "0.1.0.0"
+    },
+    {
+      "hash": "0x9606cc4b1afb0de13a7da7c0f6fc3a82",
+      "name": "bend-kit-router",
+      "version": "0.2.0.0"
+    },
+    {
+      "hash": "0xcc180113489c489d3f5cdc852e6806f9",
+      "name": "bend-kit-zlib",
+      "version": "0.2.0.1"
+    },
+    {
+      "hash": "0x8ef64648a1ae4481382be5e5ce2a9fc8",
+      "name": "bend-kit-resources",
+      "version": "0.1.0.0"
+    },
+    {
+      "hash": "0x1e7155d6d6e198f44e61502f9f6c0114",
+      "name": "bend-kit-notch",
+      "version": "0.1.0.1"
+    },
+    {
+      "hash": "0x46b9429cbffa7a8c1111ce19c60a3d6a",
+      "name": "bend-kit-random",
+      "version": "0.1.0.1"
+    }
+  ]
+}

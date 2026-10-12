@@ -2,11 +2,13 @@ from dataclasses import dataclass
 
 import httpx
 
+from jendhub.errors import JendHubError
+
 LATEST_RELEASE = "https://api.github.com/repos/bendlang/bend/releases/latest"
 SOURCE = "https://raw.githubusercontent.com/bendlang/bend/{tag}/bend2/base.bend"
 
 
-class BaseError(Exception):
+class BaseError(JendHubError):
     pass
 
 

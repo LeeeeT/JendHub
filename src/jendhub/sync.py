@@ -1,37 +1,54 @@
 import asyncio
 import itertools
 import logging
+from dataclasses import dataclass
 
 import httpx
 
 from jendhub.base import fetch_base, latest_tag
+from jendhub.http import CONCURRENCY, http_client
 from jendhub.hub import Listing, Package, Rejection, fetch_package, new_listings
 from jendhub.mirror import Mirror
-
-CONCURRENCY = 8
 
 logger = logging.getLogger(__name__)
 
 
-def http_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(
-        headers={"user-agent": "jendhub"},
-        timeout=30,
-        follow_redirects=True,
-        transport=httpx.AsyncHTTPTransport(
-            retries=3,
-            limits=httpx.Limits(max_connections=CONCURRENCY),
-        ),
-    )
+@dataclass(frozen=True)
+class Plan:
+    stored_base_tag: str | None
+    latest_base_tag: str
+    entries: list[Listing | Rejection]
+
+    @property
+    def base_is_current(self) -> bool:
+        return self.stored_base_tag == self.latest_base_tag
 
 
-async def sync_base(client: httpx.AsyncClient, mirror: Mirror) -> None:
+async def make_plan(client: httpx.AsyncClient, mirror: Mirror) -> Plan:
     tag = await latest_tag(client)
-    if tag == mirror.stored_base_tag():
-        logger.info("base.bend is current at %s", tag)
-        return
-    mirror.store_base(await fetch_base(client, tag))
-    logger.info("stored base.bend %s", tag)
+    entries = await new_listings(client, mirror.hashes() | mirror.rejected_hashes())
+    return Plan(mirror.stored_base_tag(), tag, list(reversed(entries)))
+
+
+def describe_entry(entry: Listing | Rejection) -> str:
+    match entry:
+        case Listing(hash_, None):
+            return f"fetch {hash_}"
+        case Listing(hash_, release):
+            return f"fetch {hash_} {release}"
+        case Rejection(hash_, reason):
+            return f"reject {hash_}: {reason}"
+
+
+def describe_plan(plan: Plan) -> str:
+    if plan.base_is_current:
+        base = f"base.bend is current at {plan.latest_base_tag}"
+    else:
+        base = f"fetch base.bend {plan.latest_base_tag} (stored: {plan.stored_base_tag})"
+    fetches = sum(isinstance(entry, Listing) for entry in plan.entries)
+    rejections = len(plan.entries) - fetches
+    summary = f"new packages: {len(plan.entries)}, to fetch: {fetches}, to reject: {rejections}"
+    return "\n".join([base, *map(describe_entry, plan.entries), summary])
 
 
 async def resolve(client: httpx.AsyncClient, entry: Listing | Rejection) -> Package | Rejection:
@@ -42,10 +59,14 @@ async def resolve(client: httpx.AsyncClient, entry: Listing | Rejection) -> Pack
             return entry
 
 
-async def sync_hub(client: httpx.AsyncClient, mirror: Mirror) -> None:
-    entries = await new_listings(client, mirror.hashes() | mirror.rejected_hashes())
-    logger.info("found %d new packages", len(entries))
-    for batch in itertools.batched(reversed(entries), CONCURRENCY, strict=False):
+async def apply_plan(client: httpx.AsyncClient, mirror: Mirror, plan: Plan) -> None:
+    if plan.base_is_current:
+        logger.info("base.bend is current at %s", plan.latest_base_tag)
+    else:
+        mirror.store_base(await fetch_base(client, plan.latest_base_tag))
+        logger.info("stored base.bend %s", plan.latest_base_tag)
+    logger.info("found %d new packages", len(plan.entries))
+    for batch in itertools.batched(plan.entries, CONCURRENCY, strict=False):
         for result in await asyncio.gather(*(resolve(client, entry) for entry in batch)):
             match result:
                 case Package():
@@ -56,7 +77,11 @@ async def sync_hub(client: httpx.AsyncClient, mirror: Mirror) -> None:
                     logger.info("rejected %s: %s", result.hash, result.reason)
 
 
+async def plan(mirror: Mirror) -> Plan:
+    async with http_client() as http:
+        return await make_plan(http, mirror)
+
+
 async def sync(mirror: Mirror) -> None:
     async with http_client() as http:
-        await sync_base(http, mirror)
-        await sync_hub(http, mirror)
+        await apply_plan(http, mirror, await make_plan(http, mirror))

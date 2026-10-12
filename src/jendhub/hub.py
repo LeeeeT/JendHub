@@ -1,9 +1,14 @@
 import asyncio
 import hashlib
 import re
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from dataclasses import dataclass
+from typing import Literal
 
 import httpx
+
+from jendhub.errors import JendHubError
 
 HUB = "https://hub.bend-lang.com"
 PAGE_SIZE = 100
@@ -17,7 +22,7 @@ PATH_SEGMENT = re.compile(r"[A-Za-z0-9_.-]+")
 type Json = bool | int | float | str | list[Json] | dict[str, Json] | None
 
 
-class HubError(Exception):
+class HubError(JendHubError):
     pass
 
 
@@ -25,6 +30,9 @@ class HubError(Exception):
 class Release:
     name: str
     version: str
+
+    def __str__(self) -> str:
+        return f"{self.name}@{self.version}"
 
 
 @dataclass(frozen=True)
@@ -97,24 +105,36 @@ async def fetch(client: httpx.AsyncClient, url: str) -> bytes:
     return response.content
 
 
-async def new_listings(client: httpx.AsyncClient, known: set[str]) -> list[Listing | Rejection]:
-    found: dict[str, Listing | Rejection] = {}
+async def listings(
+    client: httpx.AsyncClient, sort: Literal["new", "hot"]
+) -> AsyncGenerator[Listing | Rejection]:
+    seen: set[str] = set()
     offset = 0
     while True:
         response = await client.get(
             f"{HUB}/packages.json",
-            params={"sort": "new", "limit": PAGE_SIZE, "after": offset},
+            params={"sort": sort, "limit": PAGE_SIZE, "after": offset},
         )
         response.raise_for_status()
         body: Json = response.json()
         page = parse_page(body)
-        for listing in page:
-            if listing.hash in known:
-                return list(found.values())
-            found.setdefault(listing.hash, listing)
+        for entry in page:
+            if entry.hash not in seen:
+                seen.add(entry.hash)
+                yield entry
         if len(page) < PAGE_SIZE:
-            return list(found.values())
+            return
         offset += PAGE_SIZE
+
+
+async def new_listings(client: httpx.AsyncClient, known: set[str]) -> list[Listing | Rejection]:
+    found: list[Listing | Rejection] = []
+    async with aclosing(listings(client, "new")) as entries:
+        async for entry in entries:
+            if entry.hash in known:
+                break
+            found.append(entry)
+    return found
 
 
 async def fetch_package(client: httpx.AsyncClient, listing: Listing) -> Package | Rejection:

@@ -56,6 +56,16 @@ class Mirror:
             return set()
         return {entry.name for entry in self.lib.iterdir() if HASH.fullmatch(entry.name)}
 
+    def read_package(self, hash_: str) -> dict[str, bytes]:
+        root = self.lib / hash_
+        if not root.is_dir():
+            raise FileNotFoundError(root)
+        return {
+            path.relative_to(root).as_posix(): path.read_bytes()
+            for path in root.rglob("*")
+            if path.is_file()
+        }
+
     def rejected_hashes(self) -> set[str]:
         if not self.rejected.is_dir():
             return set()
@@ -67,8 +77,8 @@ class Mirror:
     def store_package(self, package: Package) -> None:
         listing = package.listing
         if listing.release is not None:
-            name = f"{listing.release.name}@{listing.release.version}"
-            write_atomically(self.lib / "names" / name, f"{listing.hash}\n".encode())
+            name_file = self.lib / "names" / str(listing.release)
+            write_atomically(name_file, f"{listing.hash}\n".encode())
         staged = self.staging / listing.hash
         shutil.rmtree(staged, ignore_errors=True)
         for path, content in package.files.items():
