@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from jendhub.base import Base
-from jendhub.bench import Answer, Query, check, corpus_text, definition_ids, summary
+from jendhub.bench import Answer, Query, check, corpus_text, summary
 from jendhub.hub import Listing, Package, Release
 from jendhub.mirror import Mirror
 
@@ -21,10 +21,6 @@ def corpus(root: Path) -> Mirror:
     files = {"json.bend": b"def parse(s: String) -> Json:\n  s\n"}
     mirror.store_package(Package(Listing(KIT, Release("kit", "0.1.0.0")), files))
     return mirror
-
-
-def test_definition_ids_name_base_without_a_prefix(tmp_path: Path) -> None:
-    assert definition_ids(corpus(tmp_path)) == IDS
 
 
 def test_corpus_text_heads_each_file_with_its_id_prefix(tmp_path: Path) -> None:

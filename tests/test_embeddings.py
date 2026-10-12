@@ -6,15 +6,11 @@ import numpy as np
 import pytest
 import respx
 
-from jendhub import embeddings
-from jendhub.embeddings import (
-    DIMENSIONS,
-    ENDPOINT,
-    MODEL,
-    PROVIDER,
-    EmbeddingError,
-    OpenRouterEmbedder,
-)
+from jendhub import embeddings, openrouter
+from jendhub.embeddings import DIMENSIONS, MODEL, PROVIDER, OpenRouterEmbedder
+from jendhub.openrouter import API, OpenRouterError
+
+ENDPOINT = f"{API}/embeddings"
 
 
 def unit(axis: int) -> list[float]:
@@ -111,14 +107,14 @@ def test_embed_requires_the_api_key_for_missing_texts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(EmbeddingError, match="OPENROUTER_API_KEY"):
+    with pytest.raises(OpenRouterError, match="OPENROUTER_API_KEY"):
         OpenRouterEmbedder(tmp_path / "embeddings.sqlite").embed(["List.map"])
 
 
 def test_embed_retries_a_rate_limited_request(
     router: respx.MockRouter, embedder: OpenRouterEmbedder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(embeddings, "RETRY_DELAYS", (0,))
+    monkeypatch.setattr(openrouter, "RETRY_DELAYS", (0,))
     statuses: list[int] = []
 
     def limit_once(request: httpx.Request) -> httpx.Response:
@@ -135,7 +131,7 @@ def test_embed_reports_the_error_message(
     router: respx.MockRouter, embedder: OpenRouterEmbedder
 ) -> None:
     router.post(ENDPOINT).respond(400, json={"error": {"message": "bad input"}})
-    with pytest.raises(EmbeddingError, match="bad input"):
+    with pytest.raises(OpenRouterError, match="bad input"):
         embedder.embed(["List.map"])
 
 
@@ -143,7 +139,7 @@ def test_embed_rejects_a_vector_with_the_wrong_dimensions(
     router: respx.MockRouter, embedder: OpenRouterEmbedder
 ) -> None:
     router.post(ENDPOINT).respond(200, json={"data": [{"index": 0, "embedding": [1.0]}]})
-    with pytest.raises(EmbeddingError):
+    with pytest.raises(OpenRouterError):
         embedder.embed(["List.map"])
 
 
@@ -152,7 +148,7 @@ def test_embed_rejects_a_repeated_index(
 ) -> None:
     items = [{"index": 0, "embedding": unit(0)}, {"index": 0, "embedding": unit(1)}]
     router.post(ENDPOINT).respond(200, json={"data": items})
-    with pytest.raises(EmbeddingError):
+    with pytest.raises(OpenRouterError):
         embedder.embed(["List.map", "Nat.add"])
 
 
@@ -160,5 +156,5 @@ def test_embed_rejects_a_response_that_is_not_json(
     router: respx.MockRouter, embedder: OpenRouterEmbedder
 ) -> None:
     router.post(ENDPOINT).respond(403, text="forbidden")
-    with pytest.raises(EmbeddingError, match="403"):
+    with pytest.raises(OpenRouterError, match="403"):
         embedder.embed(["List.map"])

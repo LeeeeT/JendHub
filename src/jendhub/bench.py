@@ -2,7 +2,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 
-from jendhub.definitions import corpus_definitions, source_files
+from jendhub.definitions import source_files
 from jendhub.errors import JendHubError
 from jendhub.hub import Json
 from jendhub.mirror import Mirror
@@ -28,10 +28,6 @@ class Query:
     query: str
     kind: str
     answers: list[Answer]
-
-
-def definition_ids(corpus: Mirror) -> set[str]:
-    return {definition.id for definition in corpus_definitions(corpus)}
 
 
 def corpus_text(corpus: Mirror) -> str:

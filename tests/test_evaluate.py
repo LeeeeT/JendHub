@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from jendhub.bench import Answer, BenchError, Query
+from jendhub.bench import BenchError
 from jendhub.evaluate import (
     Comparison,
     Score,
@@ -12,9 +12,10 @@ from jendhub.evaluate import (
     format_scores,
     ndcg,
 )
+from jendhub.judgments import Assessment
 
-MAP = Query("map a list", "phrase", [Answer("List.map", 3), Answer("List.foldr", 1)])
-ZIP = Query("zip", "name", [Answer("List.zip", 3)])
+MAP = Assessment("map a list", "phrase", {"List.map": 3, "List.foldr": 1, "List.zip": 0})
+ZIP = Assessment("zip", "name", {"List.zip": 3})
 
 
 class FixedPipeline:
@@ -52,10 +53,21 @@ def test_ndcg_limits_the_ideal_ranking_to_k() -> None:
 def test_evaluate_scores_all_queries_and_each_kind() -> None:
     pipeline = FixedPipeline({MAP.query: ["List.map", "List.foldr"], ZIP.query: ["List.map"]})
     assert evaluate(pipeline, [MAP, ZIP], [1, 10]) == [
-        Score("all", 2, {1: 0.5, 10: 0.5}),
-        Score("name", 1, {1: 0.0, 10: 0.0}),
-        Score("phrase", 1, {1: 1.0, 10: 1.0}),
+        Score("all", 2, {1: 0.5, 10: 0.5}, {1: 0.5, 10: 2 / 3}),
+        Score("name", 1, {1: 0.0, 10: 0.0}, {1: 0.0, 10: 0.0}),
+        Score("phrase", 1, {1: 1.0, 10: 1.0}, {1: 1.0, 10: 1.0}),
     ]
+
+
+def test_evaluate_counts_a_grade_zero_as_judged() -> None:
+    [all_kinds, *_] = evaluate(FixedPipeline({MAP.query: ["List.zip"]}), [MAP], [10])
+    assert all_kinds.ndcg[10] == 0.0
+    assert all_kinds.judged[10] == 1.0
+
+
+def test_evaluate_counts_an_empty_ranking_as_judged() -> None:
+    [all_kinds, *_] = evaluate(FixedPipeline({ZIP.query: []}), [ZIP], [10])
+    assert all_kinds.judged[10] == 1.0
 
 
 def test_evaluate_refuses_a_ranking_with_a_repeated_id() -> None:
@@ -72,7 +84,9 @@ def test_evaluate_refuses_a_missing_ranking() -> None:
 def test_compare_of_a_pipeline_with_itself_shows_no_change() -> None:
     pipeline = FixedPipeline({MAP.query: ["List.foldr"], ZIP.query: ["List.zip"]})
     [all_kinds, *_] = compare(pipeline, pipeline, [MAP, ZIP], 10)
-    assert all_kinds == Comparison("all", 2, all_kinds.baseline, all_kinds.baseline, 0, 0, 0, 0)
+    assert all_kinds == Comparison(
+        "all", 2, all_kinds.baseline, all_kinds.baseline, 0, 0, 0, 0, 1.0, 1.0
+    )
 
 
 def test_compare_counts_the_better_and_the_worse_queries() -> None:
@@ -94,18 +108,29 @@ def test_compare_gives_an_interval_around_the_mean_change() -> None:
     assert 0 < all_kinds.low <= change <= all_kinds.high
 
 
+def test_compare_gives_the_judged_share_of_each_pipeline() -> None:
+    baseline = FixedPipeline({ZIP.query: ["List.zip"]})
+    candidate = FixedPipeline({ZIP.query: ["List.zip", "List.map"]})
+    [all_kinds, *_] = compare(baseline, candidate, [ZIP], 10)
+    assert (all_kinds.baseline_judged, all_kinds.candidate_judged) == (1.0, 0.5)
+
+
 def test_format_comparisons_prints_one_row_for_each_kind() -> None:
-    comparisons = [Comparison("all", 200, 0.5, 0.625, 0.1, 0.15, 30, 12)]
+    comparisons = [Comparison("all", 200, 0.5, 0.625, 0.1, 0.15, 30, 12, 0.9, 0.85)]
     assert format_comparisons(comparisons, 10).splitlines() == [
         "kind  queries    A@10    B@10   B - A      95% interval  better  worse",
         "all      200   0.500   0.625  +0.125  [+0.100, +0.150]      30     12",
+        "judged@10: A 0.900, B 0.850",
     ]
 
 
 def test_format_scores_prints_one_row_for_each_kind() -> None:
-    scores = [Score("all", 200, {10: 0.5123}), Score("name", 24, {10: 0.25})]
+    scores = [
+        Score("all", 200, {10: 0.5123}, {10: 0.9}),
+        Score("name", 24, {10: 0.25}, {10: 0.75}),
+    ]
     assert format_scores(scores, [10]).splitlines() == [
-        "kind  queries   nDCG@10",
-        "all       200     0.512",
-        "name       24     0.250",
+        "kind  queries   nDCG@10  judged@10",
+        "all       200     0.512      0.900",
+        "name       24     0.250      0.750",
     ]

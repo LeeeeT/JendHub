@@ -1,9 +1,7 @@
 import asyncio
 import hashlib
 import itertools
-import json
 import logging
-import os
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -12,31 +10,16 @@ import httpx
 import numpy as np
 
 from jendhub.dense import Vectors
-from jendhub.errors import JendHubError
 from jendhub.http import CONCURRENCY, http_client
 from jendhub.hub import Json
+from jendhub.openrouter import OpenRouterError, api_key, post
 
-ENDPOINT = "https://openrouter.ai/api/v1/embeddings"
 MODEL = "qwen/qwen3-embedding-8b"
 PROVIDER = "nebius"
 DIMENSIONS = 4096
 BATCH = 64
-TIMEOUT = 120
-RETRY_DELAYS = (1, 2, 4, 8, 16, 32)
-RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 logger = logging.getLogger(__name__)
-
-
-class EmbeddingError(JendHubError):
-    pass
-
-
-def api_key() -> str:
-    key = os.environ.get("OPENROUTER_API_KEY")
-    if not key:
-        raise EmbeddingError("OPENROUTER_API_KEY is not set: run with uv run --env-file .env")
-    return key
 
 
 def digest(text: str) -> bytes:
@@ -54,12 +37,12 @@ def response_vectors(items: list[Json], count: int) -> Vectors:
                 try:
                     vectors[index] = np.array(values, dtype=np.float32)
                 except (TypeError, ValueError) as error:
-                    raise EmbeddingError(
+                    raise OpenRouterError(
                         f"OpenRouter returned an invalid vector: {error}"
                     ) from error
                 indexes.add(index)
             case _:
-                raise EmbeddingError("OpenRouter returned an invalid embedding item")
+                raise OpenRouterError("OpenRouter returned an invalid embedding item")
     return vectors
 
 
@@ -67,36 +50,18 @@ def parse_response(body: Json, count: int) -> Vectors:
     match body:
         case {"data": list() as items} if len(items) == count:
             return response_vectors(items, count)
-        case {"error": {"message": str() as message}}:
-            raise EmbeddingError(f"OpenRouter: {message}")
         case _:
-            raise EmbeddingError(f"OpenRouter did not return {count} embeddings")
-
-
-async def post(client: httpx.AsyncClient, key: str, texts: list[str]) -> httpx.Response:
-    request = {
-        "model": MODEL,
-        "input": texts,
-        "encoding_format": "float",
-        "provider": {"only": [PROVIDER], "allow_fallbacks": False},
-    }
-    headers = {"authorization": f"Bearer {key}"}
-    for delay in RETRY_DELAYS:
-        response = await client.post(ENDPOINT, json=request, headers=headers, timeout=TIMEOUT)
-        if response.status_code not in RETRY_STATUSES:
-            return response
-        logger.info("OpenRouter returned %d: retry in %d s", response.status_code, delay)
-        await asyncio.sleep(delay)
-    return await client.post(ENDPOINT, json=request, headers=headers, timeout=TIMEOUT)
+            raise OpenRouterError(f"OpenRouter did not return {count} embeddings")
 
 
 async def request_vectors(client: httpx.AsyncClient, key: str, texts: list[str]) -> Vectors:
-    response = await post(client, key, texts)
-    try:
-        body: Json = response.json()
-    except json.JSONDecodeError as error:
-        raise EmbeddingError(f"OpenRouter returned status {response.status_code}") from error
-    return parse_response(body, len(texts))
+    request: dict[str, Json] = {
+        "model": MODEL,
+        "input": list[Json](texts),
+        "encoding_format": "float",
+        "provider": {"only": [PROVIDER], "allow_fallbacks": False},
+    }
+    return parse_response(await post(client, key, "embeddings", request), len(texts))
 
 
 class EmbeddingCache:

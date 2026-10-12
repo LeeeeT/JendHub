@@ -5,12 +5,15 @@ from typing import Protocol
 import numpy as np
 import numpy.typing as npt
 
-from jendhub.bench import BenchError, Query
+from jendhub.bench import BenchError
+from jendhub.judgments import Assessment
 
 ALL_KINDS = "all"
 BOOTSTRAP_SAMPLES = 10_000
 CONFIDENCE = 0.95
 SEED = 0
+
+type Values = npt.NDArray[np.float64]
 
 
 class Pipeline(Protocol):
@@ -22,6 +25,7 @@ class Score:
     kind: str
     queries: int
     ndcg: dict[int, float]
+    judged: dict[int, float]
 
 
 @dataclass(frozen=True)
@@ -34,6 +38,8 @@ class Comparison:
     high: float
     better: int
     worse: int
+    baseline_judged: float
+    candidate_judged: float
 
 
 def gain(grade: int) -> float:
@@ -44,49 +50,71 @@ def dcg(gains: list[float]) -> float:
     return sum(value / math.log2(position + 2) for position, value in enumerate(gains))
 
 
-def ndcg(query: Query, ranking: list[str], k: int) -> float:
-    grades = {answer.id: answer.grade for answer in query.answers}
-    found = [gain(grades[id_]) if id_ in grades else 0.0 for id_ in ranking[:k]]
+def ndcg(assessment: Assessment, ranking: list[str], k: int) -> float:
+    grades = assessment.grades
+    found = [gain(grades.get(id_, 0)) for id_ in ranking[:k]]
     ideal = sorted((gain(grade) for grade in grades.values()), reverse=True)[:k]
     return dcg(found) / dcg(ideal)
 
 
-def rank(pipeline: Pipeline, queries: list[Query], limit: int) -> list[list[str]]:
-    rankings = pipeline.search([query.query for query in queries], limit)
-    if len(rankings) != len(queries):
+def judged_count(assessment: Assessment, ranking: list[str], k: int) -> int:
+    return sum(id_ in assessment.grades for id_ in ranking[:k])
+
+
+def rank(pipeline: Pipeline, assessments: list[Assessment], limit: int) -> list[list[str]]:
+    rankings = pipeline.search([assessment.query for assessment in assessments], limit)
+    if len(rankings) != len(assessments):
         raise BenchError(
-            f"the pipeline returned {len(rankings)} rankings for {len(queries)} queries"
+            f"the pipeline returned {len(rankings)} rankings for {len(assessments)} queries"
         )
-    for query, ranking in zip(queries, rankings, strict=True):
+    for assessment, ranking in zip(assessments, rankings, strict=True):
         if len(set(ranking)) != len(ranking):
-            raise BenchError(f"the pipeline returned an id two times for {query.query!r}")
+            raise BenchError(f"the pipeline returned an id two times for {assessment.query!r}")
     return rankings
 
 
-def query_ndcgs(pipeline: Pipeline, queries: list[Query], k: int) -> npt.NDArray[np.float64]:
-    rankings = rank(pipeline, queries, k)
-    pairs = zip(queries, rankings, strict=True)
-    return np.array([ndcg(query, ranking, k) for query, ranking in pairs])
+@dataclass(frozen=True)
+class Measures:
+    ndcg: Values
+    judged: Values
+    results: Values
+
+    def judged_share(self, indexes: list[int]) -> float:
+        results = self.results[indexes].sum()
+        return float(self.judged[indexes].sum() / results) if results else 1.0
 
 
-def groups(queries: list[Query]) -> list[tuple[str, list[int]]]:
-    indexes: dict[str, list[int]] = {ALL_KINDS: list(range(len(queries)))}
-    for index, query in enumerate(queries):
-        indexes.setdefault(query.kind, []).append(index)
+def measure(assessments: list[Assessment], rankings: list[list[str]], k: int) -> Measures:
+    pairs = list(zip(assessments, rankings, strict=True))
+    return Measures(
+        np.array([ndcg(assessment, ranking, k) for assessment, ranking in pairs]),
+        np.array([judged_count(assessment, ranking, k) for assessment, ranking in pairs]),
+        np.array([len(ranking[:k]) for _, ranking in pairs], dtype=np.float64),
+    )
+
+
+def groups(assessments: list[Assessment]) -> list[tuple[str, list[int]]]:
+    indexes: dict[str, list[int]] = {ALL_KINDS: list(range(len(assessments)))}
+    for index, assessment in enumerate(assessments):
+        indexes.setdefault(assessment.kind, []).append(index)
     return sorted(indexes.items(), key=lambda item: (item[0] != ALL_KINDS, item[0]))
 
 
-def evaluate(pipeline: Pipeline, queries: list[Query], ks: list[int]) -> list[Score]:
-    rankings = rank(pipeline, queries, max(ks))
-    pairs = list(zip(queries, rankings, strict=True))
-    values = {k: np.array([ndcg(query, ranking, k) for query, ranking in pairs]) for k in ks}
+def evaluate(pipeline: Pipeline, assessments: list[Assessment], ks: list[int]) -> list[Score]:
+    rankings = rank(pipeline, assessments, max(ks))
+    measures = {k: measure(assessments, rankings, k) for k in ks}
     return [
-        Score(kind, len(indexes), {k: float(values[k][indexes].mean()) for k in ks})
-        for kind, indexes in groups(queries)
+        Score(
+            kind,
+            len(indexes),
+            {k: float(measures[k].ndcg[indexes].mean()) for k in ks},
+            {k: measures[k].judged_share(indexes) for k in ks},
+        )
+        for kind, indexes in groups(assessments)
     ]
 
 
-def bootstrap_interval(differences: npt.NDArray[np.float64]) -> tuple[float, float]:
+def bootstrap_interval(differences: Values) -> tuple[float, float]:
     generator = np.random.default_rng(SEED)
     samples = generator.choice(differences, size=(BOOTSTRAP_SAMPLES, len(differences)))
     low, high = np.quantile(samples.mean(axis=1), [(1 - CONFIDENCE) / 2, (1 + CONFIDENCE) / 2])
@@ -94,24 +122,26 @@ def bootstrap_interval(differences: npt.NDArray[np.float64]) -> tuple[float, flo
 
 
 def compare(
-    baseline: Pipeline, candidate: Pipeline, queries: list[Query], k: int
+    baseline: Pipeline, candidate: Pipeline, assessments: list[Assessment], k: int
 ) -> list[Comparison]:
-    baseline_values = query_ndcgs(baseline, queries, k)
-    candidate_values = query_ndcgs(candidate, queries, k)
+    old = measure(assessments, rank(baseline, assessments, k), k)
+    new = measure(assessments, rank(candidate, assessments, k), k)
     comparisons: list[Comparison] = []
-    for kind, indexes in groups(queries):
-        differences = candidate_values[indexes] - baseline_values[indexes]
+    for kind, indexes in groups(assessments):
+        differences = new.ndcg[indexes] - old.ndcg[indexes]
         low, high = bootstrap_interval(differences)
         comparisons.append(
             Comparison(
                 kind,
                 len(indexes),
-                float(baseline_values[indexes].mean()),
-                float(candidate_values[indexes].mean()),
+                float(old.ndcg[indexes].mean()),
+                float(new.ndcg[indexes].mean()),
                 low,
                 high,
                 int((differences > 0).sum()),
                 int((differences < 0).sum()),
+                old.judged_share(indexes),
+                new.judged_share(indexes),
             )
         )
     return comparisons
@@ -119,10 +149,12 @@ def compare(
 
 def format_scores(scores: list[Score], ks: list[int]) -> str:
     width = max(len(score.kind) for score in scores)
-    header = f"{'kind':<{width}}  queries" + "".join(f"  {f'nDCG@{k}':>8}" for k in ks)
+    header = f"{'kind':<{width}}  queries" + "".join(
+        f"  {f'nDCG@{k}':>8}  {f'judged@{k}':>9}" for k in ks
+    )
     rows = [
         f"{score.kind:<{width}}  {score.queries:>7}"
-        + "".join(f"  {score.ndcg[k]:>8.3f}" for k in ks)
+        + "".join(f"  {score.ndcg[k]:>8.3f}  {score.judged[k]:>9.3f}" for k in ks)
         for score in scores
     ]
     return "\n".join([header, *rows])
@@ -141,4 +173,6 @@ def format_comparisons(comparisons: list[Comparison], k: int) -> str:
         f"  {c.better:>6}  {c.worse:>5}"
         for c in comparisons
     ]
-    return "\n".join([header, *rows])
+    first = comparisons[0]
+    judged = f"judged@{k}: A {first.baseline_judged:.3f}, B {first.candidate_judged:.3f}"
+    return "\n".join([header, *rows, judged])

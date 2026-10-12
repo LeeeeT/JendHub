@@ -2,10 +2,12 @@ import argparse
 import asyncio
 import logging
 import sys
+from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
-from jendhub.bench import BenchError, Query, check, corpus_text, definition_ids, summary
-from jendhub.definitions import corpus_definitions
+from jendhub.bench import BenchError, Query, check, corpus_text, summary
+from jendhub.definitions import Definition, corpus_definitions
 from jendhub.dev import (
     Budget,
     DefinitionBudget,
@@ -17,13 +19,32 @@ from jendhub.dev import (
 )
 from jendhub.embeddings import OpenRouterEmbedder
 from jendhub.errors import JendHubError
-from jendhub.evaluate import compare, evaluate, format_comparisons, format_scores
+from jendhub.evaluate import Pipeline, compare, evaluate, format_comparisons, format_scores
+from jendhub.judge import Judge, Pair
+from jendhub.judgments import (
+    JUDGED_GRADES,
+    Assessment,
+    Judgment,
+    assessments,
+    check_judgments,
+    judgment_line,
+)
 from jendhub.mirror import Mirror
 from jendhub.pipelines import PIPELINES, Resources
+from jendhub.pooling import (
+    agreement_rows,
+    answer_pairs,
+    format_agreement,
+    pool,
+    random_negatives,
+)
 from jendhub.sync import describe_plan, plan, sync
 
 DEV_CORPUS_LIST = Path("bench/dev.json")
 QUERIES = Path("bench/queries.jsonl")
+JUDGMENTS = Path("bench/judgments.jsonl")
+JUDGE_PROMPT = Path("bench/JUDGE.md")
+DEFAULT_DEPTH = 10
 EMBEDDINGS = Path("embeddings.sqlite")
 DEFAULT_K = 10
 
@@ -71,6 +92,26 @@ def parse_arguments() -> argparse.Namespace:
     compare_parser.add_argument(
         "--k", type=int, default=DEFAULT_K, help="the cutoff of nDCG@k (default: %(default)s)"
     )
+    pool_parser = bench_commands.add_parser(
+        "pool", help=f"judge the top results of pipelines into {JUDGMENTS}"
+    )
+    pool_parser.add_argument(
+        "--pipelines",
+        nargs="+",
+        required=True,
+        choices=sorted(PIPELINES),
+        help="the pipelines that fill the pool",
+    )
+    pool_parser.add_argument(
+        "--depth",
+        type=int,
+        default=DEFAULT_DEPTH,
+        help="the number of top results of each pipeline (default: %(default)s)",
+    )
+    bench_commands.add_parser(
+        "agreement",
+        help="judge the original answers and random definitions, and compare the grades",
+    )
     return parser.parse_args()
 
 
@@ -110,41 +151,105 @@ def write_corpus_text(corpus: Mirror, output: Path) -> None:
     sys.stdout.write(f"wrote {output}: {len(text)} characters\n")
 
 
-def checked_queries(corpus: Mirror) -> list[Query]:
+def report_problems(path: Path, problems: list[str]) -> None:
+    for problem in problems:
+        sys.stdout.write(f"{path}: {problem}\n")
+    if problems:
+        raise BenchError(f"{len(problems)} problems in {path}: run jendhub bench check")
+
+
+@dataclass(frozen=True)
+class Benchmark:
+    definitions: list[Definition]
+    queries: list[Query]
+    judgments: list[Judgment]
+    judge: Judge
+    embeddings: Path
+
+    def assessments(self) -> list[Assessment]:
+        return assessments(self.queries, self.judgments)
+
+    def pipeline(self, name: str) -> Pipeline:
+        return PIPELINES[name](Resources(self.definitions, OpenRouterEmbedder(self.embeddings)))
+
+    def judge_pairs(self, pairs: list[tuple[Query, str]]) -> None:
+        known = {(judgment.query, judgment.id) for judgment in self.judgments}
+        definitions = {definition.id: definition for definition in self.definitions}
+        unique = {(query.query, id_): (query, id_) for query, id_ in pairs}
+        new = [
+            Pair(query, definitions[id_])
+            for key, (query, id_) in unique.items()
+            if key not in known
+        ]
+        with JUDGMENTS.open("a", encoding="utf-8", newline="\n") as output:
+
+            def record(pair: Pair, grade: int) -> None:
+                judgment = Judgment(pair.query.query, pair.definition.id, grade, self.judge.name)
+                self.judgments.append(judgment)
+                output.write(judgment_line(judgment))
+                output.flush()
+
+            self.judge.judge(new, record)
+
+
+def load_benchmark(corpus: Mirror, embeddings: Path) -> Benchmark:
     require_corpus(corpus)
     if not QUERIES.is_file():
         raise BenchError(f"{QUERIES} does not exist")
-    queries, problems = check(QUERIES.read_text(encoding="utf-8"), definition_ids(corpus))
-    for problem in problems:
-        sys.stdout.write(f"{QUERIES}: {problem}\n")
-    if problems:
-        raise BenchError(f"{len(problems)} problems in {QUERIES}: run jendhub bench check")
-    return queries
+    definitions = corpus_definitions(corpus)
+    ids = {definition.id for definition in definitions}
+    queries, problems = check(QUERIES.read_text(encoding="utf-8"), ids)
+    report_problems(QUERIES, problems)
+    judge = Judge(JUDGE_PROMPT.read_text(encoding="utf-8"))
+    judgments: list[Judgment] = []
+    if JUDGMENTS.is_file():
+        text = JUDGMENTS.read_text(encoding="utf-8")
+        judgments, problems = check_judgments(text, queries, ids, judge.name)
+        report_problems(JUDGMENTS, problems)
+    return Benchmark(definitions, queries, judgments, judge, embeddings)
 
 
-def check_queries(corpus: Mirror) -> None:
-    sys.stdout.write(summary(checked_queries(corpus)) + "\n")
+def check_benchmark(benchmark: Benchmark) -> None:
+    grades = Counter(judgment.grade for judgment in benchmark.judgments)
+    sys.stdout.write(
+        f"{summary(benchmark.queries)}\n"
+        f"judgments: {len(benchmark.judgments)} by {benchmark.judge.name}\n"
+        "judgments by grade: "
+        + ", ".join(f"{grade}: {grades[grade]}" for grade in reversed(JUDGED_GRADES))
+        + "\n"
+    )
 
 
-def resources_for(corpus: Mirror, embeddings: Path) -> Resources:
-    return Resources(corpus_definitions(corpus), OpenRouterEmbedder(embeddings))
+def run_pipeline(benchmark: Benchmark, name: str, ks: list[int]) -> None:
+    scores = evaluate(benchmark.pipeline(name), benchmark.assessments(), ks)
+    sys.stdout.write(format_scores(scores, ks) + "\n")
 
 
-def run_pipeline(corpus: Mirror, embeddings: Path, name: str, ks: list[int]) -> None:
-    queries = checked_queries(corpus)
-    pipeline = PIPELINES[name](resources_for(corpus, embeddings))
-    sys.stdout.write(format_scores(evaluate(pipeline, queries, ks), ks) + "\n")
-
-
-def compare_pipelines(
-    corpus: Mirror, embeddings: Path, baseline: str, candidate: str, k: int
-) -> None:
-    queries = checked_queries(corpus)
-    resources = resources_for(corpus, embeddings)
+def compare_pipelines(benchmark: Benchmark, baseline: str, candidate: str, k: int) -> None:
     comparisons = compare(
-        PIPELINES[baseline](resources), PIPELINES[candidate](resources), queries, k
+        benchmark.pipeline(baseline), benchmark.pipeline(candidate), benchmark.assessments(), k
     )
     sys.stdout.write(f"A: {baseline}\nB: {candidate}\n{format_comparisons(comparisons, k)}\n")
+
+
+def pool_pipelines(benchmark: Benchmark, names: list[str], depth: int) -> None:
+    pipelines = [benchmark.pipeline(name) for name in dict.fromkeys(names)]
+    answered = {(query.query, id_) for query, id_ in answer_pairs(benchmark.queries)}
+    pairs = [
+        (query, id_)
+        for query, id_ in pool(pipelines, benchmark.queries, depth)
+        if (query.query, id_) not in answered
+    ]
+    benchmark.judge_pairs(pairs)
+    sys.stdout.write(f"the pool holds {len(pairs)} pairs without an original answer\n")
+
+
+def check_agreement(benchmark: Benchmark) -> None:
+    ids = [definition.id for definition in benchmark.definitions]
+    negatives = random_negatives(benchmark.queries, ids)
+    benchmark.judge_pairs(answer_pairs(benchmark.queries) + negatives)
+    rows = agreement_rows(benchmark.queries, negatives, benchmark.judgments)
+    sys.stdout.write(format_agreement(rows) + "\n")
 
 
 def main() -> None:
@@ -171,22 +276,27 @@ def run(arguments: argparse.Namespace) -> None:
             build_dev_corpus(full, arguments.data / "dev")
         case "bench", "corpus":
             write_corpus_text(Mirror(arguments.data / "dev"), arguments.data / "dev-corpus.txt")
-        case "bench", "check":
-            check_queries(Mirror(arguments.data / "dev"))
-        case "bench", "run":
-            run_pipeline(
-                Mirror(arguments.data / "dev"),
-                arguments.data / EMBEDDINGS,
-                arguments.pipeline,
-                arguments.k or [DEFAULT_K],
-            )
-        case "bench", "compare":
-            compare_pipelines(
-                Mirror(arguments.data / "dev"),
-                arguments.data / EMBEDDINGS,
-                arguments.baseline,
-                arguments.candidate,
-                arguments.k,
+        case "bench", str() as subcommand:
+            run_bench(
+                load_benchmark(Mirror(arguments.data / "dev"), arguments.data / EMBEDDINGS),
+                subcommand,
+                arguments,
             )
         case command:
             raise AssertionError(command)
+
+
+def run_bench(benchmark: Benchmark, subcommand: str, arguments: argparse.Namespace) -> None:
+    match subcommand:
+        case "check":
+            check_benchmark(benchmark)
+        case "run":
+            run_pipeline(benchmark, arguments.pipeline, arguments.k or [DEFAULT_K])
+        case "compare":
+            compare_pipelines(benchmark, arguments.baseline, arguments.candidate, arguments.k)
+        case "pool":
+            pool_pipelines(benchmark, arguments.pipelines, arguments.depth)
+        case "agreement":
+            check_agreement(benchmark)
+        case _:
+            raise AssertionError(subcommand)
