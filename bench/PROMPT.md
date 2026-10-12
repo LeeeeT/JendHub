@@ -60,6 +60,33 @@ all 20 packages. Include easy queries and hard queries. A query of a
 descriptive kind must describe the need in your own words. It must not contain
 the identifiers of the target.
 
+## Targets
+
+Choose only API definitions as targets. An API definition is a definition that
+a user of Base or of the package uses in their own code: a type, a function or
+a law that the module offers.
+
+Do not choose these as targets:
+
+- internal helpers
+- tests and test data
+- examples, demos and `main`
+- the steps of a proof that only one other definition uses
+
+Bend has no keyword that marks a definition as public. Use these signs of an
+API definition:
+
+- A comment documents it for a user.
+- Its name tells its purpose.
+- Other packages in the corpus use it.
+- A module comment or a section header names it as part of the module.
+
+Use these signs of a helper:
+
+- Its name is short or cryptic.
+- Only definitions in the same module use it.
+- It does one step of a larger definition.
+
 ## Answers
 
 Grade each definition that answers the query:
