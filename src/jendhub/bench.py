@@ -36,7 +36,7 @@ def definition_ids(corpus: Mirror) -> set[str]:
 
 def corpus_text(corpus: Mirror) -> str:
     sections = [
-        f"===== {file.prefix.removesuffix(':') or 'Base'} =====\n{file.source.rstrip()}\n"
+        f"===== {file.origin.prefix.removesuffix(':') or 'Base'} =====\n{file.source.rstrip()}\n"
         for file in source_files(corpus)
     ]
     return "\n".join(sections)

@@ -15,6 +15,8 @@ from jendhub.tokens import tokens
         ("HTTPServer", ["httpserver", "http", "server"]),
         ("(s: String) -> Maybe<Nat>", ["s", "string", "maybe", "nat"]),
         ("the end.", ["the", "end"]),
+        ("bend-kit-json", ["bend-kit-json", "bend", "kit", "json"]),
+        ("-A: Kind(a)", ["a", "kind", "a"]),
     ],
 )
 def test_tokens_split_identifiers_and_keep_the_whole_word(text: str, expected: list[str]) -> None:

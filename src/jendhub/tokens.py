@@ -1,7 +1,7 @@
 import re
 
-WORD = re.compile(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*")
-SEPARATOR = re.compile(r"[._]")
+WORD = re.compile(r"[A-Za-z0-9_]+(?:[.-][A-Za-z0-9_]+)*")
+SEPARATOR = re.compile(r"[._-]")
 CAMEL_PART = re.compile(r"[A-Z]+[0-9]*(?![a-z])|[A-Z]?[a-z]+[0-9]*|[0-9]+")
 
 
