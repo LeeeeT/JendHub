@@ -130,7 +130,7 @@ def budget_from(arguments: argparse.Namespace) -> Budget:
 def select_dev_corpus(full: Mirror, budget: Budget) -> None:
     selection = asyncio.run(select(full, budget))
     DEV_CORPUS_LIST.parent.mkdir(parents=True, exist_ok=True)
-    DEV_CORPUS_LIST.write_text(selection.corpus.to_json(), newline="\n")
+    DEV_CORPUS_LIST.write_text(selection.corpus.to_json())
     sys.stdout.write(
         f"selected {len(selection.corpus.packages)} packages"
         f" with {selection.definitions} definitions into {DEV_CORPUS_LIST}\n"
@@ -153,7 +153,7 @@ def require_corpus(corpus: Mirror) -> None:
 def write_corpus_text(corpus: Mirror, output: Path) -> None:
     require_corpus(corpus)
     text = corpus_text(corpus)
-    output.write_text(text, encoding="utf-8", newline="\n")
+    output.write_text(text, encoding="utf-8")
     sys.stdout.write(f"wrote {output}: {len(text)} characters\n")
 
 
@@ -186,7 +186,7 @@ class Benchmark:
             for key, (query, id_) in unique.items()
             if key not in known
         ]
-        with JUDGMENTS.open("a", encoding="utf-8", newline="\n") as output:
+        with JUDGMENTS.open("a", encoding="utf-8") as output:
 
             def record(pair: Pair, grade: int) -> None:
                 judgment = Judgment(pair.query.query, pair.definition.id, grade, self.judge.name)

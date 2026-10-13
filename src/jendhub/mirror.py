@@ -1,30 +1,16 @@
 import shutil
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from jendhub.base import Base
 from jendhub.hub import HASH, Package, Rejection
 
-LOCKED_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2)
-
-
-def replace(source: Path, target: Path) -> None:
-    for delay in LOCKED_RETRY_DELAYS:
-        try:
-            source.replace(target)
-        except PermissionError:
-            time.sleep(delay)
-        else:
-            return
-    source.replace(target)
-
 
 def write_atomically(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     staged = path.with_name(f".{path.name}.tmp")
     staged.write_bytes(content)
-    replace(staged, path)
+    staged.replace(path)
 
 
 @dataclass(frozen=True)
@@ -67,7 +53,7 @@ class Mirror:
         if not root.is_dir():
             raise FileNotFoundError(root)
         return {
-            path.relative_to(root).as_posix(): path.read_bytes()
+            str(path.relative_to(root)): path.read_bytes()
             for path in root.rglob("*")
             if path.is_file()
         }
@@ -93,7 +79,7 @@ class Mirror:
             target.write_bytes(content)
         staged.mkdir(parents=True, exist_ok=True)
         self.lib.mkdir(parents=True, exist_ok=True)
-        replace(staged, self.lib / listing.hash)
+        staged.replace(self.lib / listing.hash)
 
     def stored_base_tag(self) -> str | None:
         if not self.base_tag.is_file():

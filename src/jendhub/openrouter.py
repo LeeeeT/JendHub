@@ -26,7 +26,7 @@ class OpenRouterError(JendHubError):
 def api_key() -> str:
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
-        raise OpenRouterError("OPENROUTER_API_KEY is not set: run with uv run --env-file .env")
+        raise OpenRouterError("OPENROUTER_API_KEY is not set: set it in .env, then run nix develop")
     return key
 
 

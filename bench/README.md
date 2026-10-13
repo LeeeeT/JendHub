@@ -3,6 +3,11 @@
 The benchmark measures each search pipeline on the dev corpus with nDCG@k.
 All commands run on `data/dev`.
 
+```bash
+nix develop
+jendhub bench check
+```
+
 | Command | What it does |
 |---|---|
 | `jendhub bench corpus` | Writes the dev corpus as one text file, `data/dev-corpus.txt`, for query writers. |
@@ -81,8 +86,8 @@ unpooled pipeline looks worse than it is. For example, before pooling,
 To add a pipeline:
 
 ```bash
-uv run --env-file .env jendhub bench pool --pipelines <new-pipeline>
-uv run jendhub bench compare <baseline> <new-pipeline>
+jendhub bench pool --pipelines <new-pipeline>
+jendhub bench compare <baseline> <new-pipeline>
 ```
 
 These pipelines are pooled at depth 10:

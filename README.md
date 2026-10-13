@@ -22,31 +22,23 @@ JendHub has only a CLI.
 - **Models:** all models run through [OpenRouter](https://openrouter.ai).
   The only paid cost for each search request is the query embedding. JendHub
   uses no reranker model. Rerankers are weighted sums of cheap features.
-- **Deployment:** a small VPS. This machine is for local tests.
 - **Composability:** each search method is a pipeline, and pipelines combine
   freely. The benchmark compares any two pipelines. Keep experiments as
   separate pipelines.
 
 ## Setup
 
-JendHub needs [uv](https://docs.astral.sh/uv/). uv installs the Python version
-in `.python-version` and the dependencies.
+Put `OPENROUTER_API_KEY` in `.env`. `nix develop` loads it automatically.
 
 ```bash
-uv sync
+nix develop
+jendhub --help
 ```
-
-Commands that call OpenRouter need `OPENROUTER_API_KEY` in `.env`. Load it with
-`uv run --env-file .env`. Commands that find all their data in the caches do not
-need the key.
 
 Run the checks:
 
 ```bash
-uv run pytest
-uv run ruff check
-uv run ruff format --check
-uv run pyright
+nix flake check
 ```
 
 ## Commands
@@ -154,8 +146,8 @@ for all results.
 
 | Job | Model | Provider | Notes |
 |---|---|---|---|
-| Embeddings | `qwen/qwen3-embedding-8b`, 4096 dimensions | Nebius, pinned | All cached vectors must come from one provider. DeepInfra was slow and rate-limited. |
-| Enrichment | `deepseek/deepseek-v4-flash-0731`, no reasoning | `deepinfra/fp8`, then `parasail/fp8` and `digitalocean` | The shared DeepInfra pool on OpenRouter is often overloaded. Sail Research serves fp4 and timed out. |
+| Embeddings | `qwen/qwen3-embedding-8b`, 4096 dimensions | Nebius, pinned | All cached vectors must come from one provider. |
+| Enrichment | `deepseek/deepseek-v4-flash-0731`, no reasoning | `deepinfra/fp8`, then `parasail/fp8` and `digitalocean` | |
 | Benchmark judge | `openai/gpt-6-luna`, medium reasoning | OpenAI, pinned | |
 
 Queries get the Qwen3 instruction format: `Instruct: <task>\nQuery:<query>`.

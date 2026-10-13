@@ -11,7 +11,7 @@ from jendhub.definitions import BASE, SourceFile, extract
 from jendhub.errors import JendHubError
 from jendhub.http import http_client
 from jendhub.hub import Json, Listing, Package, Release, listings, parse_listing
-from jendhub.mirror import Mirror, replace
+from jendhub.mirror import Mirror
 
 
 class DevError(JendHubError):
@@ -126,7 +126,7 @@ async def build_corpus(
         dev.store_package(Package(listing, full.read_package(package.hash)))
     dev.store_base(await fetch_base(client, corpus.base_tag))
     shutil.rmtree(dev_root, ignore_errors=True)
-    replace(staging, dev_root)
+    staging.replace(dev_root)
 
 
 async def select(full: Mirror, budget: Budget) -> Selection:
