@@ -134,17 +134,17 @@ nDCG@10 and judged@10 with the current judgments:
 
 | Pipeline | nDCG@10 | judged@10 |
 |---|---|---|
-| `bm25` | 0.412 | 0.622 |
-| `bm25-head-package` | 0.468 | 0.821 |
-| `bm25-head-package+name-rrf` | 0.469 | 0.822 |
-| `bm25-head-package+name-rerank` | 0.500 | 1.000 |
-| `dense-head-package` | 0.692 | 0.784 |
-| `dense-text` | 0.747 | 0.967 |
-| `dense-text+name-rerank` | 0.760 | 1.000 |
-| `dense-text+metadata+name-rerank` | 0.783 | 1.000 |
-| `dense-text-summary+name-rerank` | 0.797 | 1.000 |
-| `dense-enriched+name-rerank` | 0.799 | 1.000 |
-| **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.817** | **1.000** |
+| `bm25` | 0.409 | 0.630 |
+| `bm25-head-package` | 0.465 | 0.827 |
+| `bm25-head-package+name-rrf` | 0.466 | 0.827 |
+| `bm25-head-package+name-rerank` | 0.495 | 1.000 |
+| `dense-head-package` | 0.692 | 0.808 |
+| `dense-text` | 0.740 | 0.970 |
+| `dense-text+name-rerank` | 0.752 | 1.000 |
+| `dense-text+metadata+name-rerank` | 0.775 | 1.000 |
+| `dense-text-summary+name-rerank` | 0.788 | 1.000 |
+| `dense-enriched+name-rerank` | 0.790 | 1.000 |
+| **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.808** | **1.000** |
 
 Rows with judged@10 below 0.95 are not pooled, so their scores are too low.
 
@@ -155,13 +155,13 @@ Main findings:
   significant.
 - Rank fusion of dense and lexical results made results worse: equal weight
   for a weak list hurts. A linear rerank with small weights works.
-- Enrichment improves natural-language queries: name +0.099, phrase +0.078,
-  keywords +0.076 for `dense-enriched+name-rerank` against
+- Enrichment improves natural-language queries: name +0.098, phrase +0.076,
+  keywords +0.075 for `dense-enriched+name-rerank` against
   `dense-text+name-rerank`. Alone it hurts signature queries.
 - The code embedding as a rerank feature repairs the signature queries.
-  Against `dense-enriched+name-rerank`, the best pipeline gains +0.065 on
-  signature and +0.066 on exact-signature.
-- Signature queries remain the weakest kind (0.673). Type-directed search is
+  Against `dense-enriched+name-rerank`, the best pipeline gains +0.063 on
+  signature and +0.065 on exact-signature.
+- Signature queries remain the weakest kind (0.666). Type-directed search is
   the planned fix.
 
 ## Limits

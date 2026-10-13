@@ -4712,3 +4712,374 @@
 {"query": "exponential backoff delay", "id": "bend-kit-http@0.32.0.0/http:retry.wait", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
 {"query": "compare authentication tags", "id": "String.cmp", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
 {"query": "How do I compress data as gzip?", "id": "bend-kit-http@0.32.0.0/http:codings", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List.sort", "id": "List.foldl", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "list first match", "id": "List.take", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List.sort", "id": "List", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I keep matching list items?", "id": "List", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I keep matching list items?", "id": "List.take", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "list first match", "id": "List.all", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, (A -> B) -> List<B>", "id": "List.filter", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "list first match", "id": "List.get", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, (A -> B) -> List<B>", "id": "Map.from_list", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "list first match", "id": "List.find.put", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List.sort", "id": "List.foldr", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I read an environment variable?", "id": "Array.get", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I keep matching list items?", "id": "List.drop", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read command line arguments", "id": "bend-kit-http@0.32.0.0/admission:Command", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I read an environment variable?", "id": "Nat.read.gate", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to run an external command and collect its output.", "id": "App.run", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I keep matching list items?", "id": "List.zip", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "file binary read", "id": "File", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read command line arguments", "id": "Array.get", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I wait for a task result?", "id": "bend-kit-retry@0.1.0.0/retry:wait", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I wait for a task result?", "id": "Result.map", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read command line arguments", "id": "Nat.read.gate", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "tcp listen", "id": "bend-kit-wire@0.4.6.1/wire:accept.deadline", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to replace an array element and get its previous value.", "id": "List.set", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I wait for a task result?", "id": "TCP.try_accept", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I wait for a task result?", "id": "Result", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to replace an array element and get its previous value.", "id": "Array.atomic.add", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "create a byte buffer", "id": "Chan.new", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Maybe<A>, A -> A", "id": "bend-kit-hairpin@0.3.0.0/hairpin:some", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "byte buffer length", "id": "bend-kit-http2@0.1.2.0/hpack:Cursor", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "byte buffer length", "id": "bend-kit-bytes@0.3.0.0/bytes:get", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to run an external command and collect its output.", "id": "IO.try", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "byte buffer length", "id": "bend-kit-bytes@0.3.0.0/bytes:fits", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "create a byte buffer", "id": "bend-kit-bytes@0.3.0.0/bytes:length", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "get.u32le", "id": "bend-kit-int@0.2.0.0/int:U8.is_le", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "create a byte buffer", "id": "bend-kit-json@0.5.0.1/json:w.new", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I read a byte?", "id": "File.read_at", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read network u16", "id": "bend-kit-int@0.2.0.0/int:U8.read", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I read a byte?", "id": "File.read", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Bytes, U32, U32 -> Bytes", "id": "bend-kit-bytes@0.3.0.0/bytes:concat.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "get.u32le", "id": "bend-kit-bytes@0.3.0.0/bytes:set.u16le", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read network u16", "id": "bend-kit-bytes@0.3.0.0/bytes:set.u16le", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to extract part of a binary buffer.", "id": "bend-kit-bytes@0.3.0.0/bytes:Bytes", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "join byte buffers", "id": "bend-kit-bytes@0.3.0.0/bytes:snd", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to extract part of a binary buffer.", "id": "bend-kit-bytes@0.3.0.0/bytes:find", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to extract part of a binary buffer.", "id": "bend-kit-bytes@0.3.0.0/bytes:get", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to extract part of a binary buffer.", "id": "bend-kit-zlib@0.2.0.1/zlib:br.rest", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Array<A>, (A -> A -> A) -> A", "id": "Array.map.at", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I reduce a list in parallel?", "id": "bend-kit-concurrency@0.1.0.0/concurrency:fold", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to extract part of a binary buffer.", "id": "bend-kit-bytes@0.3.0.0/bytes:split.of", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "wait on several channels", "id": "bend-kit-concurrency@0.1.0.0/concurrency:pool.put", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to combine a list of lists into one list.", "id": "bend-kit-resources@0.1.0.0/resources:Combine", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "wait on several channels", "id": "bend-kit-concurrency@0.1.0.0/concurrency:timeout.won", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parallel list map", "id": "bend-kit-concurrency@0.1.0.0/concurrency:pool", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, Nat -> (List<A>, List<A>)", "id": "Nat.div", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, Nat -> (List<A>, List<A>)", "id": "List", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, Nat -> Maybe<A>", "id": "Maybe", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to extract part of a binary buffer.", "id": "bend-kit-http2@0.1.2.0/hpack:take.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, Nat -> (List<A>, List<A>)", "id": "List.tail", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "sha256.words", "id": "Word.xor", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, Nat -> (List<A>, List<A>)", "id": "List.range", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "sha256.words", "id": "bend-kit-crypto@0.2.2.1/crypto:hmac.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, Nat -> Maybe<A>", "id": "List.find.put", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, Nat -> Maybe<A>", "id": "Maybe.or", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "derive encryption key", "id": "bend-kit-json@0.5.0.1/json:key.b", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I compute an HMAC?", "id": "bend-kit-crypto@0.2.2.1/crypto:aead.open.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I compute an HMAC?", "id": "bend-kit-crypto@0.2.2.1/crypto:eq.ct.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "compare authentication tags", "id": "bend-kit-int@0.2.0.0/int:U8.cmp", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "map lookup", "id": "Map.keys", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "compare authentication tags", "id": "Nat.cmp", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "rsa verify", "id": "bend-kit-crypto@0.2.2.1/crypto:sha256.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to encrypt a message and authenticate it.", "id": "Word.xor", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to encrypt a message and authenticate it.", "id": "bend-kit-crypto@0.2.2.1/crypto:sha256.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "compare authentication tags", "id": "Bool.cmp", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String, Bytes, Bytes, Bytes, Bytes -> IO<Result<Bytes>>", "id": "bend-kit-http@0.32.0.0/http:h2.send.fold", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to encrypt a message and authenticate it.", "id": "bend-kit-crypto@0.2.2.1/crypto:sha512.words", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def query(id: U32, name: String) -> Maybe<&1, Bytes.Bytes>:", "id": "bend-kit-router@0.2.0.0/target:Query", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "compare authentication tags", "id": "Cmp.is_eq", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "nameservers", "id": "bend-kit-dns@0.6.0.2/dns:hosts", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "hosts file lookup", "id": "bend-kit-dns@0.6.0.2/dns:hosts.flat", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read a DNS response", "id": "bend-kit-dns@0.6.0.2/dns:nameservers", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String, String -> IO<Maybe<String>>", "id": "Maybe.or", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read a DNS response", "id": "bend-kit-dns@0.6.0.2/dns:resolve.conf", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to resolve a host using the system resolver.", "id": "bend-kit-dns@0.6.0.2/dns:resolve.conf", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I find every address for a hostname?", "id": "bend-kit-dns@0.6.0.2/dns:resolve.dns", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String, Bytes, Bytes, Bytes, Bytes -> IO<Result<Bytes>>", "id": "bend-kit-http@0.32.0.0/http:ce.io.br", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read a DNS response", "id": "bend-kit-dns@0.6.0.2/dns:RR", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String, String -> IO<Maybe<String>>", "id": "IO.pass", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "utf8.encode", "id": "bend-kit-encoding@0.3.0.0/encoding:utf8.bad", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I turn Unicode text into bytes?", "id": "Char.to_u32", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "decode UTF8 text", "id": "bend-kit-encoding@0.3.0.0/encoding:utf8.bad", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Client, String -> IO<Client, Result<Response>>", "id": "bend-kit-http@0.32.0.0/http:h2.event.fold", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "http client", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request.done", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I turn Unicode text into bytes?", "id": "Char", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Client, String -> IO<Client, Result<Response>>", "id": "bend-kit-http@0.32.0.0/http:talk.respond", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Client, String -> IO<Client, Result<Response>>", "id": "bend-kit-http@0.32.0.0/http:serve.stream.respond", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Client, String -> IO<Client, Result<Response>>", "id": "bend-kit-http@0.32.0.0/http:h2.response", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Client, String -> IO<Client, Result<Response>>", "id": "bend-kit-hairpin@0.3.0.0/hairpin:result.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def post.json(c: Client, url: String, v: Json.Val) -> IO(Client & Result<&1, &1, Err, Http.Res>):", "id": "bend-kit-http@0.32.0.0/http:upload", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I set a client base URL?", "id": "bend-kit-hairpin@0.3.0.0/hairpin:get", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I set a client base URL?", "id": "bend-kit-hairpin@0.3.0.0/hairpin:new", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I turn Unicode text into bytes?", "id": "bend-kit-json@0.5.0.1/json:w.text", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "set default request headers", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request.budget", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "HTTP request retry", "id": "bend-kit-hairpin@0.3.0.0/hairpin:attempt.gate", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I set a client base URL?", "id": "bend-kit-hairpin@0.3.0.0/hairpin:close", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need an HTTP client that stops calling a failing service for a while.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:timeout", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need an HTTP client that stops calling a failing service for a while.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:Opts", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Client -> IO<Client, Budget>", "id": "bend-kit-retry@0.1.0.0/retry:admit", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Client -> IO<Client, Budget>", "id": "IO.bind", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def encode(fields: List<&2, Field>, huff: Bool, st: State) -> Maybe<&1, State & Bytes.Bytes>:", "id": "bend-kit-http2@0.1.2.0/huffman:encode.finish", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Bytes, HpackState -> Maybe<HpackState, List<Field>>", "id": "bend-kit-http@0.32.0.0/http:h2.response", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Bytes, HpackState -> Maybe<HpackState, List<Field>>", "id": "bend-kit-http2@0.1.2.0/hpack:with_fields", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "HTTP2 header compression", "id": "bend-kit-http2@0.1.2.0/huffman:encode.finish", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "HTTP2 header compression", "id": "bend-kit-http2@0.1.2.0/hpack:encode.field", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Bytes, HpackState -> Maybe<HpackState, List<Field>>", "id": "bend-kit-http2@0.1.2.0/hpack:decode.add", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need an HTTP client that stops calling a failing service for a while.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request.drop", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need an HTTP client that stops calling a failing service for a while.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request.in", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need an HTTP client that stops calling a failing service for a while.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request.as", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I set the HPACK table limit?", "id": "bend-kit-http2@0.1.2.0/hpack:table.trimmed", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I set the HPACK table limit?", "id": "bend-kit-http2@0.1.2.0/hpack:table.oversize", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "derive encryption key", "id": "bend-kit-crypto@0.2.2.1/crypto:sha256.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "http2 frame encode", "id": "bend-kit-http2@0.1.2.0/hpack:encode.field", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse HTTP2 frames", "id": "bend-kit-http@0.32.0.0/http:parse.body.chunked", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I set the HPACK table limit?", "id": "bend-kit-http2@0.1.2.0/hpack:table.add", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse HTTP2 frames", "id": "bend-kit-http@0.32.0.0/http:parse.res.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse HTTP2 frames", "id": "bend-kit-http@0.32.0.0/http:parse.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse HTTP2 frames", "id": "bend-kit-http@0.32.0.0/http:serve.frame", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "http2 frame encode", "id": "bend-kit-http@0.32.0.0/http:encode", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "http2 frame encode", "id": "bend-kit-http2@0.1.2.0/hpack:encode.from", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "http2 frame encode", "id": "bend-kit-http2@0.1.2.0/hpack:literal.encode", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "client.start", "id": "bend-kit-hairpin@0.3.0.0/hairpin:jar.of", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse HTTP2 frames", "id": "bend-kit-http@0.32.0.0/http:parse.body.cl", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "client.start", "id": "bend-kit-hairpin@0.3.0.0/hairpin:deadline", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "http2 frame encode", "id": "bend-kit-http@0.32.0.0/http:frame.done", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "client.start", "id": "bend-kit-http@0.32.0.0/http:server.started", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to send a request through an HTTP/2 client.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to send a request through an HTTP/2 client.", "id": "bend-kit-http@0.32.0.0/http:Send", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I feed received bytes into an HTTP/2 client?", "id": "bend-kit-http@0.32.0.0/http:conn.h2.sent", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to send a request through an HTTP/2 client.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:get", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I feed received bytes into an HTTP/2 client?", "id": "bend-kit-http@0.32.0.0/http:h2.response", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "decode HPACK Huffman strings", "id": "bend-kit-http2@0.1.2.0/huffman:decode.go", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to send a request through an HTTP/2 client.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request.in", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "client.start", "id": "bend-kit-http@0.32.0.0/http:fetch.start", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I POST JSON?", "id": "bend-kit-http@0.32.0.0/http:ServerConfig", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I POST JSON?", "id": "bend-kit-http@0.32.0.0/http:fetch.how", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I POST JSON?", "id": "bend-kit-http@0.32.0.0/http:pool.how.enc", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def parse_res(raw: String) -> Maybe<&1, Res>:", "id": "bend-kit-url@0.4.1.0/url:parse", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def parse_res(raw: String) -> Maybe<&1, Res>:", "id": "bend-kit-http@0.32.0.0/http:res_body", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "decode HPACK Huffman strings", "id": "bend-kit-http2@0.1.2.0/huffman:encode.finish", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> Maybe<Request>", "id": "bend-kit-router@0.2.0.0/target:parse", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "encode an HTTP response", "id": "bend-kit-http@0.32.0.0/http:encode_req", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I save response cookies?", "id": "bend-kit-http@0.32.0.0/http:h2.response", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I save response cookies?", "id": "bend-kit-http@0.32.0.0/http:jar.opt.store", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "HTTP connection pooling", "id": "bend-kit-http@0.32.0.0/http:Conn", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> Maybe<Request>", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request.as", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "HTTP connection pooling", "id": "bend-kit-http@0.32.0.0/http:pool.take", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I save response cookies?", "id": "bend-kit-http@0.32.0.0/http:cookie.pick", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to attach stored cookies to a request.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:jar.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "map insert key", "id": "Map.lo", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "HTTP connection pooling", "id": "bend-kit-http@0.32.0.0/http:pool.how.enc", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to attach stored cookies to a request.", "id": "bend-kit-hairpin@0.3.0.0/hairpin:request.in", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to attach stored cookies to a request.", "id": "bend-kit-http@0.32.0.0/http:cookie.pick", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I save response cookies?", "id": "bend-kit-http@0.32.0.0/http:pool.hops", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Stream -> IO<Stream, Result<Maybe<Bytes>>>", "id": "bend-kit-http@0.32.0.0/http:serve.stream.with", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "decode compressed HTTP bodies", "id": "bend-kit-http@0.32.0.0/http:Fed", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Stream -> IO<Stream, Result<Maybe<Bytes>>>", "id": "bend-kit-http@0.32.0.0/http:serve.stream.respond", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "decode compressed HTTP bodies", "id": "bend-kit-http2@0.1.2.0/huffman:decode.tail", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Stream -> IO<Stream, Result<Maybe<Bytes>>>", "id": "bend-kit-http@0.32.0.0/http:serve.stream.one", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "(Completion<D> -> IO<Unit>), D, Response -> Reply", "id": "bend-kit-http@0.32.0.0/http:writer.finish", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I stop an HTTP server?", "id": "bend-kit-http@0.32.0.0/http:serve.on", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "List<A>, Nat -> (List<A>, List<A>)", "id": "List.zip", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "signed 64 bit integers", "id": "bend-kit-int@0.2.0.0/int:I64.or", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "decode compressed HTTP bodies", "id": "bend-kit-zlib@0.2.0.1/zlib:brotli.new", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def U64.read(s: String) -> Maybe<&2, U64>:", "id": "bend-kit-int@0.2.0.0/int:U8.read_radix", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "signed integer absolute value", "id": "F32.abs", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "signed 64 bit integers", "id": "bend-kit-int@0.2.0.0/int:I64.and", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I64.checked_add", "id": "bend-kit-int@0.2.0.0/int:Int.add_ov", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "signed integer absolute value", "id": "bend-kit-int@0.2.0.0/int:Int.mod", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "saturating integer multiply", "id": "bend-kit-int@0.2.0.0/int:U64.mul", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "U16, U16 -> Maybe<U16>", "id": "bend-kit-int@0.2.0.0/int:U16.and", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse.bytes", "id": "File.write_bytes", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I print an integer in hexadecimal?", "id": "bend-kit-int@0.2.0.0/int:Int.show", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "saturating integer multiply", "id": "bend-kit-int@0.2.0.0/int:I32.mul", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I print an integer in hexadecimal?", "id": "U32.show", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to inspect how much work my HTTP server has accepted.", "id": "bend-kit-http@0.32.0.0/http:serve.max", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse.bytes", "id": "File.read_bytes", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse.bytes", "id": "bend-kit-bytes@0.3.0.0/bytes:from_hex", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to parse a signed integer from decimal text.", "id": "bend-kit-http@0.32.0.0/http:parse_u32", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to parse a signed integer from decimal text.", "id": "Nat.read", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse.bytes", "id": "bend-kit-http@0.32.0.0/http:parse_res", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to parse a signed integer from decimal text.", "id": "bend-kit-int@0.2.0.0/int:U64.read", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def get(v: Val, k: String) -> Maybe<&1, Val>:", "id": "Maybe", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "JSON serialize bytes", "id": "bend-kit-json@0.5.0.1/json:w.done", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse.bytes", "id": "bend-kit-http@0.32.0.0/http:parse.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "JSON serialize bytes", "id": "File.write_bytes", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I get a JSON array item?", "id": "bend-kit-json@0.5.0.1/json:items.obj", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "JSON serialize bytes", "id": "bend-kit-json@0.5.0.1/json:Item", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to read JSON from a downloaded response body.", "id": "bend-kit-http@0.32.0.0/http:h2.response", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read an unsigned JSON number", "id": "bend-kit-int@0.2.0.0/int:U64.read_radix", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to read JSON from a downloaded response body.", "id": "bend-kit-http@0.32.0.0/http:text", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "JSON -> Bytes", "id": "bend-kit-json@0.5.0.1/json:w.done", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "JSON -> Bytes", "id": "bend-kit-json@0.5.0.1/json:Item", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to read JSON from a downloaded response body.", "id": "bend-kit-http@0.32.0.0/http:res_body", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I get a JSON array item?", "id": "bend-kit-json@0.5.0.1/json:first.b", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read an unsigned JSON number", "id": "bend-kit-http@0.32.0.0/http:parse_u32", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "JSON -> Bytes", "id": "bend-kit-json@0.5.0.1/json:utf8", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Level.rank", "id": "bend-kit-notch@0.1.0.1/notch:info", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Level.rank", "id": "Nat.pow", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def flag(k: String, b: Bool) -> Field:", "id": "Bool.show", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Level.rank", "id": "Nat.is_le", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Level.rank", "id": "Nat.is_lt", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "JSON log output", "id": "bend-kit-notch@0.1.0.1/notch:file", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "write a structured log", "id": "bend-kit-notch@0.1.0.1/notch:Level", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to read JSON from a downloaded response body.", "id": "bend-kit-http@0.32.0.0/http:stream.read", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Logger, Level -> Bool", "id": "bend-kit-notch@0.1.0.1/notch:info", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "log file", "id": "File", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I add fields to every log message?", "id": "bend-kit-notch@0.1.0.1/notch:warn", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Level.rank", "id": "Nat.max", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "log file", "id": "bend-kit-notch@0.1.0.1/notch:warn", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def unit(r: Rng) -> F32 & Rng:", "id": "bend-kit-random@0.1.0.1/random:seed", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Logger, Level -> Bool", "id": "bend-kit-notch@0.1.0.1/notch:warn", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Logger, Level -> Bool", "id": "bend-kit-notch@0.1.0.1/notch:error", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Rng -> (U32, Rng)", "id": "bend-kit-random@0.1.0.1/random:from_os.fin", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to format a log entry as text before writing it.", "id": "bend-kit-notch@0.1.0.1/notch:info", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "random seed", "id": "bend-kit-random@0.1.0.1/random:shuffle", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to format a log entry as text before writing it.", "id": "bend-kit-notch@0.1.0.1/notch:file", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def unit(r: Rng) -> F32 & Rng:", "id": "bend-kit-random@0.1.0.1/random:from_state", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def unit(r: Rng) -> F32 & Rng:", "id": "Unit", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to format a log entry as text before writing it.", "id": "bend-kit-notch@0.1.0.1/notch:error", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "shuffle", "id": "List.reverse", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "random integer between bounds", "id": "F32.clamp", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "secure random bytes", "id": "bend-kit-crypto@0.2.2.1/crypto:sha256.words", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "create a resource pool", "id": "bend-kit-http@0.32.0.0/admission:lease.open", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I pick a random integer below a limit?", "id": "F32.floor", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "secure random bytes", "id": "bend-kit-crypto@0.2.2.1/crypto:sha512.words", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I return a resource reservation?", "id": "bend-kit-http@0.32.0.0/admission:lease.take", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def reserve(p: Pool, +n: Nat) -> Reserve:", "id": "bend-kit-resources@0.1.0.0/resources:Release", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I return a resource reservation?", "id": "bend-kit-resources@0.1.0.0/resources:split", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I return a resource reservation?", "id": "bend-kit-resources@0.1.0.0/resources:reserved", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need the same sequence of random values on repeated runs.", "id": "bend-kit-random@0.1.0.1/random:shuffle.run", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "resource pool free capacity", "id": "bend-kit-resources@0.1.0.0/resources:Reserve", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "resource pool free capacity", "id": "bend-kit-http@0.32.0.0/admission:lease.open", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Grant, Nat -> Split", "id": "bend-kit-bytes@0.3.0.0/bytes:split.of", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to track how many resource units are in use.", "id": "bend-kit-resources@0.1.0.0/resources:new", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "resource pool free capacity", "id": "bend-kit-http@0.32.0.0/http:pool.new", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Which type represents a resource reservation?", "id": "bend-kit-resources@0.1.0.0/resources:reserved", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Grant, Nat -> Split", "id": "Nat.div", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Breaker.admit", "id": "bend-kit-retry@0.1.0.0/retry:Breaker", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def jitter(+d: Nat, +r: Nat) -> Nat:", "id": "bend-kit-http@0.32.0.0/http:retry.res", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "retry budget", "id": "bend-kit-hairpin@0.3.0.0/hairpin:deadline.some", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "merge reservations", "id": "Map.union", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "retry budget", "id": "bend-kit-retry@0.1.0.0/retry:admit.breaker", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Breaker.admit", "id": "bend-kit-retry@0.1.0.0/retry:open.admit", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def jitter(+d: Nat, +r: Nat) -> Nat:", "id": "bend-kit-http@0.32.0.0/http:retry.wait", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Which type represents a resource reservation?", "id": "bend-kit-resources@0.1.0.0/resources:Split", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Grant, Nat -> Split", "id": "bend-kit-bytes@0.3.0.0/bytes:split", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def jitter(+d: Nat, +r: Nat) -> Nat:", "id": "Nat.double", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "exponential backoff delay", "id": "bend-kit-http@0.32.0.0/http:retry.res", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I decide whether to retry?", "id": "bend-kit-http@0.32.0.0/http:fetch.retry", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I decide whether to retry?", "id": "bend-kit-hairpin@0.3.0.0/hairpin:retry", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "exponential backoff delay", "id": "bend-kit-http@0.32.0.0/http:retry.after", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I decide whether to retry?", "id": "bend-kit-http@0.32.0.0/http:retry.delay", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I decide whether to retry?", "id": "bend-kit-http@0.32.0.0/http:pool.retry", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "record circuit breaker result", "id": "bend-kit-retry@0.1.0.0/retry:State", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "record circuit breaker result", "id": "bend-kit-retry@0.1.0.0/retry:Breaker.admit", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "record circuit breaker result", "id": "bend-kit-retry@0.1.0.0/retry:admit.breaker", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Circuit -> Breaker", "id": "bend-kit-hairpin@0.3.0.0/hairpin:breaker.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Circuit -> Breaker", "id": "bend-kit-retry@0.1.0.0/retry:Breaker.admit", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to check whether another attempt can start.", "id": "bend-kit-retry@0.1.0.0/retry:Budget.new", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Circuit -> Breaker", "id": "bend-kit-retry@0.1.0.0/retry:Breaker.done", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "route pattern parser", "id": "bend-kit-router@0.2.0.0/router:pattern.parts", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to check whether another attempt can start.", "id": "bend-kit-retry@0.1.0.0/retry:Breaker.done", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "HTTP route dispatch", "id": "bend-kit-router@0.2.0.0/router:Error", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Circuit -> Breaker", "id": "bend-kit-retry@0.1.0.0/retry:admit.breaker", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "list registered routes", "id": "bend-kit-router@0.2.0.0/router:Error", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String, String -> Maybe<Target>", "id": "bend-kit-router@0.2.0.0/target:absolute.taken", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to store an action with an HTTP method and path pattern.", "id": "bend-kit-router@0.2.0.0/router:pattern", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "list registered routes", "id": "bend-kit-router@0.2.0.0/router:finish.paths", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String, String -> Maybe<Target>", "id": "bend-kit-router@0.2.0.0/target:absolute.split", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "rfc3339.parse", "id": "bend-kit-time@0.1.2.1/time:tzif.parse", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "format RFC3339 timestamp", "id": "bend-kit-time@0.1.2.1/time:Instant.of_unix", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "duration from millis", "id": "bend-kit-time@0.1.2.1/time:Instant.since_epoch", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "format RFC3339 timestamp", "id": "bend-kit-time@0.1.2.1/time:DateTime.to_instant", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "current wall clock time", "id": "bend-kit-time@0.1.2.1/time:DateTime", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I measure elapsed time?", "id": "IO.sleep", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I measure elapsed time?", "id": "bend-kit-time@0.1.2.1/time:Duration.of_ms", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I measure elapsed time?", "id": "bend-kit-time@0.1.2.1/time:Duration.of_secs", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I measure elapsed time?", "id": "bend-kit-time@0.1.2.1/time:Duration.zero", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse a timezone file", "id": "bend-kit-time@0.1.2.1/time:Zone.at.tz", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse a timezone file", "id": "bend-kit-time@0.1.2.1/time:Zone.at", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse a timezone file", "id": "bend-kit-time@0.1.2.1/time:tz.name.valid", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse a timezone file", "id": "bend-kit-time@0.1.2.1/time:Zone.local", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse a timezone file", "id": "bend-kit-time@0.1.2.1/time:Ttype", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Date -> U32", "id": "bend-kit-time@0.1.2.1/time:Date.to_z.at", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse a timezone file", "id": "bend-kit-time@0.1.2.1/time:tz.name.done", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I convert a timestamp to local time?", "id": "bend-kit-time@0.1.2.1/time:Instant.of_unix", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Instant -> Maybe<String>", "id": "Maybe.or", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I convert a timestamp to local time?", "id": "IO.now", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse a timezone file", "id": "bend-kit-time@0.1.2.1/time:tz.name.quoted", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Instant -> Maybe<String>", "id": "Maybe.is_none", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Instant -> Maybe<String>", "id": "String.get", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse absolute URL", "id": "bend-kit-http@0.32.0.0/http:proxy.from.abs", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Map<String, String> -> String", "id": "Map.from_list", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse absolute URL", "id": "bend-kit-url@0.4.1.0/url:abs.scheme", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "percent encode query values", "id": "bend-kit-url@0.4.1.0/url:PQ", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "URL percent decode", "id": "bend-kit-url@0.4.1.0/url:pct.lit", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to build a request path with query parameters.", "id": "bend-kit-router@0.2.0.0/target:Target", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to build a request path with query parameters.", "id": "bend-kit-router@0.2.0.0/router:route", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "remove URL dot segments", "id": "bend-kit-url@0.4.1.0/url:dots.join", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I format an HTTP Host header?", "id": "bend-kit-http@0.32.0.0/http:pool.how.enc", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Map<String, String> -> String", "id": "Map.to_list", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "remove URL dot segments", "id": "bend-kit-url@0.4.1.0/url:dots.pop", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to build a request path with query parameters.", "id": "bend-kit-router@0.2.0.0/target:query", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "remove URL dot segments", "id": "bend-kit-router@0.2.0.0/target:Target", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "TCP connect timeout", "id": "bend-kit-http@0.32.0.0/http:conn.open", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "derive encryption key", "id": "Map.get", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "remove URL dot segments", "id": "bend-kit-url@0.4.1.0/url:abs.slashes", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "run effects over a list", "id": "List.filter", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I get a JSON array item?", "id": "List.get", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "tls handshake", "id": "bend-kit-wire@0.4.6.1/wire:tls.send.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I send a packed binary buffer?", "id": "bend-kit-http@0.32.0.0/http:h2.send", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I compress data as gzip?", "id": "bend-kit-zlib@0.2.0.1/zlib:gz.body", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "raw deflate decode", "id": "bend-kit-zlib@0.2.0.1/zlib:ht.decode", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "gzip decompress", "id": "bend-kit-zlib@0.2.0.1/zlib:brotli.new", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> U32", "id": "bend-kit-int@0.2.0.0/int:U32.read_radix", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "gzip decompress", "id": "bend-kit-zlib@0.2.0.1/zlib:brotli.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Socket, String -> IO<Socket, Result<Unit>>", "id": "bend-kit-http@0.32.0.0/http:writer.result", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Socket -> IO<Unit>", "id": "bend-kit-http@0.32.0.0/http:talk.read", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "raw deflate decode", "id": "bend-kit-http2@0.1.2.0/hpack:decode", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "gzip decompress", "id": "bend-kit-zlib@0.2.0.1/zlib:inflate.rest", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> U32", "id": "bend-kit-bytes@0.3.0.0/bytes:to_string", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> U32", "id": "bend-kit-int@0.2.0.0/int:S32.read", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to decompress Brotli data as it arrives in pieces.", "id": "bend-kit-zlib@0.2.0.1/zlib:inflate.new", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> U32", "id": "bend-kit-int@0.2.0.0/int:U8.read", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> U32", "id": "bend-kit-int@0.2.0.0/int:U8.read_radix", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I decode a zlib stream?", "id": "bend-kit-zlib@0.2.0.1/zlib:brotli.new", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I regroup natural number sums in a proof?", "id": "bend-ml-nat-lemmas@0.1.0.0/main:mul_one_l", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "compress raw deflate data", "id": "bend-kit-zlib@0.2.0.1/zlib:inflate.rest", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "distribute multiplication over addition", "id": "U32.mul", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "natural multiplication commutative proof", "id": "U32.add_comm", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "natural addition commutativity", "id": "Word.adc", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "distribute multiplication over addition", "id": "bend-ml-nat-lemmas@0.1.0.0/main:product_append", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I prove the length of concatenated lists?", "id": "List.zip", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "distribute multiplication over addition", "id": "bend-ml-nat-lemmas@0.1.0.0/main:add_succ", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need a proof that appending an empty list preserves the list.", "id": "List.head", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I prove the length of concatenated lists?", "id": "bend-kit-concurrency@0.1.0.0/concurrency:count", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "TLS with custom trust certificates", "id": "bend-kit-http@0.32.0.0/http:Route", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "product of concatenated lists", "id": "String.join", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "product of concatenated lists", "id": "List.zip", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I set the HPACK table limit?", "id": "bend-kit-http2@0.1.2.0/hpack:static", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "tls handshake", "id": "bend-kit-http@0.32.0.0/http:conn.secure.tls", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to decompress Brotli data as it arrives in pieces.", "id": "bend-kit-zlib@0.2.0.1/zlib:unzlib", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Socket -> IO<Unit>", "id": "TCP.accept", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "TCP connect timeout", "id": "bend-kit-http@0.32.0.0/http:conn.open.all", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "http response writer", "id": "bend-kit-http@0.32.0.0/http:serve.write.body", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def sha512.words(len: U32, words: Array<U32>) -> IO(Result<&1, &1, U32 & String, U32 & Array<U32>>):", "id": "bend-kit-zlib@0.2.0.1/zlib:dec.feed.words", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "start HTTP server", "id": "bend-kit-http@0.32.0.0/http:server.opened", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "map lookup", "id": "Map.from_list", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "task timeout limit", "id": "Process.run", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I remove a map entry?", "id": "Map", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need a collection of unique strings.", "id": "String.join", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need a collection of unique strings.", "id": "String.concat", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Map.from_list", "id": "Map.set", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "split text into lines", "id": "String.split.push", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "task timeout limit", "id": "bend-kit-http@0.32.0.0/http:bounded.send", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "split text into lines", "id": "String.to_list", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to combine a list of lists into one list.", "id": "List.foldr", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "string prefix test", "id": "String.drop", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def String.trim(s: String) -> String:", "id": "Nat.read.trim", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> Maybe<Nat>", "id": "Word.to_nat", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "String -> Maybe<Nat>", "id": "bend-kit-int@0.2.0.0/int:Int.read", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}

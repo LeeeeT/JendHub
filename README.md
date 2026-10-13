@@ -139,7 +139,7 @@ of dense search on the enriched text. It sorts them by this weighted sum:
 | 0.02 | 1 for an API definition, 0 for a helper |
 | 0.1 | Name overlap |
 
-Its nDCG@10 on the dev benchmark is 0.817. See [bench/README.md](bench/README.md)
+Its nDCG@10 on the dev benchmark is 0.808. See [bench/README.md](bench/README.md)
 for all results.
 
 ## External models
