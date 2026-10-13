@@ -33,3 +33,29 @@ satisfies the stated constraints most cheaply.
 Use ASD-STE100 in messages, commit messages, documentation, and code comments.
 Use short sentences. Use active voice. Give one meaning to each sentence.
 Avoid code comments. Use names and structure to explain the code.
+
+### 5. Deliver one part at a time
+
+Build one self-contained part, then stop for review. Commit only when the user
+says "commit". Ask the user about decisions that change the design or cost
+money, for example a model, a provider or the pipelines in a pool. Decide the
+small details yourself.
+
+### 6. Measure each change with the benchmark
+
+Keep each experiment as a separate pipeline in `PIPELINES`. Pool a new
+pipeline with `jendhub bench pool` before you compare it. Compare pipelines with
+`jendhub bench compare`, and report the change with its 95% interval, not only
+two scores. Trust a comparison only when judged@10 is about 0.95 or more for
+both pipelines. Read [bench/README.md](bench/README.md) before you change the
+benchmark.
+
+### 7. Keep the documentation current
+
+When a change alters a command, a design decision, a model or a result, update
+[README.md](README.md) and [bench/README.md](bench/README.md) in the same
+commit.
+
+### 8. Protect the secrets
+
+`.env` holds `OPENROUTER_API_KEY`. Never print or commit its value.
