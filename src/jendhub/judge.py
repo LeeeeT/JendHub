@@ -2,17 +2,16 @@ import asyncio
 import hashlib
 import json
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
 
 from jendhub.bench import Query
 from jendhub.definitions import Definition
-from jendhub.http import http_client
 from jendhub.hub import Json
 from jendhub.judgments import JUDGED_GRADES
-from jendhub.openrouter import OpenRouterError, api_key, post
+from jendhub.openrouter import OpenRouterError, Usage, for_each, message_content, post
 
 MODEL = "openai/gpt-6-luna"
 PROVIDER = "openai"
@@ -53,23 +52,7 @@ def user_message(pair: Pair) -> str:
     )
 
 
-def message_content(body: Json) -> str:
-    match body:
-        case {"choices": [{"message": {"content": str() as content}}, *_]}:
-            return content
-        case _:
-            raise OpenRouterError("OpenRouter returned no message")
-
-
-def response_cost(body: Json) -> float:
-    match body:
-        case {"usage": {"cost": int() | float() as cost}}:
-            return float(cost)
-        case _:
-            return 0.0
-
-
-def parse_grade(body: Json) -> tuple[int, float]:
+def parse_grade(body: Json) -> int:
     content = message_content(body)
     try:
         answer: Json = json.loads(content)
@@ -77,7 +60,7 @@ def parse_grade(body: Json) -> tuple[int, float]:
         raise OpenRouterError(f"the judge returned invalid JSON: {content!r}") from error
     match answer:
         case {"grade": int() as grade} if grade in JUDGED_GRADES:
-            return grade, response_cost(body)
+            return grade
         case _:
             raise OpenRouterError(f"the judge returned an invalid grade: {content!r}")
 
@@ -101,29 +84,19 @@ class Judge:
             "provider": {"only": [PROVIDER], "allow_fallbacks": False},
         }
 
-    async def grade(self, client: httpx.AsyncClient, key: str, pair: Pair) -> tuple[int, float]:
-        return parse_grade(await post(client, key, "chat/completions", self.request(pair)))
-
-    def judge(self, pairs: list[Pair], record: Callable[[Pair, int], None]) -> float:
+    def judge(self, pairs: list[Pair], record: Callable[[Pair, int], None]) -> Usage:
+        usage = Usage()
         if not pairs:
-            return 0.0
+            return usage
         logger.info("judging %d pairs with %s", len(pairs), self.name)
-        return asyncio.run(self.judge_all(pairs, record))
 
-    async def judge_all(self, pairs: list[Pair], record: Callable[[Pair, int], None]) -> float:
-        key = api_key()
-        pending: Iterator[Pair] = iter(pairs)
-        costs: list[float] = []
+        async def grade(client: httpx.AsyncClient, key: str, pair: Pair) -> None:
+            body = await post(client, key, "chat/completions", self.request(pair))
+            record(pair, parse_grade(body))
+            usage.add(body)
+            if usage.requests % PROGRESS_STEP == 0:
+                logger.info("judged %d of %d pairs", usage.requests, len(pairs))
 
-        async def work(client: httpx.AsyncClient) -> None:
-            for pair in pending:
-                grade, cost = await self.grade(client, key, pair)
-                record(pair, grade)
-                costs.append(cost)
-                if len(costs) % PROGRESS_STEP == 0:
-                    logger.info("judged %d of %d pairs", len(costs), len(pairs))
-
-        async with http_client(CONCURRENCY) as client:
-            await asyncio.gather(*(work(client) for _ in range(CONCURRENCY)))
-        logger.info("judged %d pairs for $%.4f", len(costs), sum(costs))
-        return sum(costs)
+        asyncio.run(for_each(pairs, CONCURRENCY, grade))
+        logger.info("judged %d pairs: %s", len(pairs), usage.describe())
+        return usage

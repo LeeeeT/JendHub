@@ -32,7 +32,7 @@ class Query:
 
 def corpus_text(corpus: Mirror) -> str:
     sections = [
-        f"===== {file.origin.prefix.removesuffix(':') or 'Base'} =====\n{file.source.rstrip()}\n"
+        f"===== {file.origin.label} =====\n{file.source.rstrip()}\n"
         for file in source_files(corpus)
     ]
     return "\n".join(sections)

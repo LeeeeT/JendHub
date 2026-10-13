@@ -13,8 +13,8 @@ from jendhub.openrouter import API, OpenRouterError
 ENDPOINT = f"{API}/chat/completions"
 MAP = Query("map a list", "phrase", [Answer("List.map", 3)])
 TEXT = "def List.map(f, xs): ..."
-PAIR = Pair(MAP, Definition("List.map", "def", "List.map", BASE, TEXT, TEXT))
-OTHER = Pair(MAP, Definition("Nat.add", "def", "Nat.add", BASE, "def Nat.add", "def Nat.add"))
+PAIR = Pair(MAP, Definition("List.map", "def", "List.map", BASE, TEXT, TEXT, 0, 1))
+OTHER = Pair(MAP, Definition("Nat.add", "def", "Nat.add", BASE, "def Nat.add", "def Nat.add", 2, 3))
 
 
 def completion(content: str, cost: float = 0.001) -> Json:
@@ -52,8 +52,8 @@ def test_the_judge_name_changes_with_the_prompt() -> None:
     assert Judge("prompt a").name != Judge("prompt b").name
 
 
-def test_parse_grade_reads_the_grade_and_the_cost() -> None:
-    assert parse_grade(completion('{"grade": 2}', 0.5)) == (2, 0.5)
+def test_parse_grade_reads_the_grade() -> None:
+    assert parse_grade(completion('{"grade": 2}')) == 2
 
 
 @pytest.mark.parametrize("content", ['{"grade": 4}', '{"score": 2}', "two"])
@@ -65,14 +65,15 @@ def test_parse_grade_refuses_an_invalid_answer(content: str) -> None:
 def test_judge_records_a_grade_for_each_pair(router: respx.MockRouter) -> None:
     router.post(ENDPOINT).mock(side_effect=grade_by_id)
     recorded: dict[str, int] = {}
-    cost = Judge("prompt").judge(
+    usage = Judge("prompt").judge(
         [PAIR, OTHER], lambda pair, grade: recorded.update({pair.definition.id: grade})
     )
     assert recorded == {"List.map": 3, "Nat.add": 0}
-    assert cost == pytest.approx(0.002)
+    assert usage.requests == 2
+    assert usage.cost == pytest.approx(0.002)
 
 
 def test_judge_of_no_pairs_sends_no_request(router: respx.MockRouter) -> None:
     route = router.post(ENDPOINT)
-    assert Judge("prompt").judge([], lambda _pair, _grade: None) == 0.0
+    assert Judge("prompt").judge([], lambda _pair, _grade: None).requests == 0
     assert route.call_count == 0

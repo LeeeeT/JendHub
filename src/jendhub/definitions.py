@@ -21,6 +21,10 @@ class Origin:
     def prefix(self) -> str:
         return "" if self.release is None else f"{self.release}/{self.module}:"
 
+    @property
+    def label(self) -> str:
+        return "Base" if self.release is None else f"{self.release}/{self.module}"
+
 
 BASE = Origin(None, "")
 
@@ -39,6 +43,8 @@ class Definition:
     origin: Origin
     text: str
     head: str
+    start: int
+    end: int
 
 
 @dataclass(frozen=True)
@@ -47,6 +53,15 @@ class Block:
     name: str
     doc: list[str]
     lines: list[str]
+    start: int
+
+    @property
+    def first(self) -> int:
+        return self.start - len(self.doc)
+
+    @property
+    def end(self) -> int:
+        return self.start + len(self.lines)
 
     @property
     def head(self) -> list[str]:
@@ -87,7 +102,7 @@ def blocks(source: str) -> list[Block]:
             end += 1
         body = "\n".join(lines[start:end]).rstrip().split("\n")
         kind = cast("Kind", match.group(1))
-        found.append(Block(kind, match.group(2), doc_comment(lines, start), body))
+        found.append(Block(kind, match.group(2), doc_comment(lines, start), body, start))
     return found
 
 
@@ -103,6 +118,8 @@ def extract(file: SourceFile) -> list[Definition]:
             file.origin,
             "\n".join(block.doc + block.lines),
             "\n".join(block.head),
+            block.first,
+            block.end,
         )
         for block in found
         if not block.name.startswith(aliases) and not (block.kind == "def" and block.name in laws)

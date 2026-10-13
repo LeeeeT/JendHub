@@ -47,8 +47,10 @@ LAW_TEXT = "law swap_twice:\nfor p: Pair\n  {Pair.swap(Pair.swap(p)) == p : Pair
 
 def test_extract_reads_each_top_level_definition() -> None:
     assert extract(SourceFile(PAIR, SOURCE)) == [
-        Definition("kit@0.1.0.0/pair:Pair", "type", "Pair", PAIR, PAIR_TEXT, PAIR_TEXT),
-        Definition("kit@0.1.0.0/pair:Pair.swap", "def", "Pair.swap", PAIR, SWAP_TEXT, SWAP_HEAD),
+        Definition("kit@0.1.0.0/pair:Pair", "type", "Pair", PAIR, PAIR_TEXT, PAIR_TEXT, 6, 9),
+        Definition(
+            "kit@0.1.0.0/pair:Pair.swap", "def", "Pair.swap", PAIR, SWAP_TEXT, SWAP_HEAD, 10, 16
+        ),
         Definition(
             "kit@0.1.0.0/pair:loop",
             "def",
@@ -56,9 +58,19 @@ def test_extract_reads_each_top_level_definition() -> None:
             PAIR,
             LOOP_TEXT,
             "@unsafe def loop(n: Nat) -> Nat:",
+            18,
+            20,
         ),
-        Definition("kit@0.1.0.0/pair:swap_twice", "law", "swap_twice", PAIR, LAW_TEXT, LAW_TEXT),
+        Definition(
+            "kit@0.1.0.0/pair:swap_twice", "law", "swap_twice", PAIR, LAW_TEXT, LAW_TEXT, 21, 24
+        ),
     ]
+
+
+def test_the_span_of_a_definition_covers_its_doc_comment_and_its_lines() -> None:
+    lines = SOURCE.splitlines()
+    [_, swap, *_] = extract(SourceFile(PAIR, SOURCE))
+    assert "\n".join(lines[swap.start : swap.end]) == swap.text
 
 
 def test_extract_names_base_definitions_without_a_prefix() -> None:
