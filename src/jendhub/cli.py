@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from jendhub.bench import BenchError, Query, check, corpus_text, summary
-from jendhub.definitions import Definition, corpus_definitions
+from jendhub.definitions import corpus_definitions, source_files
 from jendhub.dev import (
     Budget,
     DefinitionBudget,
@@ -18,6 +18,8 @@ from jendhub.dev import (
     select,
 )
 from jendhub.embeddings import OpenRouterEmbedder
+from jendhub.enrich import Window, enrich, windows
+from jendhub.enrichments import EnrichError, EnrichmentStore
 from jendhub.errors import JendHubError
 from jendhub.evaluate import Pipeline, compare, evaluate, format_comparisons, format_scores
 from jendhub.judge import Judge, Pair
@@ -46,6 +48,7 @@ JUDGMENTS = Path("bench/judgments.jsonl")
 JUDGE_PROMPT = Path("bench/JUDGE.md")
 DEFAULT_DEPTH = 10
 EMBEDDINGS = Path("embeddings.sqlite")
+ENRICHMENTS = Path("enrichments.sqlite")
 DEFAULT_K = 10
 
 
@@ -72,6 +75,9 @@ def parse_arguments() -> argparse.Namespace:
         help="the maximum number of top-level def, type and law declarations",
     )
     dev_commands.add_parser("build", help=f"build the dev corpus from {DEV_CORPUS_LIST}")
+    commands.add_parser(
+        "enrich", help="write search metadata for the definitions of the dev corpus"
+    )
     bench_parser = commands.add_parser("bench", help="manage the benchmark")
     bench_commands = bench_parser.add_subparsers(dest="subcommand", required=True)
     bench_commands.add_parser("corpus", help="write the dev corpus as one text file")
@@ -160,21 +166,20 @@ def report_problems(path: Path, problems: list[str]) -> None:
 
 @dataclass(frozen=True)
 class Benchmark:
-    definitions: list[Definition]
+    resources: Resources
     queries: list[Query]
     judgments: list[Judgment]
     judge: Judge
-    embeddings: Path
 
     def assessments(self) -> list[Assessment]:
         return assessments(self.queries, self.judgments)
 
     def pipeline(self, name: str) -> Pipeline:
-        return PIPELINES[name](Resources(self.definitions, OpenRouterEmbedder(self.embeddings)))
+        return PIPELINES[name](self.resources)
 
     def judge_pairs(self, pairs: list[tuple[Query, str]]) -> None:
         known = {(judgment.query, judgment.id) for judgment in self.judgments}
-        definitions = {definition.id: definition for definition in self.definitions}
+        definitions = {definition.id: definition for definition in self.resources.definitions}
         unique = {(query.query, id_): (query, id_) for query, id_ in pairs}
         new = [
             Pair(query, definitions[id_])
@@ -192,11 +197,28 @@ class Benchmark:
             self.judge.judge(new, record)
 
 
-def load_benchmark(corpus: Mirror, embeddings: Path) -> Benchmark:
+def corpus_windows(corpus: Mirror) -> list[Window]:
+    return [window for file in source_files(corpus) for window in windows(file)]
+
+
+def enrich_corpus(corpus: Mirror, store: EnrichmentStore) -> None:
+    require_corpus(corpus)
+    found, missing = store.load(corpus_windows(corpus))
+    sys.stdout.write(f"{len(found)} definitions have enrichments; {len(missing)} windows remain\n")
+    outcome = enrich(missing, store.store)
+    for failure in outcome.failures:
+        sys.stdout.write(f"failed: {failure}\n")
+    if outcome.failures:
+        raise EnrichError(f"{len(outcome.failures)} windows failed: run jendhub enrich again")
+
+
+def load_benchmark(corpus: Mirror, data: Path) -> Benchmark:
     require_corpus(corpus)
     if not QUERIES.is_file():
         raise BenchError(f"{QUERIES} does not exist")
     definitions = corpus_definitions(corpus)
+    enrichments, _ = EnrichmentStore(data / ENRICHMENTS).load(corpus_windows(corpus))
+    resources = Resources(definitions, OpenRouterEmbedder(data / EMBEDDINGS), enrichments)
     ids = {definition.id for definition in definitions}
     queries, problems = check(QUERIES.read_text(encoding="utf-8"), ids)
     report_problems(QUERIES, problems)
@@ -206,7 +228,7 @@ def load_benchmark(corpus: Mirror, embeddings: Path) -> Benchmark:
         text = JUDGMENTS.read_text(encoding="utf-8")
         judgments, problems = check_judgments(text, queries, ids, judge.name)
         report_problems(JUDGMENTS, problems)
-    return Benchmark(definitions, queries, judgments, judge, embeddings)
+    return Benchmark(resources, queries, judgments, judge)
 
 
 def check_benchmark(benchmark: Benchmark) -> None:
@@ -245,7 +267,7 @@ def pool_pipelines(benchmark: Benchmark, names: list[str], depth: int) -> None:
 
 
 def check_agreement(benchmark: Benchmark) -> None:
-    ids = [definition.id for definition in benchmark.definitions]
+    ids = [definition.id for definition in benchmark.resources.definitions]
     negatives = random_negatives(benchmark.queries, ids)
     benchmark.judge_pairs(answer_pairs(benchmark.queries) + negatives)
     rows = agreement_rows(benchmark.queries, negatives, benchmark.judgments)
@@ -274,11 +296,15 @@ def run(arguments: argparse.Namespace) -> None:
             select_dev_corpus(full, budget_from(arguments))
         case "dev", "build":
             build_dev_corpus(full, arguments.data / "dev")
+        case "enrich", _:
+            enrich_corpus(
+                Mirror(arguments.data / "dev"), EnrichmentStore(arguments.data / ENRICHMENTS)
+            )
         case "bench", "corpus":
             write_corpus_text(Mirror(arguments.data / "dev"), arguments.data / "dev-corpus.txt")
         case "bench", str() as subcommand:
             run_bench(
-                load_benchmark(Mirror(arguments.data / "dev"), arguments.data / EMBEDDINGS),
+                load_benchmark(Mirror(arguments.data / "dev"), arguments.data),
                 subcommand,
                 arguments,
             )

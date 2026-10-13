@@ -3,7 +3,7 @@ import itertools
 import json
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.resources import files
 
 import httpx
@@ -13,12 +13,14 @@ from jendhub.hub import Json
 from jendhub.openrouter import OpenRouterError, Usage, for_each, message_content, post
 
 MODEL = "deepseek/deepseek-v4-flash-0731"
-PROVIDER = "deepinfra/fp8"
+PROVIDERS = ("deepinfra/fp8", "parasail/fp8", "digitalocean")
 BEFORE = 40
 TARGETS = 40
 AFTER = 20
 CONTEXT_LIMIT = 30_000
 CONCURRENCY = 16
+ATTEMPTS = 3
+PROGRESS_STEP = 20
 ROLES = ("api", "helper")
 PROMPT = files("jendhub").joinpath("enrich.md").read_text(encoding="utf-8")
 
@@ -139,7 +141,7 @@ def parse_enrichments(body: Json, window: Window) -> list[Enrichment]:
     return [entries[target.name] for target in window.targets]
 
 
-def request(window: Window) -> dict[str, Json]:
+def prompt(window: Window) -> dict[str, Json]:
     return {
         "model": MODEL,
         "messages": [
@@ -148,21 +150,55 @@ def request(window: Window) -> dict[str, Json]:
         ],
         "reasoning": {"enabled": False},
         "response_format": response_format(window),
-        "provider": {"only": [PROVIDER], "allow_fallbacks": False},
     }
 
 
-def enrich(windows: list[Window], record: Callable[[list[Enrichment]], None]) -> Usage:
-    usage = Usage()
+def request(window: Window) -> dict[str, Json]:
+    providers = list[Json](PROVIDERS)
+    routing: dict[str, Json] = {
+        "order": providers,
+        "only": providers,
+        "allow_fallbacks": True,
+        "require_parameters": True,
+    }
+    body = prompt(window)
+    body["provider"] = routing
+    return body
+
+
+@dataclass
+class Outcome:
+    usage: Usage = field(default_factory=Usage)
+    failures: list[str] = field(default_factory=list[str])
+
+
+def enrich(windows: list[Window], record: Callable[[Window, list[Enrichment]], None]) -> Outcome:
+    outcome = Outcome()
     if not windows:
-        return usage
+        return outcome
     logger.info("enriching %d windows with %s", len(windows), MODEL)
 
-    async def enrich_window(client: httpx.AsyncClient, key: str, window: Window) -> None:
+    async def attempt(client: httpx.AsyncClient, key: str, window: Window) -> list[Enrichment]:
         body = await post(client, key, "chat/completions", request(window))
-        record(parse_enrichments(body, window))
-        usage.add(body)
+        outcome.usage.add(body)
+        return parse_enrichments(body, window)
+
+    async def enrich_window(client: httpx.AsyncClient, key: str, window: Window) -> None:
+        place = f"{window.origin.label} line {window.first + 1}"
+        for number in range(1, ATTEMPTS + 1):
+            try:
+                found = await attempt(client, key, window)
+            except (OpenRouterError, httpx.HTTPError) as error:
+                logger.info("attempt %d of %d failed for %s: %s", number, ATTEMPTS, place, error)
+                if number == ATTEMPTS:
+                    outcome.failures.append(f"{place}: {error}")
+            else:
+                record(window, found)
+                done = outcome.usage.requests
+                if done % PROGRESS_STEP == 0:
+                    logger.info("sent %d requests", done)
+                return
 
     asyncio.run(for_each(windows, CONCURRENCY, enrich_window))
-    logger.info("enriched %d windows: %s", len(windows), usage.describe())
-    return usage
+    logger.info("enriched %d windows: %s", len(windows), outcome.usage.describe())
+    return outcome

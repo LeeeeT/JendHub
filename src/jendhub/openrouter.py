@@ -114,6 +114,8 @@ async def post(client: httpx.AsyncClient, key: str, path: str, request: dict[str
     except json.JSONDecodeError as error:
         raise OpenRouterError(f"OpenRouter returned status {response.status_code}") from error
     match body:
+        case {"error": {"message": str() as message, "metadata": {"raw": str() as raw}}}:
+            raise OpenRouterError(f"OpenRouter: {message}: {raw[:500]}")
         case {"error": {"message": str() as message}}:
             raise OpenRouterError(f"OpenRouter: {message}")
         case _ if response.is_error:

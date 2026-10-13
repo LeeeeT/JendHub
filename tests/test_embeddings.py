@@ -135,6 +135,16 @@ def test_embed_reports_the_error_message(
         embedder.embed(["List.map"])
 
 
+def test_embed_reports_the_raw_message_of_the_provider(
+    router: respx.MockRouter, embedder: OpenRouterEmbedder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(openrouter, "RETRY_DELAYS", ())
+    error = {"message": "Provider returned error", "metadata": {"raw": "engine overloaded"}}
+    router.post(ENDPOINT).respond(429, json={"error": error})
+    with pytest.raises(OpenRouterError, match="Provider returned error: engine overloaded"):
+        embedder.embed(["List.map"])
+
+
 def test_embed_rejects_a_vector_with_the_wrong_dimensions(
     router: respx.MockRouter, embedder: OpenRouterEmbedder
 ) -> None:

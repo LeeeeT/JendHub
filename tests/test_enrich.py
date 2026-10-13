@@ -9,7 +9,7 @@ from jendhub.definitions import BASE, SourceFile
 from jendhub.enrich import (
     MODEL,
     PROMPT,
-    PROVIDER,
+    PROVIDERS,
     Enrichment,
     Window,
     parse_enrichments,
@@ -121,11 +121,16 @@ def test_parse_enrichments_refuses_an_invalid_answer(entries: list[dict[str, Jso
         parse_enrichments(completion(entries), window_of(["a", "b"]))
 
 
-def test_request_turns_reasoning_off_and_pins_the_provider() -> None:
+def test_request_turns_reasoning_off_and_routes_to_the_providers_in_order() -> None:
     body = request(window_of(["a"]))
     assert body["model"] == MODEL
     assert body["reasoning"] == {"enabled": False}
-    assert body["provider"] == {"only": [PROVIDER], "allow_fallbacks": False}
+    assert body["provider"] == {
+        "order": list(PROVIDERS),
+        "only": list(PROVIDERS),
+        "allow_fallbacks": True,
+        "require_parameters": True,
+    }
 
 
 def test_request_restricts_the_names_to_the_targets() -> None:
@@ -147,9 +152,36 @@ def test_enrich_records_the_enrichments_of_each_window(
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     router.post(ENDPOINT).mock(side_effect=enrich_all)
     recorded: list[str] = []
-    usage = enrich.enrich(
+    outcome = enrich.enrich(
         windows(SourceFile(BASE, source(3))),
-        lambda found: recorded.extend(item.id for item in found),
+        lambda _window, found: recorded.extend(item.id for item in found),
     )
     assert sorted(recorded) == ["f0", "f1", "f2"]
-    assert usage.requests == 2
+    assert outcome.usage.requests == 2
+    assert outcome.failures == []
+
+
+def test_enrich_retries_an_invalid_answer(
+    router: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    answers = [completion([entry("x")]), completion([entry("f0")])]
+    router.post(ENDPOINT).mock(side_effect=[httpx.Response(200, json=a) for a in answers])
+    recorded: list[str] = []
+    outcome = enrich.enrich(
+        windows(SourceFile(BASE, source(1))),
+        lambda _window, found: recorded.extend(item.id for item in found),
+    )
+    assert recorded == ["f0"]
+    assert outcome.failures == []
+
+
+def test_enrich_reports_a_window_that_fails_each_attempt(
+    router: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    router.post(ENDPOINT).respond(200, json=completion([entry("x")]))
+    outcome = enrich.enrich(windows(SourceFile(BASE, source(1))), lambda _window, _found: None)
+    assert outcome.usage.requests == enrich.ATTEMPTS
+    assert len(outcome.failures) == 1
+    assert outcome.failures[0].startswith("Base line 1:")
