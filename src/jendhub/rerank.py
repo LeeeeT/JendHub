@@ -6,7 +6,7 @@ DEPTH = 50
 
 
 class Scorer(Protocol):
-    def scores(self, queries: list[str], ids: list[list[str]]) -> list[list[float]]: ...
+    def scores(self, queries: list[str], ids: list[list[str]], /) -> list[list[float]]: ...
 
 
 def max_normalized(scores: list[float]) -> list[float]:

@@ -4688,3 +4688,27 @@
 {"query": "How do I prove the length of concatenated lists?", "id": "bend-ml-nat-lemmas@0.1.0.0/main:append_nil", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
 {"query": "List<Nat> -> Nat", "id": "bend-kit-concurrency@0.1.0.0/concurrency:fold", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
 {"query": "I need to decompress Brotli data as it arrives in pieces.", "id": "bend-kit-zlib@0.2.0.1/zlib:inflate.rest", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I read an environment variable?", "id": "File.read_at", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "decode compressed HTTP bodies", "id": "bend-kit-http@0.32.0.0/http:open.with", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse.bytes", "id": "bend-kit-time@0.1.2.1/time:tzif.parse", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I send a packed binary buffer?", "id": "TCP.try_send_bytes", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I print an integer in hexadecimal?", "id": "bend-kit-int@0.2.0.0/int:I64.show", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I pick a random integer below a limit?", "id": "bend-kit-random@0.1.0.1/random:from_os", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Stream -> IO<Stream, Result<Maybe<Bytes>>>", "id": "bend-kit-http@0.32.0.0/http:serve.stream.on.with", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "client.start", "id": "bend-kit-hairpin@0.3.0.0/hairpin:base", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "accept connection with deadline", "id": "bend-kit-http@0.32.0.0/http:Dial", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "byte buffer length", "id": "bend-kit-bytes@0.3.0.0/bytes:slice", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "signed 64 bit integers", "id": "bend-kit-int@0.2.0.0/int:I64.add", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to encrypt a message and authenticate it.", "id": "bend-kit-crypto@0.2.2.1/crypto:rsa.verify.jwk.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Level.rank", "id": "bend-kit-notch@0.1.0.1/notch:Logger", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I prove the length of concatenated lists?", "id": "bend-kit-bytes@0.3.0.0/bytes:concat.of", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I decode a zlib stream?", "id": "bend-kit-http@0.32.0.0/http:stream.feed.step", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Socket -> IO<Unit>", "id": "bend-kit-http@0.32.0.0/http:exchange", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Date -> U32", "id": "bend-kit-http@0.32.0.0/http:cookie.date.at", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "create a byte buffer", "id": "bend-kit-bytes@0.3.0.0/bytes:slice", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I pair two lists?", "id": "bend-kit-router@0.2.0.0/router:groups.eq", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "parse.bytes", "id": "bend-kit-wire@0.4.6.1/wire:recv.words", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need to extract part of a binary buffer.", "id": "bend-kit-http2@0.1.2.0/http2:parse", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "exponential backoff delay", "id": "bend-kit-http@0.32.0.0/http:retry.wait", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "compare authentication tags", "id": "String.cmp", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I compress data as gzip?", "id": "bend-kit-http@0.32.0.0/http:codings", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}

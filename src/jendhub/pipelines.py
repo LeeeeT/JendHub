@@ -10,10 +10,14 @@ from jendhub.evaluate import Pipeline
 from jendhub.fusion import ReciprocalRankFusion
 from jendhub.names import NameMatch
 from jendhub.rerank import LinearRerank, MaxNormalized, Scorer
+from jendhub.roles import ApiRole
 
 NAME_WEIGHT = 1.0
 DENSE_NAME_WEIGHT = 0.1
 METADATA_WEIGHT = 1.0
+HYBRID_TEXT_WEIGHT = 0.5
+HYBRID_BM25_WEIGHT = 0.05
+HYBRID_ROLE_WEIGHT = 0.02
 INSTRUCTION = "Given a programmer's search query, retrieve the Bend definitions that match it"
 
 
@@ -119,6 +123,20 @@ def dense_enriched_name_rerank(resources: Resources) -> Pipeline:
     return dense_name_rerank(resources, enriched_documents(resources))
 
 
+def dense_enriched_hybrid_rerank(resources: Resources) -> Pipeline:
+    documents = enriched_documents(resources)
+    enriched = Dense(resources.embedder, documents, INSTRUCTION)
+    text = Dense(resources.embedder, text_documents(resources.definitions), INSTRUCTION)
+    features: list[tuple[float, Scorer]] = [
+        (1.0, enriched),
+        (HYBRID_TEXT_WEIGHT, text),
+        (HYBRID_BM25_WEIGHT, MaxNormalized(Bm25(documents))),
+        (HYBRID_ROLE_WEIGHT, ApiRole(resources.enrichments)),
+        (DENSE_NAME_WEIGHT, NameMatch(name_documents(resources.definitions))),
+    ]
+    return LinearRerank(enriched, features)
+
+
 def dense_text_metadata_name_rerank(resources: Resources) -> Pipeline:
     text = Dense(resources.embedder, text_documents(resources.definitions), INSTRUCTION)
     meta = Dense(resources.embedder, metadata_documents(resources), INSTRUCTION)
@@ -138,4 +156,5 @@ PIPELINES: dict[str, PipelineBuilder] = {
     "dense-text-summary+name-rerank": dense_text_summary_name_rerank,
     "dense-enriched+name-rerank": dense_enriched_name_rerank,
     "dense-text+metadata+name-rerank": dense_text_metadata_name_rerank,
+    "dense-enriched+text+bm25-enriched+role+name-rerank": dense_enriched_hybrid_rerank,
 }
