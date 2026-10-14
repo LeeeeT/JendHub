@@ -152,16 +152,16 @@ queries of each kind.
 | Pipeline | nDCG@10 | short | judged@10 |
 |---|---|---|---|
 | `bm25` | 0.383 | 0.339 | 0.632 |
-| `bm25-head-package` | 0.426 | 0.365 | 0.846 |
-| `bm25-head-package+name-rrf` | 0.428 | 0.366 | 0.849 |
-| `bm25-head-package+name-rerank` | 0.461 | 0.399 | 1.000 |
-| `dense-head-package` | 0.683 | 0.686 | 0.804 |
-| `dense-text` | 0.732 | 0.737 | 0.977 |
-| `dense-text+name-rerank` | 0.741 | 0.743 | 1.000 |
-| `dense-text+metadata+name-rerank` | 0.777 | 0.797 | 1.000 |
-| `dense-text-summary+name-rerank` | 0.792 | 0.810 | 1.000 |
-| `dense-enriched+name-rerank` | 0.795 | **0.821** | 1.000 |
-| **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.805** | **0.821** | **1.000** |
+| `bm25-head-package` | 0.425 | 0.364 | 0.846 |
+| `bm25-head-package+name-rrf` | 0.428 | 0.365 | 0.849 |
+| `bm25-head-package+name-rerank` | 0.460 | 0.398 | 1.000 |
+| `dense-head-package` | 0.683 | 0.686 | 0.805 |
+| `dense-text` | 0.731 | 0.735 | 0.977 |
+| `dense-text+name-rerank` | 0.740 | 0.741 | 1.000 |
+| `dense-text+metadata+name-rerank` | 0.776 | 0.796 | 1.000 |
+| `dense-text-summary+name-rerank` | 0.791 | 0.809 | 1.000 |
+| `dense-enriched+name-rerank` | 0.794 | 0.819 | 1.000 |
+| **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.815** | **0.830** | **1.000** |
 
 Rows with judged@10 below 0.95 are not pooled, so their scores are too low.
 
@@ -169,27 +169,47 @@ Main findings:
 
 - Dense search beats BM25 by a large margin on natural-language queries:
   `dense-text+name-rerank` against `bm25-head-package+name-rerank` gains
-  +0.254 on keywords, +0.336 on phrase and +0.451 on description. On
+  +0.253 on keywords, +0.336 on phrase and +0.451 on description. On
   exact-signature queries, the difference is not significant.
 - Rank fusion of dense and lexical results made results worse: equal weight
   for a weak list hurts. A linear rerank with small weights works.
 - Enrichment improves natural-language queries. `dense-enriched+name-rerank`
   against `dense-text+name-rerank` gains +0.073 on keywords, +0.077 on phrase,
-  +0.085 on description and +0.096 on name. Alone it hurts exact-signature
+  +0.084 on description and +0.096 on name. Alone it hurts exact-signature
   queries by 0.086.
-- The code embedding as a rerank feature repairs the signature queries.
-  Against `dense-enriched+name-rerank`, the best pipeline gains +0.051 on
-  signature and +0.067 on exact-signature. On keywords, phrase and description
-  queries, no change is significant: -0.008, +0.012 and -0.005.
-- Description is the weakest of the short kinds (0.786). Signature queries
-  remain the weakest kind (0.635), but they are not the main goal.
+- The best pipeline adds the code embedding, BM25 and the role to the rerank.
+  Against `dense-enriched+name-rerank`, it gains +0.022 on all queries,
+  +0.070 on signature, +0.070 on exact-signature and +0.014 on keywords. On
+  phrase (+0.014) and description (+0.004), the change is not significant.
+- Description is the weakest of the short kinds (0.793). Signature queries
+  remain the weakest kind (0.653), but they are not the main goal.
+
+## Weight tuning
+
+The weights of the best pipeline were tuned on all 300 queries for nDCG@10. A
+grid search tried 3,234 weight sets for the code, BM25, role and name
+features. The weight of the enriched embedding stays 1.0, because only the
+ratios change the order.
+
+| Feature | Grid | Best | Flat range |
+|---|---|---|---|
+| Code embedding | 0 to 1.0 | 0.3 | 0.1 to 0.5 |
+| BM25, max-normalized | 0 to 0.2 | 0.075 | 0.05 to 0.1 |
+| Role | 0 to 0.1 | 0.03 | 0.02 to 0.05 |
+| Name overlap | 0 to 0.3 | 0.05 | 0 to 0.1 |
+
+The best weights gave +0.009 against the old weights (0.5, 0.05, 0.02, 0.1)
+on the same queries. The maximum of many weight sets on the same queries is
+too high. A 5-fold cross-validation selected the weights on 4 folds and
+measured them on the fifth. Over 20 random splits, the gain on the unseen
+queries was +0.005 on average, and it was positive in each split.
 
 ## Limits
 
 - There is no held-out query set. The weights of the rerankers were tuned on
-  the first 200 queries, so their gains are a little too high. The best weights
-  of the last sweep form a flat plateau, which limits this risk. The last 100
-  queries were not used to tune weights yet.
+  all 300 queries, so their gains are a little too high. The best weights form
+  a flat plateau, and cross-validation shows a smaller but real gain, which
+  limits this risk.
 - An LLM wrote the queries, and an LLM writes the enrichment queries. They can
   be more similar to each other than real agent queries are.
 - The dev corpus has 5,473 definitions. The search corpus will be much larger,

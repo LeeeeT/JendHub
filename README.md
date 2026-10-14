@@ -134,14 +134,14 @@ of dense search on the enriched text. It sorts them by this weighted sum:
 | Weight | Feature |
 |---|---|
 | 1.0 | Cosine similarity on the enriched text: the code, the summary and the queries |
-| 0.5 | Cosine similarity on the code |
-| 0.05 | BM25 on the enriched text, max-normalized |
-| 0.02 | 1 for an API definition, 0 for a helper |
-| 0.1 | Name overlap |
+| 0.3 | Cosine similarity on the code |
+| 0.075 | BM25 on the enriched text, max-normalized |
+| 0.03 | 1 for an API definition, 0 for a helper |
+| 0.05 | Name overlap |
 
-Its nDCG@10 on the dev benchmark is 0.805. On keywords, phrase and description
-queries, it is equal to `dense-enriched+name-rerank`: the code feature helps
-only signature queries. See [bench/README.md](bench/README.md) for all results.
+Its nDCG@10 on the dev benchmark is 0.815, and 0.830 on the keywords, phrase
+and description queries. See [bench/README.md](bench/README.md) for all results
+and for the weight tuning.
 
 ## External models
 

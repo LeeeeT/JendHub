@@ -7779,3 +7779,21 @@
 {"query": "compare strings for map keys", "id": "Map.seek", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
 {"query": "Keep a queue of jobs that have deadlines and take out the next one that is due.", "id": "bend-kit-scheduler@0.2.0.0/queue:select.due", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
 {"query": "compare strings for map keys", "id": "Map.diff", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "map insert key", "id": "bend-kit-collections@0.1.3.0/PROOF:h.P", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "rfc3339.parse", "id": "bend-kit-time@0.2.0.0/time:TzDatePart", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "post json body", "id": "bend-kit-http@0.32.0.0/http:Send", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "check code formatting", "id": "bend-lint-rules@0.1.0.0/layout/format:options", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "list registered routes", "id": "bend-kit-router@0.2.0.0/router:hidden.handlers", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Register HTTP routes with their methods and send each incoming request to its handler.", "id": "bend-kit-http@0.32.0.0/http:Req", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Train one dense layer: apply ReLU, then update the weights with gradient descent.", "id": "bend-ml-tensor-array@0.1.7.0/main:Mat.softmax_ce", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "How do I wait for a task result?", "id": "bend-kit-hairpin@0.3.0.0/retry:Plan", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "structured logging", "id": "bend-kit-notch@0.2.0.0/notch:Level", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "def par_map.array(~A: Type, ~B: Type, ~f: A -> B, workers: U32, a: Array<A>) -> Array<B>:", "id": "bend-ml-tensor-array@0.1.7.0/main:gemm_par", "grade": 0, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "compare authentication tags", "id": "U32.cmp", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Put an authorization check, a concurrency limit, and a cache in front of a backend fetch.", "id": "bend-kit-cache@0.2.0.0/cache:Cache.read", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "Download a large file over HTTP piece by piece without holding the whole body in memory.", "id": "bend-kit-http@0.32.0.0/http:open.raw.with", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "I need a priority queue that always gives me the smallest item first.", "id": "bend-kit-collections@0.1.3.0/heap:Heap.size", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "file exists", "id": "bend-kit-journal@0.2.0.0/journal:open.words", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "timeout io action", "id": "TCP.try_accept", "grade": 3, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "post json body", "id": "bend-kit-http@0.32.0.0/http:Req", "grade": 2, "judge": "openai/gpt-6-luna medium 62170240"}
+{"query": "read a response header", "id": "bend-kit-http@0.32.0.0/http:Sh", "grade": 1, "judge": "openai/gpt-6-luna medium 62170240"}

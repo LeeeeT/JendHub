@@ -14,9 +14,10 @@ from jendhub.roles import ApiRole
 NAME_WEIGHT = 1.0
 DENSE_NAME_WEIGHT = 0.1
 METADATA_WEIGHT = 1.0
-HYBRID_TEXT_WEIGHT = 0.5
-HYBRID_BM25_WEIGHT = 0.05
-HYBRID_ROLE_WEIGHT = 0.02
+HYBRID_TEXT_WEIGHT = 0.3
+HYBRID_BM25_WEIGHT = 0.075
+HYBRID_ROLE_WEIGHT = 0.03
+HYBRID_NAME_WEIGHT = 0.05
 INSTRUCTION = "Given a programmer's search query, retrieve the Bend definitions that match it"
 
 
@@ -127,7 +128,7 @@ def dense_enriched_hybrid_rerank(resources: Resources) -> Pipeline:
         (HYBRID_TEXT_WEIGHT, text),
         (HYBRID_BM25_WEIGHT, MaxNormalized(Bm25(documents))),
         (HYBRID_ROLE_WEIGHT, ApiRole(resources.enrichments)),
-        (DENSE_NAME_WEIGHT, NameMatch(name_documents(resources.definitions))),
+        (HYBRID_NAME_WEIGHT, NameMatch(name_documents(resources.definitions))),
     ]
     return LinearRerank(enriched, features)
 
