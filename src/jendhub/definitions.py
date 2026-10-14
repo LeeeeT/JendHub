@@ -126,14 +126,21 @@ def extract(file: SourceFile) -> list[Definition]:
     ]
 
 
-def source_files(corpus: Mirror) -> list[SourceFile]:
-    files = [SourceFile(BASE, corpus.base_source.read_text(encoding="utf-8"))]
-    for release, hash_ in corpus.releases().items():
-        for path, content in sorted(corpus.read_package(hash_).items()):
-            origin = Origin(Release.parse(release), path.removesuffix(".bend"))
+@dataclass(frozen=True)
+class Corpus:
+    mirror: Mirror
+    releases: list[Release]
+
+
+def source_files(corpus: Corpus) -> list[SourceFile]:
+    files = [SourceFile(BASE, corpus.mirror.base_source.read_text(encoding="utf-8"))]
+    hashes = corpus.mirror.releases()
+    for release in sorted(corpus.releases, key=str):
+        for path, content in sorted(corpus.mirror.read_package(hashes[str(release)]).items()):
+            origin = Origin(release, path.removesuffix(".bend"))
             files.append(SourceFile(origin, content.decode()))
     return files
 
 
-def corpus_definitions(corpus: Mirror) -> list[Definition]:
+def corpus_definitions(corpus: Corpus) -> list[Definition]:
     return [definition for file in source_files(corpus) for definition in extract(file)]

@@ -2,10 +2,9 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 
-from jendhub.definitions import source_files
+from jendhub.definitions import Corpus, source_files
 from jendhub.errors import JendHubError
 from jendhub.hub import Json
-from jendhub.mirror import Mirror
 
 GRADES = (1, 2, 3)
 BEST_GRADE = 3
@@ -30,7 +29,7 @@ class Query:
     answers: list[Answer]
 
 
-def corpus_text(corpus: Mirror) -> str:
+def corpus_text(corpus: Corpus) -> str:
     sections = [
         f"===== {file.origin.label} =====\n{file.source.rstrip()}\n"
         for file in source_files(corpus)
@@ -91,6 +90,10 @@ def check(text: str, ids: set[str]) -> tuple[list[Query], list[str]]:
         problems += [f"line {number}: {problem}" for problem in query_problems(query, ids)]
         queries.append(query)
     return queries, problems
+
+
+def queries_within(queries: list[Query], ids: set[str]) -> list[Query]:
+    return [query for query in queries if all(answer.id in ids for answer in query.answers)]
 
 
 def summary(queries: list[Query]) -> str:

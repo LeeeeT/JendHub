@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 
 from jendhub.base import fetch_base
-from jendhub.definitions import BASE, SourceFile, extract
+from jendhub.definitions import BASE, Corpus, SourceFile, extract
 from jendhub.errors import JendHubError
 from jendhub.http import http_client
 from jendhub.hub import Json, Listing, Package, Release, listings, parse_listing
@@ -58,6 +58,12 @@ class DevCorpus:
                 return DevCorpus(base_tag, packages)
             case _:
                 raise DevError("invalid dev corpus list")
+
+    def top(self, count: int) -> DevCorpus:
+        size = len(self.packages)
+        if not 0 <= count <= size:
+            raise DevError(f"the dev corpus has {size} packages: select 0 to {size}")
+        return DevCorpus(self.base_tag, self.packages[:count])
 
 
 @dataclass(frozen=True)
@@ -127,6 +133,15 @@ async def build_corpus(
     dev.store_base(await fetch_base(client, corpus.base_tag))
     shutil.rmtree(dev_root, ignore_errors=True)
     staging.replace(dev_root)
+
+
+def open_corpus(dev: Mirror, listed: DevCorpus) -> Corpus:
+    releases = dev.releases()
+    if dev.stored_base_tag() != listed.base_tag or any(
+        releases.get(str(package.release)) != package.hash for package in listed.packages
+    ):
+        raise DevError(f"{dev.root} does not match the dev corpus list: run jendhub dev build")
+    return Corpus(dev, [package.release for package in listed.packages])
 
 
 async def select(full: Mirror, budget: Budget) -> Selection:

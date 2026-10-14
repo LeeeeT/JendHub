@@ -53,6 +53,13 @@ def judgment_problems(
     return problems
 
 
+def judgments_within(
+    judgments: list[Judgment], queries: list[Query], ids: set[str]
+) -> list[Judgment]:
+    kept = {query.query for query in queries}
+    return [j for j in judgments if j.query in kept and j.id in ids]
+
+
 def judgment_line(judgment: Judgment) -> str:
     item = {
         "query": judgment.query,

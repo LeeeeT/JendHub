@@ -6,8 +6,8 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from jendhub.bench import BenchError, Query, check, corpus_text, summary
-from jendhub.definitions import corpus_definitions, source_files
+from jendhub.bench import BenchError, Query, check, corpus_text, queries_within, summary
+from jendhub.definitions import Corpus, corpus_definitions, source_files
 from jendhub.dev import (
     Budget,
     DefinitionBudget,
@@ -15,6 +15,7 @@ from jendhub.dev import (
     DevError,
     PackageBudget,
     build,
+    open_corpus,
     select,
 )
 from jendhub.embeddings import OpenRouterEmbedder
@@ -30,6 +31,7 @@ from jendhub.judgments import (
     assessments,
     check_judgments,
     judgment_line,
+    judgments_within,
 )
 from jendhub.mirror import Mirror
 from jendhub.pipelines import PIPELINES, Resources
@@ -55,6 +57,12 @@ DEFAULT_K = 10
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="jendhub")
     parser.add_argument("--data", type=Path, default=Path("data"))
+    parser.add_argument(
+        "--top",
+        type=int,
+        metavar="N",
+        help="use only Base and the N hottest packages of the dev corpus",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     sync_parser = commands.add_parser(
         "sync", help="mirror BendHub and the latest released base.bend into the full corpus"
@@ -118,7 +126,10 @@ def parse_arguments() -> argparse.Namespace:
         "agreement",
         help="judge the original answers and random definitions, and compare the grades",
     )
-    return parser.parse_args()
+    arguments = parser.parse_args()
+    if arguments.top is not None and arguments.command not in ("enrich", "bench"):
+        parser.error("--top applies only to enrich and bench")
+    return arguments
 
 
 def budget_from(arguments: argparse.Namespace) -> Budget:
@@ -137,21 +148,24 @@ def select_dev_corpus(full: Mirror, budget: Budget) -> None:
     )
 
 
-def build_dev_corpus(full: Mirror, dev_root: Path) -> None:
+def dev_corpus_list() -> DevCorpus:
     if not DEV_CORPUS_LIST.is_file():
         raise DevError(f"{DEV_CORPUS_LIST} does not exist: run jendhub dev select first")
-    corpus = DevCorpus.from_json(DEV_CORPUS_LIST.read_text())
+    return DevCorpus.from_json(DEV_CORPUS_LIST.read_text())
+
+
+def build_dev_corpus(full: Mirror, dev_root: Path) -> None:
+    corpus = dev_corpus_list()
     asyncio.run(build(full, dev_root, corpus))
     sys.stdout.write(f"built {dev_root} with {len(corpus.packages)} packages\n")
 
 
-def require_corpus(corpus: Mirror) -> None:
-    if corpus.stored_base_tag() is None:
-        raise BenchError(f"{corpus.root} has no corpus: run jendhub dev build first")
+def dev_corpus(data: Path, top: int | None) -> Corpus:
+    listed = dev_corpus_list()
+    return open_corpus(Mirror(data / "dev"), listed if top is None else listed.top(top))
 
 
-def write_corpus_text(corpus: Mirror, output: Path) -> None:
-    require_corpus(corpus)
+def write_corpus_text(corpus: Corpus, output: Path) -> None:
     text = corpus_text(corpus)
     output.write_text(text, encoding="utf-8")
     sys.stdout.write(f"wrote {output}: {len(text)} characters\n")
@@ -197,12 +211,11 @@ class Benchmark:
             self.judge.judge(new, record)
 
 
-def corpus_windows(corpus: Mirror) -> list[Window]:
+def corpus_windows(corpus: Corpus) -> list[Window]:
     return [window for file in source_files(corpus) for window in windows(file)]
 
 
-def enrich_corpus(corpus: Mirror, store: EnrichmentStore) -> None:
-    require_corpus(corpus)
+def enrich_corpus(corpus: Corpus, store: EnrichmentStore) -> None:
     stored = store.load(corpus_windows(corpus))
     sys.stdout.write(
         f"{len(stored.enrichments)} definitions have enrichments;"
@@ -217,28 +230,31 @@ def enrich_corpus(corpus: Mirror, store: EnrichmentStore) -> None:
         raise EnrichError(f"{len(outcome.errors)} requests failed: run jendhub enrich again")
 
 
-def load_benchmark(corpus: Mirror, data: Path) -> Benchmark:
-    require_corpus(corpus)
+def load_benchmark(data: Path, top: int | None) -> Benchmark:
     if not QUERIES.is_file():
         raise BenchError(f"{QUERIES} does not exist")
+    corpus = dev_corpus(data, top)
     definitions = corpus_definitions(corpus)
     enrichments = EnrichmentStore(data / ENRICHMENTS).load(corpus_windows(corpus)).enrichments
     resources = Resources(definitions, OpenRouterEmbedder(data / EMBEDDINGS), enrichments)
     ids = {definition.id for definition in definitions}
-    queries, problems = check(QUERIES.read_text(encoding="utf-8"), ids)
+    known = ids if top is None else {d.id for d in corpus_definitions(dev_corpus(data, None))}
+    queries, problems = check(QUERIES.read_text(encoding="utf-8"), known)
     report_problems(QUERIES, problems)
     judge = Judge(JUDGE_PROMPT.read_text(encoding="utf-8"))
     judgments: list[Judgment] = []
     if JUDGMENTS.is_file():
         text = JUDGMENTS.read_text(encoding="utf-8")
-        judgments, problems = check_judgments(text, queries, ids, judge.name)
+        judgments, problems = check_judgments(text, queries, known, judge.name)
         report_problems(JUDGMENTS, problems)
-    return Benchmark(resources, queries, judgments, judge)
+    queries = queries_within(queries, ids)
+    return Benchmark(resources, queries, judgments_within(judgments, queries, ids), judge)
 
 
 def check_benchmark(benchmark: Benchmark) -> None:
     grades = Counter(judgment.grade for judgment in benchmark.judgments)
     sys.stdout.write(
+        f"definitions: {len(benchmark.resources.definitions)}\n"
         f"{summary(benchmark.queries)}\n"
         f"judgments: {len(benchmark.judgments)} by {benchmark.judge.name}\n"
         "judgments by grade: "
@@ -303,16 +319,15 @@ def run(arguments: argparse.Namespace) -> None:
             build_dev_corpus(full, arguments.data / "dev")
         case "enrich", _:
             enrich_corpus(
-                Mirror(arguments.data / "dev"), EnrichmentStore(arguments.data / ENRICHMENTS)
+                dev_corpus(arguments.data, arguments.top),
+                EnrichmentStore(arguments.data / ENRICHMENTS),
             )
         case "bench", "corpus":
-            write_corpus_text(Mirror(arguments.data / "dev"), arguments.data / "dev-corpus.txt")
-        case "bench", str() as subcommand:
-            run_bench(
-                load_benchmark(Mirror(arguments.data / "dev"), arguments.data),
-                subcommand,
-                arguments,
+            write_corpus_text(
+                dev_corpus(arguments.data, arguments.top), arguments.data / "dev-corpus.txt"
             )
+        case "bench", str() as subcommand:
+            run_bench(load_benchmark(arguments.data, arguments.top), subcommand, arguments)
         case command:
             raise AssertionError(command)
 

@@ -6,6 +6,7 @@ import pytest
 import respx
 
 from jendhub.base import SOURCE, Base
+from jendhub.definitions import Corpus
 from jendhub.dev import (
     Budget,
     DefinitionBudget,
@@ -16,6 +17,7 @@ from jendhub.dev import (
     Selection,
     build,
     count_definitions,
+    open_corpus,
     select,
 )
 from jendhub.hub import Listing, Package, Rejection, Release
@@ -133,3 +135,48 @@ def test_build_replaces_the_dev_corpus(router: respx.MockRouter, tmp_path: Path)
     assert dev.stored_base_tag() == "v2.0.35"
     assert dev.base_source.read_bytes() == b"old base"
     assert not (tmp_path / ".dev.staging").exists()
+
+
+def test_top_keeps_the_hottest_packages() -> None:
+    packages = [
+        DevPackage(TIME, Release("time", "0.1.0.0")),
+        DevPackage(JSON, Release("json", "0.1.0.0")),
+    ]
+    corpus = DevCorpus("v2.0.36", packages)
+    assert corpus.top(1) == DevCorpus("v2.0.36", packages[:1])
+    assert corpus.top(0) == DevCorpus("v2.0.36", [])
+
+
+@pytest.mark.parametrize("count", [-1, 2])
+def test_top_refuses_a_count_outside_the_corpus(count: int) -> None:
+    with pytest.raises(DevError):
+        DevCorpus("v2.0.36", [DevPackage(TIME, Release("time", "0.1.0.0"))]).top(count)
+
+
+def built_dev(root: Path) -> Mirror:
+    dev = Mirror(root)
+    dev.store_base(Base("v2.0.36", b"def List.map(xs):\n  xs\n"))
+    dev.store_package(Package(Listing(TIME, Release("time", "0.1.0.0")), {"time.bend": b""}))
+    dev.store_package(Package(Listing(JSON, Release("json", "0.1.0.0")), {"json.bend": b""}))
+    return dev
+
+
+def test_open_corpus_reads_the_listed_releases(tmp_path: Path) -> None:
+    dev = built_dev(tmp_path)
+    listed = DevCorpus("v2.0.36", [DevPackage(JSON, Release("json", "0.1.0.0"))])
+    assert open_corpus(dev, listed) == Corpus(dev, [Release("json", "0.1.0.0")])
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        DevCorpus("v2.0.35", [DevPackage(JSON, Release("json", "0.1.0.0"))]),
+        DevCorpus("v2.0.36", [DevPackage(TIME, Release("json", "0.1.0.0"))]),
+        DevCorpus("v2.0.36", [DevPackage(HTTP_NEW, Release("http", "0.2.0.0"))]),
+    ],
+)
+def test_open_corpus_refuses_a_dev_corpus_that_does_not_match(
+    tmp_path: Path, listed: DevCorpus
+) -> None:
+    with pytest.raises(DevError):
+        open_corpus(built_dev(tmp_path), listed)

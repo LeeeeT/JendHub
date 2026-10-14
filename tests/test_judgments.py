@@ -7,6 +7,7 @@ from jendhub.judgments import (
     assessments,
     check_judgments,
     judgment_line,
+    judgments_within,
     parse_judgment,
 )
 
@@ -66,3 +67,10 @@ def test_assessments_keep_the_original_grade_over_a_judgment() -> None:
     assert assessments([MAP], judgments) == [
         Assessment("map a list", "phrase", {"List.fold": 0, "List.map": 3})
     ]
+
+
+def test_judgments_within_keep_the_judgments_of_kept_queries_and_ids() -> None:
+    kept = Judgment("map a list", "List.fold", 1, JUDGE)
+    other_id = Judgment("map a list", "Nat.sub", 0, JUDGE)
+    other_query = Judgment("sort a list", "List.fold", 2, JUDGE)
+    assert judgments_within([kept, other_id, other_query], [MAP], IDS) == [kept]

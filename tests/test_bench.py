@@ -2,11 +2,13 @@ import json
 from pathlib import Path
 
 from jendhub.base import Base
-from jendhub.bench import Answer, Query, check, corpus_text, summary
+from jendhub.bench import Answer, Query, check, corpus_text, queries_within, summary
+from jendhub.definitions import Corpus
 from jendhub.hub import Listing, Package, Release
 from jendhub.mirror import Mirror
 
 KIT = "0x" + "a" * 32
+EXTRA = "0x" + "b" * 32
 IDS = {"List.map", "kit@0.1.0.0/json:parse"}
 
 
@@ -15,18 +17,24 @@ def line(query: str, kind: str, answers: list[tuple[str, int]]) -> str:
     return json.dumps({"query": query, "kind": kind, "answers": items})
 
 
-def corpus(root: Path) -> Mirror:
+def corpus(root: Path) -> Corpus:
     mirror = Mirror(root)
     mirror.store_base(Base("v2.0.36", b"def List.map(xs: List) -> List:\n  xs\n"))
     files = {"json.bend": b"def parse(s: String) -> Json:\n  s\n"}
     mirror.store_package(Package(Listing(KIT, Release("kit", "0.1.0.0")), files))
-    return mirror
+    extra = {"extra.bend": b"def extra(n: Nat) -> Nat:\n  n\n"}
+    mirror.store_package(Package(Listing(EXTRA, Release("extra", "0.1.0.0")), extra))
+    return Corpus(mirror, [Release("kit", "0.1.0.0")])
 
 
 def test_corpus_text_heads_each_file_with_its_id_prefix(tmp_path: Path) -> None:
     text = corpus_text(corpus(tmp_path))
     assert text.startswith("===== Base =====\ndef List.map")
     assert "===== kit@0.1.0.0/json =====\ndef parse" in text
+
+
+def test_corpus_text_holds_only_the_releases_of_the_corpus(tmp_path: Path) -> None:
+    assert "extra" not in corpus_text(corpus(tmp_path))
 
 
 def test_check_reads_valid_queries() -> None:
@@ -71,3 +79,9 @@ def test_summary_counts_kinds_and_grades() -> None:
     assert summary(queries) == (
         "queries: 3\n  name: 2\n  description: 1\nanswers by grade: 3: 3, 2: 1, 1: 1"
     )
+
+
+def test_queries_within_keep_the_queries_with_each_answer_in_the_ids() -> None:
+    inside = Query("map a list", "phrase", [Answer("List.map", 3)])
+    outside = Query("parse json", "keywords", [Answer("List.map", 1), Answer("x@0.1.0.0/x:y", 3)])
+    assert queries_within([inside, outside], IDS) == [inside]

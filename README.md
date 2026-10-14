@@ -46,6 +46,11 @@ nix flake check
 Run the commands in this order. `--data` sets the data directory. The default
 is `data`.
 
+`--top N` makes `enrich` and `bench` use only Base and the N hottest packages of
+the dev corpus, as if the dev corpus held only them. The order of
+`bench/dev.json` is the hot order. For example, `jendhub --top 10 bench run
+<pipeline>` scores a pipeline on a smaller corpus.
+
 | Command | What it does |
 |---|---|
 | `jendhub sync [--dry-run]` | Mirrors BendHub and the latest released `base.bend` into `data/full`. `--dry-run` prints the plan. |

@@ -97,6 +97,11 @@ comparison only when judged@10 is about 0.95 or more for both pipelines. An
 unpooled pipeline looks worse than it is. For example, before pooling,
 `dense-head-package` was 0.075 below `dense-text`, mostly from unjudged results.
 
+With `--top N`, the benchmark skips each query with an answer outside the N
+hottest packages, and the judgments outside these packages. Results move up
+from below rank 10, so judged@10 can drop. Pool with the same `--top N` before
+you compare. These judgments are valid for the whole dev corpus too.
+
 To add a pipeline:
 
 ```bash
