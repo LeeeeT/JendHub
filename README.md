@@ -85,7 +85,7 @@ The data directory uses the `BEND_LIB` layout of Bend. Git ignores it.
 | `full/staging/` | Packages during an atomic write. |
 | `dev/` | The dev corpus, in the same layout. |
 | `embeddings.sqlite` | The embedding cache, keyed by provider, model and text hash. |
-| `enrichments.sqlite` | The enrichment store, keyed by the hash of each request. |
+| `enrichments.sqlite` | The enrichment store and the rejected windows, keyed by the hash of each request. |
 | `dev-corpus.txt` | The dev corpus as one text file, for query writers. |
 
 ## Architecture
@@ -163,5 +163,14 @@ comments, the fillings of laws and the places that use each target. This helps
 it to decide the role, and to see when a `law` is only a forward declaration.
 A limit of 30,000 characters on each side keeps very large definitions out of
 the context. The input to output token ratio is about 2 to 1. The dev corpus
-cost about $0.13. A failed window is retried up to 3 times. `jendhub enrich`
-sends only the windows that have no stored result.
+cost about $0.13.
+
+Each window gets one request. If the answer is invalid, the store remembers the
+window as rejected, and `jendhub enrich` never sends it again. A window can fail
+this way when it holds many similar names: the model then repeats or skips some
+names. A failed request is not remembered: `jendhub enrich` stops with an error,
+and the next run sends the window again. `jendhub enrich` sends only the
+windows that have no stored result and no rejection.
+
+A definition without an enrichment uses only its code in each enriched text
+view, and gets 0 from the role feature.

@@ -11,13 +11,14 @@ from jendhub.enrich import (
     PROMPT,
     PROVIDERS,
     Enrichment,
+    InvalidAnswerError,
     Window,
     parse_enrichments,
     request,
     windows,
 )
 from jendhub.hub import Json
-from jendhub.openrouter import API, OpenRouterError
+from jendhub.openrouter import API
 
 ENDPOINT = f"{API}/chat/completions"
 
@@ -32,9 +33,12 @@ def entry(name: str, role: str = "api") -> dict[str, Json]:
     return {"name": name, "summary": f"Does {name}.", "queries": [f"{name} query"], "role": role}
 
 
+def answer(entries: list[dict[str, Json]]) -> str:
+    return json.dumps({"definitions": list[Json](entries)})
+
+
 def completion(entries: list[dict[str, Json]]) -> Json:
-    content = json.dumps({"definitions": list[Json](entries)})
-    return {"choices": [{"message": {"content": content}}], "usage": {"cost": 0.01}}
+    return {"choices": [{"message": {"content": answer(entries)}}], "usage": {"cost": 0.01}}
 
 
 def enrich_all(request: httpx.Request) -> httpx.Response:
@@ -98,8 +102,8 @@ def window_of(names: list[str]) -> Window:
 
 def test_parse_enrichments_returns_one_entry_for_each_target_in_order() -> None:
     window = window_of(["a", "b"])
-    body = completion([entry("b", "helper"), entry("a")])
-    assert parse_enrichments(body, window) == [
+    content = answer([entry("b", "helper"), entry("a")])
+    assert parse_enrichments(content, window) == [
         Enrichment("a", "Does a.", ["a query"], "api"),
         Enrichment("b", "Does b.", ["b query"], "helper"),
     ]
@@ -117,8 +121,13 @@ def test_parse_enrichments_returns_one_entry_for_each_target_in_order() -> None:
     ],
 )
 def test_parse_enrichments_refuses_an_invalid_answer(entries: list[dict[str, Json]]) -> None:
-    with pytest.raises(OpenRouterError):
-        parse_enrichments(completion(entries), window_of(["a", "b"]))
+    with pytest.raises(InvalidAnswerError):
+        parse_enrichments(answer(entries), window_of(["a", "b"]))
+
+
+def test_parse_enrichments_refuses_invalid_json() -> None:
+    with pytest.raises(InvalidAnswerError):
+        parse_enrichments('{"definitions": [', window_of(["a"]))
 
 
 def test_request_turns_reasoning_off_and_routes_to_the_providers_in_order() -> None:
@@ -155,33 +164,43 @@ def test_enrich_records_the_enrichments_of_each_window(
     outcome = enrich.enrich(
         windows(SourceFile(BASE, source(3))),
         lambda _window, found: recorded.extend(item.id for item in found),
+        lambda _window, reason: pytest.fail(reason),
     )
     assert sorted(recorded) == ["f0", "f1", "f2"]
     assert outcome.usage.requests == 2
-    assert outcome.failures == []
+    assert outcome.rejected == []
+    assert outcome.errors == []
 
 
-def test_enrich_retries_an_invalid_answer(
+def test_enrich_rejects_an_invalid_answer_after_one_request(
     router: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    answers = [completion([entry("x")]), completion([entry("f0")])]
-    router.post(ENDPOINT).mock(side_effect=[httpx.Response(200, json=a) for a in answers])
-    recorded: list[str] = []
+    router.post(ENDPOINT).respond(200, json=completion([entry("f0"), entry("f0")]))
+    [window] = windows(SourceFile(BASE, source(1)))
+    rejected: list[Window] = []
+    outcome = enrich.enrich(
+        [window],
+        lambda _window, _found: pytest.fail("recorded an invalid answer"),
+        lambda window, _reason: rejected.append(window),
+    )
+    assert rejected == [window]
+    assert outcome.usage.requests == 1
+    assert len(outcome.rejected) == 1
+    assert outcome.rejected[0].startswith("Base line 1:")
+    assert outcome.errors == []
+
+
+def test_enrich_reports_a_failed_request_without_a_rejection(
+    router: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    router.post(ENDPOINT).respond(401, json={"error": {"message": "invalid key"}})
     outcome = enrich.enrich(
         windows(SourceFile(BASE, source(1))),
-        lambda _window, found: recorded.extend(item.id for item in found),
+        lambda _window, _found: pytest.fail("recorded a failed request"),
+        lambda _window, reason: pytest.fail(reason),
     )
-    assert recorded == ["f0"]
-    assert outcome.failures == []
-
-
-def test_enrich_reports_a_window_that_fails_each_attempt(
-    router: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    router.post(ENDPOINT).respond(200, json=completion([entry("x")]))
-    outcome = enrich.enrich(windows(SourceFile(BASE, source(1))), lambda _window, _found: None)
-    assert outcome.usage.requests == enrich.ATTEMPTS
-    assert len(outcome.failures) == 1
-    assert outcome.failures[0].startswith("Base line 1:")
+    assert outcome.rejected == []
+    assert len(outcome.errors) == 1
+    assert outcome.errors[0].startswith("Base line 1:")

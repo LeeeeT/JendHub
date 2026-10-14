@@ -9,6 +9,7 @@ from importlib.resources import files
 import httpx
 
 from jendhub.definitions import Definition, Origin, SourceFile, extract
+from jendhub.errors import JendHubError
 from jendhub.hub import Json
 from jendhub.openrouter import OpenRouterError, Usage, for_each, message_content, post
 
@@ -19,12 +20,15 @@ TARGETS = 40
 AFTER = 20
 CONTEXT_LIMIT = 30_000
 CONCURRENCY = 16
-ATTEMPTS = 3
 PROGRESS_STEP = 20
 ROLES = ("api", "helper")
 PROMPT = files("jendhub").joinpath("enrich.md").read_text(encoding="utf-8")
 
 logger = logging.getLogger(__name__)
+
+
+class InvalidAnswerError(JendHubError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -116,25 +120,24 @@ def parse_entry(item: Json, ids: dict[str, str]) -> tuple[str, Enrichment]:
             texts = [query.strip() for query in queries if isinstance(query, str)]
             return name, Enrichment(ids[name], summary.strip(), texts, role)
         case _:
-            raise OpenRouterError(f"the enricher returned an invalid entry: {item!r}")
+            raise InvalidAnswerError(f"the enricher returned an invalid entry: {item!r}")
 
 
-def parse_enrichments(body: Json, window: Window) -> list[Enrichment]:
-    content = message_content(body)
+def parse_enrichments(content: str, window: Window) -> list[Enrichment]:
     try:
         answer: Json = json.loads(content)
     except json.JSONDecodeError as error:
-        raise OpenRouterError(f"the enricher returned invalid JSON: {error}") from error
+        raise InvalidAnswerError(f"the enricher returned invalid JSON: {error}") from error
     match answer:
         case {"definitions": list() as items}:
             pass
         case _:
-            raise OpenRouterError("the enricher returned no definitions")
+            raise InvalidAnswerError("the enricher returned no definitions")
     ids = {target.name: target.id for target in window.targets}
     entries = dict(parse_entry(item, ids) for item in items)
     if len(entries) != len(items) or entries.keys() != ids.keys():
         missing = sorted(ids.keys() - entries.keys())
-        raise OpenRouterError(
+        raise InvalidAnswerError(
             f"the enricher did not return each name once in {window.origin.label}: "
             f"{len(items)} entries, missing {missing}"
         )
@@ -169,35 +172,41 @@ def request(window: Window) -> dict[str, Json]:
 @dataclass
 class Outcome:
     usage: Usage = field(default_factory=Usage)
-    failures: list[str] = field(default_factory=list[str])
+    rejected: list[str] = field(default_factory=list[str])
+    errors: list[str] = field(default_factory=list[str])
 
 
-def enrich(windows: list[Window], record: Callable[[Window, list[Enrichment]], None]) -> Outcome:
+def enrich(
+    windows: list[Window],
+    record: Callable[[Window, list[Enrichment]], None],
+    reject: Callable[[Window, str], None],
+) -> Outcome:
     outcome = Outcome()
     if not windows:
         return outcome
     logger.info("enriching %d windows with %s", len(windows), MODEL)
 
-    async def attempt(client: httpx.AsyncClient, key: str, window: Window) -> list[Enrichment]:
-        body = await post(client, key, "chat/completions", request(window))
-        outcome.usage.add(body)
-        return parse_enrichments(body, window)
-
     async def enrich_window(client: httpx.AsyncClient, key: str, window: Window) -> None:
         place = f"{window.origin.label} line {window.first + 1}"
-        for number in range(1, ATTEMPTS + 1):
-            try:
-                found = await attempt(client, key, window)
-            except (OpenRouterError, httpx.HTTPError) as error:
-                logger.info("attempt %d of %d failed for %s: %s", number, ATTEMPTS, place, error)
-                if number == ATTEMPTS:
-                    outcome.failures.append(f"{place}: {error}")
-            else:
-                record(window, found)
-                done = outcome.usage.requests
-                if done % PROGRESS_STEP == 0:
-                    logger.info("sent %d requests", done)
-                return
+        try:
+            body = await post(client, key, "chat/completions", request(window))
+            outcome.usage.add(body)
+            content = message_content(body)
+        except (OpenRouterError, httpx.HTTPError) as error:
+            logger.info("the request failed for %s: %s", place, error)
+            outcome.errors.append(f"{place}: {error}")
+            return
+        try:
+            found = parse_enrichments(content, window)
+        except InvalidAnswerError as error:
+            logger.info("rejected the answer for %s: %s", place, error)
+            reject(window, str(error))
+            outcome.rejected.append(f"{place}: {error}")
+            return
+        record(window, found)
+        done = outcome.usage.requests
+        if done % PROGRESS_STEP == 0:
+            logger.info("sent %d requests", done)
 
     asyncio.run(for_each(windows, CONCURRENCY, enrich_window))
     logger.info("enriched %d windows: %s", len(windows), outcome.usage.describe())

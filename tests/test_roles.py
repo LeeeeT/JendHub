@@ -14,3 +14,7 @@ def test_api_role_scores_api_definitions_one_and_helpers_zero() -> None:
         [1.0, 0.0],
         [0.0],
     ]
+
+
+def test_api_role_scores_a_definition_without_enrichment_zero() -> None:
+    assert ROLES.scores(["q"], [["List.fold"]]) == [[0.0]]

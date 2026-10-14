@@ -203,13 +203,18 @@ def corpus_windows(corpus: Mirror) -> list[Window]:
 
 def enrich_corpus(corpus: Mirror, store: EnrichmentStore) -> None:
     require_corpus(corpus)
-    found, missing = store.load(corpus_windows(corpus))
-    sys.stdout.write(f"{len(found)} definitions have enrichments; {len(missing)} windows remain\n")
-    outcome = enrich(missing, store.store)
-    for failure in outcome.failures:
-        sys.stdout.write(f"failed: {failure}\n")
-    if outcome.failures:
-        raise EnrichError(f"{len(outcome.failures)} windows failed: run jendhub enrich again")
+    stored = store.load(corpus_windows(corpus))
+    sys.stdout.write(
+        f"{len(stored.enrichments)} definitions have enrichments;"
+        f" {len(stored.rejected)} windows are rejected; {len(stored.missing)} windows remain\n"
+    )
+    outcome = enrich(stored.missing, store.store, store.reject)
+    for rejection in outcome.rejected:
+        sys.stdout.write(f"rejected: {rejection}\n")
+    for error in outcome.errors:
+        sys.stdout.write(f"failed: {error}\n")
+    if outcome.errors:
+        raise EnrichError(f"{len(outcome.errors)} requests failed: run jendhub enrich again")
 
 
 def load_benchmark(corpus: Mirror, data: Path) -> Benchmark:
@@ -217,7 +222,7 @@ def load_benchmark(corpus: Mirror, data: Path) -> Benchmark:
     if not QUERIES.is_file():
         raise BenchError(f"{QUERIES} does not exist")
     definitions = corpus_definitions(corpus)
-    enrichments, _ = EnrichmentStore(data / ENRICHMENTS).load(corpus_windows(corpus))
+    enrichments = EnrichmentStore(data / ENRICHMENTS).load(corpus_windows(corpus)).enrichments
     resources = Resources(definitions, OpenRouterEmbedder(data / EMBEDDINGS), enrichments)
     ids = {definition.id for definition in definitions}
     queries, problems = check(QUERIES.read_text(encoding="utf-8"), ids)

@@ -5,7 +5,6 @@ from jendhub.bm25 import Bm25
 from jendhub.definitions import Definition, Origin
 from jendhub.dense import Dense, Embedder
 from jendhub.enrich import Enrichment
-from jendhub.errors import JendHubError
 from jendhub.evaluate import Pipeline
 from jendhub.fusion import ReciprocalRankFusion
 from jendhub.names import NameMatch
@@ -21,23 +20,19 @@ HYBRID_ROLE_WEIGHT = 0.02
 INSTRUCTION = "Given a programmer's search query, retrieve the Bend definitions that match it"
 
 
-class PipelineError(JendHubError):
-    pass
-
-
 @dataclass(frozen=True)
 class Resources:
     definitions: list[Definition]
     embedder: Embedder
     enrichments: dict[str, Enrichment]
 
-    def enriched(self) -> list[tuple[Definition, Enrichment]]:
-        missing = [d.id for d in self.definitions if d.id not in self.enrichments]
-        if missing:
-            raise PipelineError(
-                f"{len(missing)} definitions have no enrichment: run jendhub enrich"
-            )
-        return [(d, self.enrichments[d.id]) for d in self.definitions]
+    def enriched_documents(
+        self, view: Callable[[Definition, Enrichment], str]
+    ) -> list[tuple[str, str]]:
+        return [
+            (d.id, d.text if (e := self.enrichments.get(d.id)) is None else view(d, e))
+            for d in self.definitions
+        ]
 
 
 type PipelineBuilder = Callable[[Resources], Pipeline]
@@ -67,15 +62,15 @@ def metadata(enrichment: Enrichment) -> str:
 
 
 def text_summary_documents(resources: Resources) -> list[tuple[str, str]]:
-    return [(d.id, f"{d.text}\n\n{e.summary}") for d, e in resources.enriched()]
+    return resources.enriched_documents(lambda d, e: f"{d.text}\n\n{e.summary}")
 
 
 def enriched_documents(resources: Resources) -> list[tuple[str, str]]:
-    return [(d.id, f"{d.text}\n\n{metadata(e)}") for d, e in resources.enriched()]
+    return resources.enriched_documents(lambda d, e: f"{d.text}\n\n{metadata(e)}")
 
 
 def metadata_documents(resources: Resources) -> list[tuple[str, str]]:
-    return [(d.id, metadata(e)) for d, e in resources.enriched()]
+    return resources.enriched_documents(lambda _d, e: metadata(e))
 
 
 def bm25(resources: Resources) -> Pipeline:

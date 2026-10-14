@@ -8,7 +8,8 @@ class ApiRole:
         self.enrichments = enrichments
 
     def scores(self, _queries: list[str], ids: list[list[str]]) -> list[list[float]]:
-        return [
-            [float(self.enrichments[id_].role == API_ROLE) for id_ in query_ids]
-            for query_ids in ids
-        ]
+        return [[float(self.is_api(id_)) for id_ in query_ids] for query_ids in ids]
+
+    def is_api(self, id_: str) -> bool:
+        enrichment = self.enrichments.get(id_)
+        return enrichment is not None and enrichment.role == API_ROLE
