@@ -4,17 +4,17 @@ JendHub is a search engine for Bend definitions. AI agents use it to find
 definitions in Base and in BendHub packages. Bend is a functional language with
 Python-like syntax and dependent types.
 
-Your task is to write 200 search queries for the attached corpus and to grade
+Your task is to write 100 search queries for the attached corpus and to grade
 the definitions that answer each query. We use your queries to measure search
 quality with nDCG.
 
 ## The corpus
 
-The attached file contains Base and 20 BendHub packages. Each file starts with
-a header line:
+The attached file contains Base and BendHub packages. Each file starts with a
+header line:
 
 - `===== Base =====` starts Base.
-- `===== <name>@<version>/<module> =====` starts a package file.
+- `===== <package>@<version>/<module> =====` starts a package file.
 
 Read the full corpus before you write queries.
 
@@ -33,8 +33,8 @@ with `@unsafe`. These are not definitions:
 - A Base definition: its name, as written after `type`, `def` or `law`.
   Example: `List.map`.
 - A package definition: the file header, a colon, and the name, as written
-  after `type`, `def` or `law`. Example:
-  `bend-kit-json@0.5.0.1/json:parse.bytes`.
+  after `type`, `def` or `law`. Form:
+  `<package>@<version>/<module>:<definition>`.
 
 Copy the name exactly as the source writes it. Do not add a module, an alias
 or a namespace.
@@ -49,43 +49,21 @@ short and vague.
 
 Write each query from the need that the target satisfies, not from the text of
 the target. Do not copy details from the comment or the code of the target.
-Spread the targets across Base and all 20 packages.
+Spread the targets across Base and all packages.
 
-Give each query a `kind` label. Use these kinds and follow their rules:
+Give each query a `kind` label. Use only these kinds and follow their rules:
 
-- `name`: a guessed or partial identifier, as the agent expects it to be, for
-  example `Json.Value` or `add_comm`. Write an identifier, not a phrase. Never
-  include the package name.
-- `signature`: approximate types, as a user writes them. Do not include
-  parameter names or levels such as `&2`.
-- `keywords`: 2 to 5 words.
-- `phrase`: 2 to 6 words of natural language.
-- `question`: one short question about the need.
+- `keywords`: 2 to 5 words, not a sentence. Write about 35 queries.
+- `phrase`: 2 to 6 words of natural language. Write about 35 queries.
 - `description`: one or two sentences about the task. State the need, not the
-  special behavior of the target.
-- `exact-name`: the exact name of the target, from an agent that saw it
-  before.
-- `exact-signature`: the exact signature of the target, from an agent that
-  saw it before. Write the name, the parameters and the return type. Do not
-  include `def`, `type`, `law` or the final colon.
-
-The `exact-name` and `exact-signature` queries together must be about 15% of
-all queries. Use each other kind many times. If a query does not fit any of
-these kinds, give it a new short label in lowercase, and use the same label
-for the same kind of query every time.
+  special behavior of the target. Write about 30 queries.
 
 These pairs show queries to avoid and the realistic queries to write instead:
 
 | Kind | Avoid | Prefer |
 |---|---|---|
-| `name` | `bend-kit-dns resolve.all` | `dns.resolve` |
-| `name` | `bend-kit-time Duration.of_ms` | `Duration.from_ms` |
-| `name` | `natural addition commutativity` | `add_comm` |
-| `exact-signature` | `def String.trim(s: String) -> String:` | `String.trim(s: String) -> String` |
-| `signature` | `(s: String) -> Maybe<&2, Nat>` | `String -> Maybe<Nat>` |
 | `keywords` | `JSON object duplicate key last member lookup` | `json get field` |
 | `phrase` | `random floating point value from zero inclusive to one exclusive` | `random float` |
-| `question` | `How can I permute a list with Fisher-Yates and retain the updated generator?` | `How do I shuffle a list?` |
 | `description` | `Format an instant as UTC RFC 3339 with unnecessary fractional zeros removed.` | `I need to print a timestamp in RFC 3339 format.` |
 
 ## Targets

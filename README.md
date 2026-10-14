@@ -69,7 +69,7 @@ The dev corpus is a small corpus for the benchmark. `bench/dev.json` freezes
 it: the Base tag, and the hash, name and version of each package. It holds the
 hottest release of each named package, and skips unnamed and rejected packages.
 A package that does not fit the definition budget is skipped, together with the
-other releases of the same name. Today it holds 20 packages with 3,302
+other releases of the same name. Today it holds 37 packages with 5,473
 definitions.
 
 ## Data layout
@@ -139,8 +139,9 @@ of dense search on the enriched text. It sorts them by this weighted sum:
 | 0.02 | 1 for an API definition, 0 for a helper |
 | 0.1 | Name overlap |
 
-Its nDCG@10 on the dev benchmark is 0.808. See [bench/README.md](bench/README.md)
-for all results.
+Its nDCG@10 on the dev benchmark is 0.805. On keywords, phrase and description
+queries, it is equal to `dense-enriched+name-rerank`: the code feature helps
+only signature queries. See [bench/README.md](bench/README.md) for all results.
 
 ## External models
 
@@ -162,8 +163,9 @@ The window keeps the source lines between definitions, so the model sees
 comments, the fillings of laws and the places that use each target. This helps
 it to decide the role, and to see when a `law` is only a forward declaration.
 A limit of 30,000 characters on each side keeps very large definitions out of
-the context. The input to output token ratio is about 2 to 1. The dev corpus
-cost about $0.13.
+the context. The input to output token ratio is about 2 to 1. The first dev
+corpus of 20 packages cost about $0.13. The extension to 37 packages cost about
+$0.28.
 
 Each window gets one request. If the answer is invalid, the store remembers the
 window as rejected, and `jendhub enrich` never sends it again. A window can fail
@@ -173,4 +175,5 @@ and the next run sends the window again. `jendhub enrich` sends only the
 windows that have no stored result and no rejection.
 
 A definition without an enrichment uses only its code in each enriched text
-view, and gets 0 from the role feature.
+view, and gets 0 from the role feature. In the dev corpus, one window of 40
+proof steps is rejected.
