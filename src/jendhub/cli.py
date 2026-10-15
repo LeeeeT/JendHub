@@ -121,7 +121,14 @@ def parse_arguments() -> argparse.Namespace:
         "agreement",
         help="judge the original answers and random definitions, and compare the grades",
     )
-    bench_commands.add_parser("judge", help="judge again each pair with a stale grade")
+    judge_parser = bench_commands.add_parser(
+        "judge", help="judge again each pair with a stale grade"
+    )
+    judge_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the size of the messages to send, and send nothing",
+    )
     arguments = parser.parse_args()
     if arguments.top is not None and arguments.command not in ("enrich", "bench"):
         parser.error("--top applies only to enrich and bench")
@@ -271,6 +278,15 @@ def load_benchmark(data: Path, top: int | None) -> Benchmark:
     return Benchmark(resources, queries, judge, graph, store, judgments, stale)
 
 
+def describe_messages(judge: Judge, pairs: list[Pair]) -> str:
+    lengths = [judge.message_length(judged) for judged in pairs]
+    return (
+        f"pairs: {len(pairs)}\n"
+        f"characters of all messages: {sum(lengths)}\n"
+        f"characters of the longest message: {max(lengths, default=0)}\n"
+    )
+
+
 def check_benchmark(benchmark: Benchmark) -> None:
     benchmark.report_load_errors()
     grades = Counter(judgment.grade for judgment in benchmark.judgments)
@@ -369,6 +385,8 @@ def run_bench(benchmark: Benchmark, subcommand: str, arguments: argparse.Namespa
             pool_pipelines(benchmark, arguments.pipelines, arguments.depth)
         case "agreement":
             check_agreement(benchmark)
+        case "judge" if arguments.dry_run:
+            sys.stdout.write(describe_messages(benchmark.judge, list(benchmark.stale.values())))
         case "judge":
             benchmark.judge_pairs([(p.query, p.definition.id) for p in benchmark.stale.values()])
         case _:

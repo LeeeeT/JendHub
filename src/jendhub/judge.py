@@ -96,6 +96,9 @@ class Judge:
     def __init__(self, prompt: str) -> None:
         self.prompt = prompt
 
+    def message_length(self, pair: Pair) -> int:
+        return len(self.prompt) + len(user_message(pair))
+
     def request(self, pair: Pair) -> dict[str, Json]:
         return {
             "model": MODEL,

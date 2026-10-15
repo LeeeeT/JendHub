@@ -16,7 +16,7 @@ jendhub bench check
 | `jendhub bench compare <A> <B> [--k N]` | Compares two pipelines query by query. |
 | `jendhub bench pool --pipelines <name> ... [--depth N]` | Judges the top results of the named pipelines. |
 | `jendhub bench agreement` | Judges the original answers and random definitions, and prints the agreement. |
-| `jendhub bench judge` | Judges each pair with a stale grade again. |
+| `jendhub bench judge [--dry-run]` | Judges each pair with a stale grade again. `--dry-run` prints the number of pairs and the size of the messages, and sends nothing. |
 
 ## Files
 
