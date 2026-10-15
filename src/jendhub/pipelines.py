@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from jendhub.api import ReachedMatch, documented, external_use, helper_name, unused, user_count
 from jendhub.bm25 import Bm25
 from jendhub.definitions import Definition, Origin
 from jendhub.dense import Dense, Embedder
@@ -10,6 +11,8 @@ from jendhub.fusion import ReciprocalRankFusion
 from jendhub.names import NameMatch
 from jendhub.rerank import LinearRerank, MaxNormalized, Scorer
 from jendhub.roles import ApiRole
+from jendhub.signatures import SignatureMatch
+from jendhub.uses import UseGraph
 
 NAME_WEIGHT = 1.0
 DENSE_NAME_WEIGHT = 0.1
@@ -18,7 +21,19 @@ HYBRID_TEXT_WEIGHT = 0.4
 HYBRID_BM25_WEIGHT = 0.075
 HYBRID_ROLE_WEIGHT = 0.075
 HYBRID_NAME_WEIGHT = 0.05
+GRAPH_NAME_WEIGHT = 0.15
+GRAPH_SIGNATURE_WEIGHT = 0.2
+GRAPH_REACHED_WEIGHT = 0.15
+GRAPH_UNUSED_WEIGHT = 0.075
+GRAPH_USER_COUNT_WEIGHT = 0.02
+GRAPH_EXTERNAL_WEIGHT = 0.02
+GRAPH_DOCUMENTED_WEIGHT = 0.015
+GRAPH_HELPER_WEIGHT = -0.04
 INSTRUCTION = "Given a programmer's search query, retrieve the Bend definitions that match it"
+TASK_INSTRUCTION = (
+    "Given a programming task, retrieve the Bend library function or type"
+    " that a programmer calls to do it"
+)
 
 
 @dataclass(frozen=True)
@@ -26,6 +41,7 @@ class Resources:
     definitions: list[Definition]
     embedder: Embedder
     enrichments: dict[str, Enrichment]
+    graph: UseGraph
 
     def enriched_documents(
         self, view: Callable[[Definition, Enrichment], str]
@@ -41,6 +57,14 @@ type PipelineBuilder = Callable[[Resources], Pipeline]
 
 def origin_words(origin: Origin) -> str:
     return "" if origin.release is None else f"{origin.release.name} {origin.module}"
+
+
+def origin_line(origin: Origin) -> str:
+    return "Base" if origin.release is None else f"{origin.release.name} {origin.module}"
+
+
+def origin_documents(definitions: list[Definition]) -> list[tuple[str, str]]:
+    return [(d.id, f"{origin_line(d.origin)}\n{d.text}") for d in definitions]
 
 
 def text_documents(definitions: list[Definition]) -> list[tuple[str, str]]:
@@ -141,6 +165,24 @@ def dense_text_metadata_name_rerank(resources: Resources) -> Pipeline:
     return LinearRerank(text, list[tuple[float, Scorer]](features))
 
 
+def dense_origin_graph_rerank(resources: Resources) -> Pipeline:
+    definitions = resources.definitions
+    graph = resources.graph
+    origin = Dense(resources.embedder, origin_documents(definitions), TASK_INSTRUCTION)
+    features: list[tuple[float, Scorer]] = [
+        (1.0, origin),
+        (GRAPH_NAME_WEIGHT, NameMatch(name_documents(definitions))),
+        (GRAPH_SIGNATURE_WEIGHT, SignatureMatch(definitions)),
+        (GRAPH_REACHED_WEIGHT, ReachedMatch(origin, graph)),
+        (GRAPH_UNUSED_WEIGHT, unused(definitions, graph)),
+        (GRAPH_USER_COUNT_WEIGHT, user_count(definitions, graph)),
+        (GRAPH_EXTERNAL_WEIGHT, external_use(definitions, graph)),
+        (GRAPH_DOCUMENTED_WEIGHT, documented(definitions)),
+        (GRAPH_HELPER_WEIGHT, helper_name(definitions, graph)),
+    ]
+    return LinearRerank(origin, features)
+
+
 PIPELINES: dict[str, PipelineBuilder] = {
     "bm25": bm25,
     "bm25-head-package": bm25_head_package,
@@ -153,4 +195,5 @@ PIPELINES: dict[str, PipelineBuilder] = {
     "dense-enriched+name-rerank": dense_enriched_name_rerank,
     "dense-text+metadata+name-rerank": dense_text_metadata_name_rerank,
     "dense-enriched+text+bm25-enriched+role+name-rerank": dense_enriched_hybrid_rerank,
+    "dense-origin+graph+signature+name-rerank": dense_origin_graph_rerank,
 }

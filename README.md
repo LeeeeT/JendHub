@@ -101,10 +101,12 @@ writes the uses as JSON. Python maps them to definition IDs and drops the
 names that are not definitions, for example a `def` that fills a law of an
 imported module.
 
-The graph holds only the uses inside one release. A use of Base or of another
-package is ignored, and Base is a package of its own. In the dev corpus, 14,581
-uses connect the definitions, and 4,625 of 5,473 definitions have at least one
-user. One file does not load with today's Base: `bend-collections-laws` declares
+The graph keeps the uses inside one release apart from the other uses. Base is
+a release of its own. In the dev corpus, 14,581 uses inside one release connect
+the definitions, and 4,625 of 5,473 definitions have at least one user. The
+external users of a definition are the definitions of other releases that use
+it: 20,815 uses reach 423 definitions, 215 of them in Base. The judge sees only
+the uses inside one release. One file does not load with today's Base: `bend-collections-laws` declares
 a constructor `Ready`, and Base declares one too. The compiler refuses it, so
 it has no uses.
 
@@ -136,6 +138,8 @@ The data directory uses the `BEND_LIB` layout of Bend. Git ignores it.
 | `embeddings.py`, `dense.py` | Dense search with cached embeddings. |
 | `enrich.py`, `enrichments.py`, `enrich.md` | The enricher, its store and its prompt. |
 | `roles.py` | The role feature from the enrichments. |
+| `api.py` | Features from the use graph and the doc comment that tell an API from a helper. |
+| `signatures.py` | Parse the types of a head or a signature query, and compare them. |
 | `uses.py`, `indexer/` | The use graph and the Rust program that resolves names for it. |
 | `fusion.py`, `rerank.py` | Combine pipelines: rank fusion and a linear reranker. |
 | `pipelines.py` | The registry of named pipelines. |
@@ -157,7 +161,8 @@ take batches, so dense search embeds all queries in one call.
   weighted sum of scorers. `MaxNormalized` scales a scorer to 0..1 for each
   query.
 - `PIPELINES` in `pipelines.py` maps each name to a builder. A builder takes
-  `Resources`: the definitions, the embedder and the enrichments.
+  `Resources`: the definitions, the embedder, the enrichments and the use
+  graph.
 
 BM25 is our own implementation with `k1 = 1.2` and `b = 0.75`. SQLite FTS5 and
 Tantivy fix these values, and they do not let us control the tokenizer. The
@@ -177,9 +182,31 @@ of dense search on the enriched text. It sorts them by this weighted sum:
 | 0.075 | 1 for an API definition, 0 for a helper |
 | 0.05 | Name overlap |
 
-Its nDCG@10 on the dev benchmark is 0.826, and 0.839 on the keywords, phrase
+Its nDCG@10 on the dev benchmark is 0.820, and 0.833 on the keywords, phrase
 and description queries. See [bench/README.md](bench/README.md) for all results
 and for the weight tuning.
+
+### The best pipeline without enrichment
+
+`dense-origin+graph+signature+name-rerank` uses no LLM except the embedding
+model. It embeds the package name and the module path (`Base` for Base), then
+the code. It takes the top 50 results of dense search on this text, and sorts
+them by this weighted sum:
+
+| Weight | Feature |
+|---|---|
+| 1.0 | Cosine similarity |
+| 0.15 | Name overlap |
+| 0.2 | Signature match: the share of the parameter and result types that the query and the head have in common |
+| 0.15 | The best cosine similarity among the definitions that the definition reaches, minus its own |
+| 0.075 | 1 if no definition of its release uses it |
+| 0.02 | ln(1 + the number of its users) |
+| 0.02 | 1 if a definition of another release uses it |
+| 0.015 | 1 if it has a doc comment |
+| -0.04 | 1 if a definition of its module reaches it, and that name followed by `.` starts its name, as `Map.put.go` under `Map.put` |
+
+Its nDCG@10 is 0.819, and 0.817 on the keywords, phrase and description
+queries.
 
 ## External models
 
@@ -190,7 +217,10 @@ and for the weight tuning.
 | Benchmark judge | `openai/gpt-6-luna`, medium reasoning | OpenAI, pinned | |
 
 Queries get the Qwen3 instruction format: `Instruct: <task>\nQuery:<query>`.
-Documents get no instruction.
+Documents get no instruction. The pipeline without enrichment uses the task
+"Given a programming task, retrieve the Bend library function or type that a
+programmer calls to do it". The other pipelines use "Given a programmer's
+search query, retrieve the Bend definitions that match it".
 
 ### Enrichment
 

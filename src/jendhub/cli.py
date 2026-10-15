@@ -35,7 +35,7 @@ from jendhub.pooling import (
     random_negatives,
 )
 from jendhub.sync import describe_plan, plan, sync
-from jendhub.uses import UseGraph, UsesError, use_graph
+from jendhub.uses import UsesError, use_graph
 
 DEV_CORPUS_LIST = Path("bench/dev.json")
 QUERIES = Path("bench/queries.jsonl")
@@ -198,7 +198,6 @@ class Benchmark:
     resources: Resources
     queries: list[Query]
     judge: Judge
-    graph: UseGraph
     store: JudgmentStore
     judgments: list[Judgment]
     stale: dict[tuple[str, str], Pair]
@@ -210,7 +209,7 @@ class Benchmark:
         return PIPELINES[name](self.resources)
 
     def report_load_errors(self) -> None:
-        for label, error in sorted(self.graph.errors.items()):
+        for label, error in sorted(self.resources.graph.errors.items()):
             sys.stdout.write(f"{label} does not load, so the judge sees no uses: {error}\n")
 
     def judge_pairs(self, pairs: list[tuple[Query, str]]) -> None:
@@ -218,7 +217,7 @@ class Benchmark:
         definitions = {definition.id: definition for definition in self.resources.definitions}
         unique = {(query.query, id_): (query, id_) for query, id_ in pairs}
         new = [
-            pair(query, definitions[id_], self.graph, definitions)
+            pair(query, definitions[id_], self.resources.graph, definitions)
             for key, (query, id_) in unique.items()
             if key not in known
         ]
@@ -265,17 +264,17 @@ def load_benchmark(data: Path, top: int | None) -> Benchmark:
     corpus = dev_corpus(data, top)
     definitions = corpus_definitions(corpus)
     enrichments = EnrichmentStore(data / ENRICHMENTS).load(corpus_windows(corpus)).enrichments
-    resources = Resources(definitions, OpenRouterEmbedder(data / EMBEDDINGS), enrichments)
+    graph = use_graph(corpus, Mirror(data / "full"), definitions)
+    resources = Resources(definitions, OpenRouterEmbedder(data / EMBEDDINGS), enrichments, graph)
     ids = {definition.id for definition in definitions}
     known = ids if top is None else {d.id for d in corpus_definitions(dev_corpus(data, None))}
     queries, problems = check(QUERIES.read_text(encoding="utf-8"), known)
     report_problems(QUERIES, problems)
     queries = queries_within(queries, ids)
     judge = Judge(JUDGE_PROMPT.read_text(encoding="utf-8"))
-    graph = use_graph(corpus, Mirror(data / "full"), definitions)
     store = JudgmentStore(data / JUDGMENTS)
     judgments, stale = current_judgments(store.load(), queries, definitions, judge, graph)
-    return Benchmark(resources, queries, judge, graph, store, judgments, stale)
+    return Benchmark(resources, queries, judge, store, judgments, stale)
 
 
 def describe_messages(judge: Judge, pairs: list[Pair]) -> str:

@@ -83,7 +83,7 @@ def test_user_message_shows_a_limited_number_of_uses() -> None:
 
 def test_pair_takes_the_uses_from_the_graph_in_id_order() -> None:
     definitions = {d.id: d for d in map(definition, ["List.map", "b", "a", "c"])}
-    graph = UseGraph({"List.map": frozenset({"b", "a"})}, {"List.map": frozenset({"c"})}, {})
+    graph = UseGraph({"List.map": frozenset({"b", "a"})}, {"List.map": frozenset({"c"})}, {}, {})
     found = pair(MAP, definitions["List.map"], graph, definitions)
     assert found.users == (definitions["a"], definitions["b"])
     assert found.uses == (definitions["c"],)
@@ -115,7 +115,7 @@ def test_the_key_changes_with_the_prompt_and_the_message() -> None:
 def test_current_judgments_split_the_stored_pairs_into_current_and_stale() -> None:
     definitions = [LIST_MAP, definition("Nat.add"), definition("List.double")]
     by_id = {d.id: d for d in definitions}
-    graph = UseGraph({"List.map": frozenset({"List.double"})}, {}, {})
+    graph = UseGraph({"List.map": frozenset({"List.double"})}, {}, {}, {})
     judge = Judge("prompt")
     current = pair(MAP, LIST_MAP, graph, by_id)
     stored = {

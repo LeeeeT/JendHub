@@ -72,7 +72,7 @@ def test_a_local_shadows_a_declaration(tmp_path: Path) -> None:
     assert "lib@1.0.0.0/main:root" not in graph(full, [LIB]).used
 
 
-def test_base_and_other_packages_are_not_uses(tmp_path: Path) -> None:
+def test_uses_of_base_and_other_packages_are_external(tmp_path: Path) -> None:
     main = (
         "import Base\nimport other@1.0.0.0/box.bend as B\n\n"
         "def root(x: Nat) -> Nat:\n  (B.open(B.Box{x}) + Zero{} : Nat)\n"
@@ -81,9 +81,15 @@ def test_base_and_other_packages_are_not_uses(tmp_path: Path) -> None:
         tmp_path,
         {LIB: (LIB_HASH, {"main.bend": main}), OTHER: (OTHER_HASH, {"box.bend": BOX})},
     )
-    found = graph(full, [LIB])
+    found = graph(full, [LIB, OTHER])
     assert "lib@1.0.0.0/main:root" not in found.used
-    assert found.users == {"Nat": {"Nat.add"}}
+    assert found.users == {"Nat": {"Nat.add"}, "other@1.0.0.0/box:Box": {"other@1.0.0.0/box:open"}}
+    assert found.external_users == {
+        "Nat": {"lib@1.0.0.0/main:root", "other@1.0.0.0/box:Box", "other@1.0.0.0/box:open"},
+        "Nat.add": {"lib@1.0.0.0/main:root"},
+        "other@1.0.0.0/box:Box": {"lib@1.0.0.0/main:root"},
+        "other@1.0.0.0/box:open": {"lib@1.0.0.0/main:root"},
+    }
     assert found.errors == {}
 
 

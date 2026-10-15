@@ -29,7 +29,7 @@ struct Entry {
     uses: BTreeSet<Use>,
 }
 
-/// A declaration that uses another, inside one package.
+/// A declaration of the entry that uses another declaration.
 #[derive(Eq, Ord, PartialEq, PartialOrd, Serialize)]
 struct Use {
     from: Declaration,
@@ -77,19 +77,7 @@ fn declarations(loaded: &Load) -> HashMap<(String, bool), Declaration> {
     out
 }
 
-/// The package of a file: its `0x<hash>` directory under `lib`, or the file
-/// itself when it is outside `lib`, as Base is.
-fn package<'a>(lib: &str, file: &'a str) -> &'a str {
-    match file
-        .strip_prefix(lib)
-        .and_then(|rest| rest.strip_prefix('/'))
-    {
-        Some(rest) => &file[..file.len() - rest.len() + rest.find('/').unwrap_or(rest.len())],
-        None => file,
-    }
-}
-
-fn uses(lib: &str, loaded: &Load) -> BTreeSet<Use> {
+fn uses(loaded: &Load) -> BTreeSet<Use> {
     let mut found = BTreeSet::new();
     let Some(entry) = loaded
         .entry
@@ -99,7 +87,6 @@ fn uses(lib: &str, loaded: &Load) -> BTreeSet<Use> {
         return found;
     };
     let declared = declarations(loaded);
-    let home = package(lib, &entry.real);
     for occurrence in &entry.occurrences {
         let Meaning::Global { key, ctr } = &occurrence.meaning else {
             continue;
@@ -112,7 +99,7 @@ fn uses(lib: &str, loaded: &Load) -> BTreeSet<Use> {
         let (Some(from), Some(to)) = (owner, declared.get(&(key.clone(), *ctr))) else {
             continue;
         };
-        if from != to && package(lib, &to.file) == home && package(lib, &from.file) == home {
+        if from != to {
             found.insert(Use {
                 from: from.clone(),
                 to: to.clone(),
@@ -138,13 +125,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         base: real(&request.base),
         hub: "https://hub.bend-lang.com".to_owned(),
     };
-    let lib = real(&request.lib);
     let mut entries = Vec::with_capacity(request.entries.len());
     for entry in request.entries {
         let loaded = load(&Disk, &env, &entry);
         let error = loaded.error.as_ref().map(|error| error.exp.clone());
         entries.push(Entry {
-            uses: uses(&lib, &loaded),
+            uses: uses(&loaded),
             path: entry,
             error,
         });
@@ -189,7 +175,7 @@ mod tests {
                 hub: String::new(),
             };
             let loaded = load(&Disk, &env, entry);
-            uses(&real(&lib), &loaded)
+            uses(&loaded)
                 .into_iter()
                 .map(|found| {
                     (
@@ -212,7 +198,7 @@ mod tests {
     const BASE: &str = "type Nat is Data:\n  Zero{}\n  Succ{pred: Nat}\n\ndef Nat.add(a: Nat, b: Nat) -> Nat:\n  a\n";
 
     #[test]
-    fn uses_inside_a_package_cross_its_modules() {
+    fn uses_cross_modules_and_reach_base() {
         let fixture = Fixture::new("local");
         let lib = fixture.write(
             "lib/0xaa/box.bend",
@@ -225,15 +211,15 @@ mod tests {
         let found = fixture.uses(&main);
         assert!(found.contains(&(main.clone(), "root".into(), lib.clone(), "open".into())));
         assert!(found.contains(&(main.clone(), "root".into(), lib.clone(), "Box".into())));
-        assert!(
-            found.iter().all(|(_, _, file, _)| file == &lib),
-            "{found:?}"
-        );
-        let inside = fixture.uses(&lib);
-        assert_eq!(
-            inside,
-            vec![(lib.clone(), "open".into(), lib.clone(), "Box".into())]
-        );
+        let base = fixture.root.join("base.bend");
+        let base = real(&base.to_string_lossy());
+        assert!(found.contains(&(main.clone(), "root".into(), base.clone(), "Nat".into())));
+        assert!(fixture.uses(&lib).contains(&(
+            lib.clone(),
+            "open".into(),
+            lib.clone(),
+            "Box".into()
+        )));
     }
 
     #[test]
@@ -247,8 +233,13 @@ mod tests {
             "lib/0xaa/main.bend",
             "import Base\nimport ./shapes.bend as S\n\ndef unit() -> S.Shape:\n  S.Circle{Zero{}}\n",
         );
+        let found: Vec<_> = fixture
+            .uses(&main)
+            .into_iter()
+            .filter(|(_, _, file, _)| file == &shapes)
+            .collect();
         assert_eq!(
-            fixture.uses(&main),
+            found,
             vec![(main.clone(), "unit".into(), shapes, "Shape".into())]
         );
     }
@@ -270,13 +261,18 @@ mod tests {
             "lib/0xaa/main.bend",
             "import Base\n\ndef name(n: Nat) -> Nat:\n  n\n\ndef root(x: Nat) -> Nat:\n  name = x\n  name\n",
         );
-        assert!(fixture.uses(&main).is_empty());
+        assert!(
+            fixture
+                .uses(&main)
+                .iter()
+                .all(|(_, _, _, name)| name != "name")
+        );
     }
 
     #[test]
-    fn other_packages_are_not_uses() {
+    fn uses_reach_other_packages() {
         let fixture = Fixture::new("other");
-        fixture.write(
+        let far = fixture.write(
             "lib/0xbb/lib.bend",
             "import Base\n\ndef far(n: Nat) -> Nat:\n  n\n",
         );
@@ -284,6 +280,10 @@ mod tests {
             "lib/0xaa/main.bend",
             "import Base\nimport 0xbb/lib.bend as L\n\ndef root(x: Nat) -> Nat:\n  L.far(x)\n",
         );
-        assert!(fixture.uses(&main).is_empty());
+        assert!(
+            fixture
+                .uses(&main)
+                .contains(&(main.clone(), "root".into(), far, "far".into()))
+        );
     }
 }

@@ -20,7 +20,19 @@ class UsesError(JendHubError):
 class UseGraph:
     users: dict[str, frozenset[str]]
     used: dict[str, frozenset[str]]
+    external_users: dict[str, frozenset[str]]
     errors: dict[str, str]
+
+
+def reached(id_: str, edges: dict[str, frozenset[str]]) -> set[str]:
+    seen = {id_}
+    stack = [id_]
+    while stack:
+        for found in edges.get(stack.pop(), frozenset()):
+            if found not in seen:
+                seen.add(found)
+                stack.append(found)
+    return seen - {id_}
 
 
 def corpus_files(corpus: Corpus, full: Mirror) -> dict[Path, Origin]:
@@ -64,11 +76,16 @@ def declaration_id(files: dict[Path, Origin], declaration: Json) -> str | None:
             raise UsesError(f"{INDEXER} returned an invalid declaration: {declaration!r}")
 
 
+def frozen(found: dict[str, set[str]]) -> dict[str, frozenset[str]]:
+    return {id_: frozenset(ids) for id_, ids in found.items()}
+
+
 def use_graph(corpus: Corpus, full: Mirror, definitions: list[Definition]) -> UseGraph:
     files = corpus_files(corpus, full)
-    ids = {definition.id for definition in definitions}
+    releases = {definition.id: definition.origin.release for definition in definitions}
     users: defaultdict[str, set[str]] = defaultdict(set)
     used: defaultdict[str, set[str]] = defaultdict(set)
+    external_users: defaultdict[str, set[str]] = defaultdict(set)
     errors: dict[str, str] = {}
     for entry in run_indexer(full, list(files)):
         match entry:
@@ -84,11 +101,11 @@ def use_graph(corpus: Corpus, full: Mirror, definitions: list[Definition]) -> Us
                     target_id = declaration_id(files, target)
                 case _:
                     raise UsesError(f"{INDEXER} returned an invalid use: {use!r}")
-            if user in ids and target_id in ids:
+            if user not in releases or target_id not in releases:
+                continue
+            if releases[user] == releases[target_id]:
                 users[target_id].add(user)
                 used[user].add(target_id)
-    return UseGraph(
-        {id_: frozenset(found) for id_, found in users.items()},
-        {id_: frozenset(found) for id_, found in used.items()},
-        errors,
-    )
+            else:
+                external_users[target_id].add(user)
+    return UseGraph(frozen(users), frozen(used), frozen(external_users), errors)

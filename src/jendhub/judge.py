@@ -12,7 +12,7 @@ from jendhub.definitions import Definition
 from jendhub.hub import Json
 from jendhub.judgments import JUDGED_GRADES, Judgment
 from jendhub.openrouter import OpenRouterError, Usage, for_each, message_content, post
-from jendhub.uses import UseGraph
+from jendhub.uses import UseGraph, reached
 
 MODEL = "openai/gpt-6-luna"
 PROVIDER = "openai"
@@ -53,17 +53,7 @@ class Pair:
 
 
 def roots(id_: str, users: dict[str, frozenset[str]]) -> list[str]:
-    seen = {id_}
-    stack = [id_]
-    found: list[str] = []
-    while stack:
-        for user in users.get(stack.pop(), frozenset()):
-            if user not in seen:
-                seen.add(user)
-                stack.append(user)
-                if user not in users:
-                    found.append(user)
-    return sorted(found)
+    return sorted(user for user in reached(id_, users) if user not in users)
 
 
 def pair(

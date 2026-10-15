@@ -129,6 +129,7 @@ These pipelines are pooled at depth 10:
 - `dense-enriched+name-rerank`
 - `dense-text+metadata+name-rerank`
 - `dense-enriched+text+bm25-enriched+role+name-rerank`
+- `dense-origin+graph+signature+name-rerank`
 
 Pooling costs about $0.15 for 1,000 pairs.
 
@@ -165,17 +166,18 @@ queries of each kind.
 
 | Pipeline | nDCG@10 | short | judged@10 |
 |---|---|---|---|
-| `bm25` | 0.381 | 0.335 | 0.633 |
-| `bm25-head-package` | 0.426 | 0.365 | 0.847 |
-| `bm25-head-package+name-rrf` | 0.430 | 0.368 | 0.850 |
-| `bm25-head-package+name-rerank` | 0.463 | 0.399 | 1.000 |
-| `dense-head-package` | 0.674 | 0.682 | 0.807 |
-| `dense-text` | 0.710 | 0.709 | 0.979 |
-| `dense-text+name-rerank` | 0.721 | 0.718 | 1.000 |
-| `dense-text+metadata+name-rerank` | 0.763 | 0.778 | 1.000 |
-| `dense-text-summary+name-rerank` | 0.777 | 0.792 | 1.000 |
-| `dense-enriched+name-rerank` | 0.779 | 0.803 | 1.000 |
-| **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.826** | **0.839** | **1.000** |
+| `bm25` | 0.380 | 0.334 | 0.639 |
+| `bm25-head-package` | 0.424 | 0.362 | 0.850 |
+| `bm25-head-package+name-rrf` | 0.428 | 0.365 | 0.853 |
+| `bm25-head-package+name-rerank` | 0.460 | 0.396 | 1.000 |
+| `dense-head-package` | 0.677 | 0.684 | 0.842 |
+| `dense-text` | 0.706 | 0.705 | 0.984 |
+| `dense-text+name-rerank` | 0.716 | 0.713 | 1.000 |
+| `dense-text+metadata+name-rerank` | 0.757 | 0.772 | 1.000 |
+| `dense-text-summary+name-rerank` | 0.772 | 0.786 | 1.000 |
+| `dense-enriched+name-rerank` | 0.773 | 0.797 | 1.000 |
+| **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.820** | **0.833** | **1.000** |
+| `dense-origin+graph+signature+name-rerank` | 0.819 | 0.817 | **1.000** |
 
 Rows with judged@10 below 0.95 are not pooled, so their scores are too low.
 
@@ -183,23 +185,31 @@ Main findings:
 
 - Dense search beats BM25 by a large margin on natural-language queries:
   `dense-text+name-rerank` against `bm25-head-package+name-rerank` gains
-  +0.252 on keywords, +0.310 on phrase and +0.405 on description. On
+  +0.248 on keywords, +0.308 on phrase and +0.403 on description. On
   exact-signature queries, it gains only +0.055.
 - Rank fusion of dense and lexical results made results worse: equal weight
   for a weak list hurts. A linear rerank with small weights works.
 - Enrichment improves natural-language queries. `dense-enriched+name-rerank`
-  against `dense-text+name-rerank` gains +0.070 on keywords, +0.095 on phrase,
+  against `dense-text+name-rerank` gains +0.070 on keywords, +0.094 on phrase,
   +0.088 on description and +0.082 on name. Alone it hurts exact-signature
   queries by 0.083.
 - The best pipeline adds the code embedding, BM25 and the role to the rerank.
   Against `dense-enriched+name-rerank`, it gains +0.047 on all queries,
-  +0.119 on signature, +0.076 on exact-signature, +0.045 on keywords, +0.038
+  +0.117 on signature, +0.076 on exact-signature, +0.044 on keywords, +0.037
   on phrase and +0.025 on description. Each gain except exact-name is
   significant.
 - The role feature matters more since the judge sees the use graph. The best
   weight set without it scores 0.033 lower on all queries.
-- Description is the weakest of the short kinds (0.772). Signature queries
-  remain the weakest kind (0.697), but they are not the main goal.
+- Without enrichment, the use graph, the doc comment and a structural
+  signature match recover most of the gain of enrichment.
+  `dense-origin+graph+signature+name-rerank` against `dense-text+name-rerank`
+  gains +0.103 on all queries, +0.099 on keywords, +0.116 on phrase, +0.095 on
+  description and +0.201 on signature. Against the best enriched pipeline, it
+  is equal on all queries (-0.001, interval [-0.017, +0.015]). It is better on
+  signature (+0.148) and worse on question (-0.056). On the short queries, it
+  is 0.016 below.
+- Description is the weakest of the short kinds (0.769 with enrichment, 0.751
+  without).
 
 ## Weight tuning
 
@@ -221,6 +231,35 @@ highest judged@10, 0.982 before pooling. The maximum of many weight sets on
 the same queries is too high. A 5-fold cross-validation selected the weights
 on 4 folds and measured them on the fifth. Over 20 random splits, the gain on
 the unseen queries was +0.005 on average, and it was positive in each split.
+
+### The pipeline without enrichment
+
+`dense-origin+graph+signature+name-rerank` was built without new judgments
+until the last step. The top results of a new pipeline hold unjudged
+definitions, so each step measured two scores: nDCG@10 with unjudged results
+as grade 0, which is too low, and condensed nDCG@10, which drops the unjudged
+results and is too high. The true score is between them.
+
+1. The query instruction changes the score of the same documents by about
+   0.04. Of 11 instructions, the one that names a programming task and a
+   function to call was best.
+2. Coordinate ascent tuned the weights of 24 features for the mean of the two
+   scores. A backward elimination removed the features with no effect, and a
+   5-fold cross-validation chose between the sets that remained.
+3. A second embedding of each definition, with the names of its users, gave
+   about +0.007. It was dropped, because it doubles the size of the index.
+4. One embedding and 8 other features gave 0.804 and 0.819 on unseen
+   queries. Pooling then judged the new pairs in the top 10. With judged@10 at
+   1.000, the pipeline scores 0.819, at the top of this interval.
+
+These features had no effect when the chosen ones were present: an embedding of
+the code alone, of the head and the package, or of the code with the heads of
+its uses; BM25; a second query instruction; pseudo-relevance feedback; the
+number of other releases that use a definition; users in other modules or in
+laws; and the kind of the definition. A linear model that learns only from
+judged candidates (LambdaRank) gave a higher condensed score and a lower
+score with unjudged results as 0. Without judgments, the two cannot be
+compared, so the simpler coordinate ascent stays.
 
 ## Limits
 
