@@ -11,11 +11,12 @@ jendhub bench check
 | Command | What it does |
 |---|---|
 | `jendhub bench corpus` | Writes the dev corpus as one text file, `data/dev-corpus.txt`, for query writers. |
-| `jendhub bench check` | Checks `queries.jsonl` and `judgments.jsonl`, and prints a summary. |
+| `jendhub bench check` | Checks `queries.jsonl`, and prints a summary with the number of current and stale judgments. |
 | `jendhub bench run <pipeline> [--k N ...]` | Prints nDCG@k and judged@k for all queries and for each kind. |
 | `jendhub bench compare <A> <B> [--k N]` | Compares two pipelines query by query. |
 | `jendhub bench pool --pipelines <name> ... [--depth N]` | Judges the top results of the named pipelines. |
 | `jendhub bench agreement` | Judges the original answers and random definitions, and prints the agreement. |
+| `jendhub bench judge` | Judges each pair with a stale grade again. |
 
 ## Files
 
@@ -25,7 +26,6 @@ jendhub bench check
 | `PROMPT.md` | The prompt that made the last 100 queries. |
 | `queries.jsonl` | 300 queries with graded answers. |
 | `JUDGE.md` | The prompt of the LLM judge. |
-| `judgments.jsonl` | The grades of the LLM judge. |
 
 ## Queries
 
@@ -83,13 +83,23 @@ top results of chosen pipelines.
 - The judge is `openai/gpt-6-luna` with medium reasoning, on OpenAI. It grades
   one query and one definition in each request, on the same 0 to 3 scale. A
   JSON schema restricts the answer to the grade.
-- Each row of `judgments.jsonl` is `{query, id, grade, judge}`. Grade 0 rows
-  are kept. The judge name holds the model, the effort and a hash of
-  `JUDGE.md`. If the prompt changes, `bench check` reports the old rows. Delete
-  them and judge again.
+- The judge does not see the query kind. It sees the definitions that the
+  definition uses, and the definitions that use it, from the use graph. Each
+  list shows the heads of at most 10 definitions. The uses help the judge to
+  see what the definition does. The users help it to see if the definition is
+  a helper.
+- `data/judgments.sqlite` stores each grade with its query, its definition ID
+  and the SHA-256 of the full request. Grade 0 rows are kept. No row is ever
+  deleted.
+- A grade is current if its request is the request that the judge gets today
+  for the same pair. A change of `JUDGE.md`, of the message format, of the
+  definition text or of its uses makes the grade stale. `bench run` and
+  `bench compare` refuse to run while a grade is stale. `bench judge` judges
+  the stale pairs again. If a request goes back to an earlier form, its old
+  grade is current again.
 - In the evaluation, an original answer always wins over a judgment.
-- `bench pool` skips pairs that already have a grade. Thus a later run judges
-  only the new results.
+- `bench pool` skips pairs that already have a current grade. Thus a later run
+  judges only the new results.
 - Pool only good pipelines. A weak experimental pipeline adds noise and cost.
 
 **The pooling rule:** pool a new pipeline before you compare it. Trust a

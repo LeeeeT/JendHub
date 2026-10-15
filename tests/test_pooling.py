@@ -59,10 +59,10 @@ def test_answer_pairs_list_each_original_answer() -> None:
 
 def test_agreement_rows_count_the_judged_grade_of_each_expected_grade() -> None:
     judgments = [
-        Judgment("map", "List.map", 3, "j"),
-        Judgment("map", "List.fold", 0, "j"),
-        Judgment("add", "Nat.add", 2, "j"),
-        Judgment("add", "Nat.sub", 0, "j"),
+        Judgment("map", "List.map", 3),
+        Judgment("map", "List.fold", 0),
+        Judgment("add", "Nat.add", 2),
+        Judgment("add", "Nat.sub", 0),
     ]
     negatives = [(ADD, "Nat.sub")]
     assert agreement_rows([MAP, ADD], negatives, judgments) == {

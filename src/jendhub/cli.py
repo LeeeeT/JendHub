@@ -23,16 +23,8 @@ from jendhub.enrich import Window, enrich, windows
 from jendhub.enrichments import EnrichError, EnrichmentStore
 from jendhub.errors import JendHubError
 from jendhub.evaluate import Pipeline, compare, evaluate, format_comparisons, format_scores
-from jendhub.judge import Judge, Pair
-from jendhub.judgments import (
-    JUDGED_GRADES,
-    Assessment,
-    Judgment,
-    assessments,
-    check_judgments,
-    judgment_line,
-    judgments_within,
-)
+from jendhub.judge import Judge, Pair, current_judgments, pair
+from jendhub.judgments import JUDGED_GRADES, Assessment, Judgment, JudgmentStore, assessments
 from jendhub.mirror import Mirror
 from jendhub.pipelines import PIPELINES, Resources
 from jendhub.pooling import (
@@ -43,11 +35,11 @@ from jendhub.pooling import (
     random_negatives,
 )
 from jendhub.sync import describe_plan, plan, sync
-from jendhub.uses import UsesError, use_graph
+from jendhub.uses import UseGraph, UsesError, use_graph
 
 DEV_CORPUS_LIST = Path("bench/dev.json")
 QUERIES = Path("bench/queries.jsonl")
-JUDGMENTS = Path("bench/judgments.jsonl")
+JUDGMENTS = Path("judgments.sqlite")
 JUDGE_PROMPT = Path("bench/JUDGE.md")
 DEFAULT_DEPTH = 10
 EMBEDDINGS = Path("embeddings.sqlite")
@@ -111,9 +103,7 @@ def parse_arguments() -> argparse.Namespace:
     compare_parser.add_argument(
         "--k", type=int, default=DEFAULT_K, help="the cutoff of nDCG@k (default: %(default)s)"
     )
-    pool_parser = bench_commands.add_parser(
-        "pool", help=f"judge the top results of pipelines into {JUDGMENTS}"
-    )
+    pool_parser = bench_commands.add_parser("pool", help="judge the top results of pipelines")
     pool_parser.add_argument(
         "--pipelines",
         nargs="+",
@@ -131,6 +121,7 @@ def parse_arguments() -> argparse.Namespace:
         "agreement",
         help="judge the original answers and random definitions, and compare the grades",
     )
+    bench_commands.add_parser("judge", help="judge again each pair with a stale grade")
     arguments = parser.parse_args()
     if arguments.top is not None and arguments.command not in ("enrich", "bench"):
         parser.error("--top applies only to enrich and bench")
@@ -199,8 +190,11 @@ def report_problems(path: Path, problems: list[str]) -> None:
 class Benchmark:
     resources: Resources
     queries: list[Query]
-    judgments: list[Judgment]
     judge: Judge
+    graph: UseGraph
+    store: JudgmentStore
+    judgments: list[Judgment]
+    stale: dict[tuple[str, str], Pair]
 
     def assessments(self) -> list[Assessment]:
         return assessments(self.queries, self.judgments)
@@ -208,24 +202,35 @@ class Benchmark:
     def pipeline(self, name: str) -> Pipeline:
         return PIPELINES[name](self.resources)
 
+    def report_load_errors(self) -> None:
+        for label, error in sorted(self.graph.errors.items()):
+            sys.stdout.write(f"{label} does not load, so the judge sees no uses: {error}\n")
+
     def judge_pairs(self, pairs: list[tuple[Query, str]]) -> None:
         known = {(judgment.query, judgment.id) for judgment in self.judgments}
         definitions = {definition.id: definition for definition in self.resources.definitions}
         unique = {(query.query, id_): (query, id_) for query, id_ in pairs}
         new = [
-            Pair(query, definitions[id_])
+            pair(query, definitions[id_], self.graph, definitions)
             for key, (query, id_) in unique.items()
             if key not in known
         ]
-        with JUDGMENTS.open("a", encoding="utf-8") as output:
+        if new:
+            self.report_load_errors()
 
-            def record(pair: Pair, grade: int) -> None:
-                judgment = Judgment(pair.query.query, pair.definition.id, grade, self.judge.name)
-                self.judgments.append(judgment)
-                output.write(judgment_line(judgment))
-                output.flush()
+        def record(judged: Pair, grade: int) -> None:
+            judgment = Judgment(judged.query.query, judged.definition.id, grade)
+            self.store.store(self.judge.key(judged), judgment)
+            self.judgments.append(judgment)
+            self.stale.pop((judgment.query, judgment.id), None)
 
-            self.judge.judge(new, record)
+        self.judge.judge(new, record)
+
+    def require_current(self) -> None:
+        if self.stale:
+            raise BenchError(
+                f"{len(self.stale)} judged pairs have a stale grade: run jendhub bench judge"
+            )
 
 
 def corpus_windows(corpus: Corpus) -> list[Window]:
@@ -258,22 +263,21 @@ def load_benchmark(data: Path, top: int | None) -> Benchmark:
     known = ids if top is None else {d.id for d in corpus_definitions(dev_corpus(data, None))}
     queries, problems = check(QUERIES.read_text(encoding="utf-8"), known)
     report_problems(QUERIES, problems)
-    judge = Judge(JUDGE_PROMPT.read_text(encoding="utf-8"))
-    judgments: list[Judgment] = []
-    if JUDGMENTS.is_file():
-        text = JUDGMENTS.read_text(encoding="utf-8")
-        judgments, problems = check_judgments(text, queries, known, judge.name)
-        report_problems(JUDGMENTS, problems)
     queries = queries_within(queries, ids)
-    return Benchmark(resources, queries, judgments_within(judgments, queries, ids), judge)
+    judge = Judge(JUDGE_PROMPT.read_text(encoding="utf-8"))
+    graph = use_graph(corpus, Mirror(data / "full"), definitions)
+    store = JudgmentStore(data / JUDGMENTS)
+    judgments, stale = current_judgments(store.load(), queries, definitions, judge, graph)
+    return Benchmark(resources, queries, judge, graph, store, judgments, stale)
 
 
 def check_benchmark(benchmark: Benchmark) -> None:
+    benchmark.report_load_errors()
     grades = Counter(judgment.grade for judgment in benchmark.judgments)
     sys.stdout.write(
         f"definitions: {len(benchmark.resources.definitions)}\n"
         f"{summary(benchmark.queries)}\n"
-        f"judgments: {len(benchmark.judgments)} by {benchmark.judge.name}\n"
+        f"judgments: {len(benchmark.judgments)} current, {len(benchmark.stale)} stale\n"
         "judgments by grade: "
         + ", ".join(f"{grade}: {grades[grade]}" for grade in reversed(JUDGED_GRADES))
         + "\n"
@@ -356,12 +360,16 @@ def run_bench(benchmark: Benchmark, subcommand: str, arguments: argparse.Namespa
         case "check":
             check_benchmark(benchmark)
         case "run":
+            benchmark.require_current()
             run_pipeline(benchmark, arguments.pipeline, arguments.k or [DEFAULT_K])
         case "compare":
+            benchmark.require_current()
             compare_pipelines(benchmark, arguments.baseline, arguments.candidate, arguments.k)
         case "pool":
             pool_pipelines(benchmark, arguments.pipelines, arguments.depth)
         case "agreement":
             check_agreement(benchmark)
+        case "judge":
+            benchmark.judge_pairs([(p.query, p.definition.id) for p in benchmark.stale.values()])
         case _:
             raise AssertionError(subcommand)

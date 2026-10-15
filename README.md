@@ -122,6 +122,7 @@ The data directory uses the `BEND_LIB` layout of Bend. Git ignores it.
 | `dev/` | The dev corpus, in the same layout. |
 | `embeddings.sqlite` | The embedding cache, keyed by provider, model and text hash. |
 | `enrichments.sqlite` | The enrichment store and the rejected windows, keyed by the hash of each request. |
+| `judgments.sqlite` | The grades of the benchmark judge, keyed by the hash of each request. |
 | `dev-corpus.txt` | The dev corpus as one text file, for query writers. |
 
 ## Architecture
