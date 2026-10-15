@@ -102,7 +102,7 @@ names that are not definitions, for example a `def` that fills a law of an
 imported module.
 
 The graph holds only the uses inside one release. A use of Base or of another
-package is ignored, and Base is a package of its own. In the dev corpus, 14,193
+package is ignored, and Base is a package of its own. In the dev corpus, 14,581
 uses connect the definitions, and 4,625 of 5,473 definitions have at least one
 user. One file does not load with today's Base: `bend-collections-laws` declares
 a constructor `Ready`, and Base declares one too. The compiler refuses it, so

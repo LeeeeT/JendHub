@@ -47,20 +47,30 @@ fn text(file: &LoadedFile, beg: usize, end: usize) -> String {
     String::from_utf16_lossy(file.parsed.get(beg..end).unwrap_or(&[]))
 }
 
-/// Where each book key of a load is declared.
-fn declarations(loaded: &Load) -> HashMap<String, Declaration> {
+/// The definition that each book key of a load names, by the key and by
+/// whether it is a constructor's. A constructor names the type that declares
+/// it, since a type and its constructors are one definition.
+fn declarations(loaded: &Load) -> HashMap<(String, bool), Declaration> {
     let mut out = HashMap::new();
     for file in &loaded.files {
         for occurrence in &file.occurrences {
-            if let Meaning::Declaration { key, .. } = &occurrence.meaning {
+            if let Meaning::Declaration { key, ctr: false } = &occurrence.meaning {
                 let name = text(file, occurrence.span.beg, occurrence.span.end);
-                out.insert(
-                    key.clone(),
-                    Declaration {
-                        file: file.real.clone(),
-                        name,
-                    },
-                );
+                let file = file.real.clone();
+                out.insert((key.clone(), false), Declaration { file, name });
+            }
+        }
+    }
+    for file in &loaded.files {
+        for occurrence in &file.occurrences {
+            if let Meaning::Declaration { key, ctr: true } = &occurrence.meaning
+                && let Some(owner) = loaded
+                    .tlds
+                    .get(occurrence.tld)
+                    .and_then(|tld| tld.name.clone())
+                    .and_then(|name| out.get(&(name, false)).cloned())
+            {
+                out.insert((key.clone(), true), owner);
             }
         }
     }
@@ -81,21 +91,25 @@ fn package<'a>(lib: &str, file: &'a str) -> &'a str {
 
 fn uses(lib: &str, loaded: &Load) -> BTreeSet<Use> {
     let mut found = BTreeSet::new();
-    let Some(entry) = loaded.files.last().filter(|file| file.ns.is_empty()) else {
+    let Some(entry) = loaded
+        .entry
+        .as_ref()
+        .and_then(|path| loaded.files.iter().rfind(|file| file.real == *path))
+    else {
         return found;
     };
     let declared = declarations(loaded);
     let home = package(lib, &entry.real);
     for occurrence in &entry.occurrences {
-        let Meaning::Global { key } = &occurrence.meaning else {
+        let Meaning::Global { key, ctr } = &occurrence.meaning else {
             continue;
         };
         let owner = loaded
             .tlds
             .get(occurrence.tld)
-            .and_then(|tld| tld.name.as_ref())
-            .and_then(|name| declared.get(name));
-        let (Some(from), Some(to)) = (owner, declared.get(key)) else {
+            .and_then(|tld| tld.name.clone())
+            .and_then(|name| declared.get(&(name, false)));
+        let (Some(from), Some(to)) = (owner, declared.get(&(key.clone(), *ctr))) else {
             continue;
         };
         if from != to && package(lib, &to.file) == home && package(lib, &from.file) == home {
@@ -175,7 +189,6 @@ mod tests {
                 hub: String::new(),
             };
             let loaded = load(&Disk, &env, entry);
-            assert!(loaded.error.is_none(), "{:?}", loaded.error);
             uses(&real(&lib), &loaded)
                 .into_iter()
                 .map(|found| {
@@ -221,6 +234,33 @@ mod tests {
             inside,
             vec![(lib.clone(), "open".into(), lib.clone(), "Box".into())]
         );
+    }
+
+    #[test]
+    fn a_constructor_use_is_a_use_of_its_type() {
+        let fixture = Fixture::new("constructor");
+        let shapes = fixture.write(
+            "lib/0xaa/shapes.bend",
+            "import Base\n\ntype Shape is Data:\n  Circle{radius: Nat}\n",
+        );
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\nimport ./shapes.bend as S\n\ndef unit() -> S.Shape:\n  S.Circle{Zero{}}\n",
+        );
+        assert_eq!(
+            fixture.uses(&main),
+            vec![(main.clone(), "unit".into(), shapes, "Shape".into())]
+        );
+    }
+
+    #[test]
+    fn an_entry_that_stops_in_an_import_has_no_uses() {
+        let fixture = Fixture::new("stopped");
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\nimport ./missing.bend as M\n\ndef root(x: Nat) -> Nat:\n  Nat.add(x, x)\n",
+        );
+        assert!(fixture.uses(&main).is_empty());
     }
 
     #[test]
