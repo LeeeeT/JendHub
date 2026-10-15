@@ -1,0 +1,20 @@
+[package]
+name = "jendhub-index"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+bend2-lsp = { path = "../bend2-lsp-rs" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+
+[patch.crates-io]
+tower-lsp = { path = "../bend2-lsp-rs/vendor/tower-lsp" }

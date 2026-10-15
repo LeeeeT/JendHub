@@ -43,6 +43,7 @@ from jendhub.pooling import (
     random_negatives,
 )
 from jendhub.sync import describe_plan, plan, sync
+from jendhub.uses import UsesError, use_graph
 
 DEV_CORPUS_LIST = Path("bench/dev.json")
 QUERIES = Path("bench/queries.jsonl")
@@ -86,6 +87,10 @@ def parse_arguments() -> argparse.Namespace:
     commands.add_parser(
         "enrich", help="write search metadata for the definitions of the dev corpus"
     )
+    uses_parser = commands.add_parser(
+        "uses", help="show the definitions that a definition uses, and the ones that use it"
+    )
+    uses_parser.add_argument("id", help="a definition ID")
     bench_parser = commands.add_parser("bench", help="manage the benchmark")
     bench_commands = bench_parser.add_subparsers(dest="subcommand", required=True)
     bench_commands.add_parser("corpus", help="write the dev corpus as one text file")
@@ -163,6 +168,18 @@ def build_dev_corpus(full: Mirror, dev_root: Path) -> None:
 def dev_corpus(data: Path, top: int | None) -> Corpus:
     listed = dev_corpus_list()
     return open_corpus(Mirror(data / "dev"), listed if top is None else listed.top(top))
+
+
+def show_uses(corpus: Corpus, full: Mirror, id_: str) -> None:
+    definitions = corpus_definitions(corpus)
+    if id_ not in {definition.id for definition in definitions}:
+        raise UsesError(f"{id_} is not in the dev corpus")
+    graph = use_graph(corpus, full, definitions)
+    for label, error in sorted(graph.errors.items()):
+        sys.stdout.write(f"{label} does not load: {error}\n")
+    for label, found in (("used by", graph.users), ("uses", graph.used)):
+        ids = sorted(found.get(id_, frozenset()))
+        sys.stdout.write(f"{label} {len(ids)}:\n" + "".join(f"  {other}\n" for other in ids))
 
 
 def write_corpus_text(corpus: Corpus, output: Path) -> None:
@@ -322,6 +339,8 @@ def run(arguments: argparse.Namespace) -> None:
                 dev_corpus(arguments.data, arguments.top),
                 EnrichmentStore(arguments.data / ENRICHMENTS),
             )
+        case "uses", _:
+            show_uses(dev_corpus(arguments.data, None), full, arguments.id)
         case "bench", "corpus":
             write_corpus_text(
                 dev_corpus(arguments.data, arguments.top), arguments.data / "dev-corpus.txt"

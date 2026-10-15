@@ -28,9 +28,11 @@ JendHub has only a CLI.
 
 ## Setup
 
-Put `OPENROUTER_API_KEY` in `.env`. `nix develop` loads it automatically.
+Clone with the submodule, and put `OPENROUTER_API_KEY` in `.env`. `nix develop`
+loads it automatically.
 
 ```bash
+git clone --recurse-submodules <url>
 nix develop
 jendhub --help
 ```
@@ -57,6 +59,7 @@ the dev corpus, as if the dev corpus held only them. The order of
 | `jendhub dev select (--packages N \| --definitions N)` | Selects the hottest release of each named package into `bench/dev.json`. |
 | `jendhub dev build` | Builds `data/dev` from `bench/dev.json`. |
 | `jendhub enrich` | Writes search metadata for each definition of the dev corpus. |
+| `jendhub uses ID` | Shows the definitions that a definition uses, and the ones that use it. |
 | `jendhub bench ...` | Manages and runs the benchmark. See [bench/README.md](bench/README.md). |
 
 ### Sync
@@ -76,6 +79,34 @@ hottest release of each named package, and skips unnamed and rejected packages.
 A package that does not fit the definition budget is skipped, together with the
 other releases of the same name. Today it holds 37 packages with 5,473
 definitions.
+
+### Uses
+
+The use graph tells which definitions use which other definitions. A use is
+any name that resolves to a definition: a call, a type, a constructor, or a use
+with no name of its own, such as `T.add` behind `(a + b : T)`. A constructor
+stands for its type.
+
+JendHub resolves names exactly as the Bend compiler does. Our fork of the
+[Bend 2 language server](https://github.com/IlyaGulya/bend2-lsp-rs), the
+submodule `bend2-lsp-rs`, holds a port of the compiler's front end (Bend
+v2.0.37): its loader, parser and match flattening. Its `tools/oracle` compares
+the port with the compiler itself. On every file of the mirror and of the
+compiler's repository, the parsed terms are byte-identical, and every
+identifier token has the meaning that the compiler gives it.
+
+The `jendhub-index` program in `indexer/` loads each file of the dev corpus as
+the compiler loads the file it checks, with the packages of `data/full`. It
+writes the uses as JSON. Python maps them to definition IDs and drops the
+names that are not definitions, for example a `def` that fills a law of an
+imported module.
+
+The graph holds only the uses inside one release. A use of Base or of another
+package is ignored, and Base is a package of its own. In the dev corpus, 14,193
+uses connect the definitions, and 4,625 of 5,473 definitions have at least one
+user. One file does not load with today's Base: `bend-collections-laws` declares
+a constructor `Ready`, and Base declares one too. The compiler refuses it, so
+it has no uses.
 
 ## Data layout
 
@@ -104,6 +135,7 @@ The data directory uses the `BEND_LIB` layout of Bend. Git ignores it.
 | `embeddings.py`, `dense.py` | Dense search with cached embeddings. |
 | `enrich.py`, `enrichments.py`, `enrich.md` | The enricher, its store and its prompt. |
 | `roles.py` | The role feature from the enrichments. |
+| `uses.py`, `indexer/` | The use graph and the Rust program that resolves names for it. |
 | `fusion.py`, `rerank.py` | Combine pipelines: rank fusion and a linear reranker. |
 | `pipelines.py` | The registry of named pipelines. |
 | `evaluate.py`, `bench.py`, `judgments.py`, `judge.py`, `pooling.py` | The benchmark. |

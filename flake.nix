@@ -2,6 +2,7 @@
   description = "JendHub";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.self.submodules = true;
 
   outputs = { nixpkgs, ... }:
     let
@@ -10,9 +11,32 @@
       python = pkgs.python314.withPackages dependencies;
       devPython = pkgs.python314.withPackages (ps:
         dependencies ps ++ [ ps.pytest ps.respx ]);
+      indexerSource = pkgs.lib.fileset.toSource {
+        root = ./.;
+        fileset = pkgs.lib.fileset.unions [ ./indexer ./bend2-lsp-rs ];
+      };
+      indexer = pkgs.rustPlatform.buildRustPackage {
+        pname = "jendhub-index";
+        version = "0.1.0";
+        src = indexerSource;
+        cargoRoot = "indexer";
+        buildAndTestSubdir = "indexer";
+        cargoLock.lockFile = ./indexer/Cargo.lock;
+      };
+      indexerLints = indexer.overrideAttrs (old: {
+        pname = "jendhub-index-lints";
+        nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy pkgs.rustfmt ];
+        buildPhase = ''
+          cd indexer
+          cargo fmt --check
+          cargo clippy --all-targets --locked --offline -- -D warnings
+        '';
+        doCheck = false;
+        installPhase = "touch $out";
+      });
       jendhub = pkgs.writeShellApplication {
         name = "jendhub";
-        runtimeInputs = [ python ];
+        runtimeInputs = [ python indexer ];
         text = ''
           export PYTHONPATH="''${PYTHONPATH:+$PYTHONPATH:}${./src}"
           exec python -m jendhub "$@"
@@ -23,7 +47,7 @@
       packages.x86_64-linux.default = jendhub;
 
       devShells.x86_64-linux.default = pkgs.mkShell {
-        packages = [ devPython jendhub pkgs.pyright pkgs.ruff ];
+        packages = [ devPython jendhub indexer pkgs.pyright pkgs.ruff ];
         shellHook = ''
           export PYTHONPATH="$PWD/src"
           if [ -f .env ]; then
@@ -34,8 +58,10 @@
         '';
       };
 
+      checks.x86_64-linux.indexer = indexerLints;
+
       checks.x86_64-linux.default = pkgs.runCommand "jendhub-checks" {
-        nativeBuildInputs = [ devPython pkgs.pyright pkgs.ruff ];
+        nativeBuildInputs = [ devPython indexer pkgs.pyright pkgs.ruff ];
         SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
       } ''
         cp -r ${pkgs.lib.fileset.toSource {

@@ -1,6 +1,7 @@
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+extend-exclude = ["bend2-lsp-rs"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -11,6 +12,7 @@ ignore = ["D", "COM812", "CPY", "TC", "EM", "TRY003"]
 
 [tool.pyright]
 typeCheckingMode = "strict"
+include = ["src", "tests"]
 
 [tool.pytest]
 testpaths = ["tests"]

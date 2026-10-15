@@ -1,0 +1,249 @@
+use std::{
+    collections::{BTreeSet, HashMap},
+    error::Error,
+    io::{self, Read, Write},
+    path::Path,
+};
+
+use bend2_lsp::frontend::{Disk, Env, Load, LoadedFile, Meaning, load};
+use serde::{Deserialize, Serialize};
+
+/// Which files to load: each entry as the compiler loads the file it checks,
+/// with packages from `lib` and Base from `base`.
+#[derive(Deserialize)]
+struct Request {
+    lib: String,
+    base: String,
+    entries: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct Response {
+    entries: Vec<Entry>,
+}
+
+#[derive(Serialize)]
+struct Entry {
+    path: String,
+    error: Option<String>,
+    uses: BTreeSet<Use>,
+}
+
+/// A declaration that uses another, inside one package.
+#[derive(Eq, Ord, PartialEq, PartialOrd, Serialize)]
+struct Use {
+    from: Declaration,
+    to: Declaration,
+}
+
+/// A declaration: the canonical path of its file and its name there.
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+struct Declaration {
+    file: String,
+    name: String,
+}
+
+fn text(file: &LoadedFile, beg: usize, end: usize) -> String {
+    String::from_utf16_lossy(file.parsed.get(beg..end).unwrap_or(&[]))
+}
+
+/// Where each book key of a load is declared.
+fn declarations(loaded: &Load) -> HashMap<String, Declaration> {
+    let mut out = HashMap::new();
+    for file in &loaded.files {
+        for occurrence in &file.occurrences {
+            if let Meaning::Declaration { key, .. } = &occurrence.meaning {
+                let name = text(file, occurrence.span.beg, occurrence.span.end);
+                out.insert(
+                    key.clone(),
+                    Declaration {
+                        file: file.real.clone(),
+                        name,
+                    },
+                );
+            }
+        }
+    }
+    out
+}
+
+/// The package of a file: its `0x<hash>` directory under `lib`, or the file
+/// itself when it is outside `lib`, as Base is.
+fn package<'a>(lib: &str, file: &'a str) -> &'a str {
+    match file
+        .strip_prefix(lib)
+        .and_then(|rest| rest.strip_prefix('/'))
+    {
+        Some(rest) => &file[..file.len() - rest.len() + rest.find('/').unwrap_or(rest.len())],
+        None => file,
+    }
+}
+
+fn uses(lib: &str, loaded: &Load) -> BTreeSet<Use> {
+    let mut found = BTreeSet::new();
+    let Some(entry) = loaded.files.last().filter(|file| file.ns.is_empty()) else {
+        return found;
+    };
+    let declared = declarations(loaded);
+    let home = package(lib, &entry.real);
+    for occurrence in &entry.occurrences {
+        let Meaning::Global { key } = &occurrence.meaning else {
+            continue;
+        };
+        let owner = loaded
+            .tlds
+            .get(occurrence.tld)
+            .and_then(|tld| tld.name.as_ref())
+            .and_then(|name| declared.get(name));
+        let (Some(from), Some(to)) = (owner, declared.get(key)) else {
+            continue;
+        };
+        if from != to && package(lib, &to.file) == home && package(lib, &from.file) == home {
+            found.insert(Use {
+                from: from.clone(),
+                to: to.clone(),
+            });
+        }
+    }
+    found
+}
+
+fn real(path: &str) -> String {
+    std::fs::canonicalize(Path::new(path)).map_or_else(
+        |_| path.to_owned(),
+        |real| real.to_string_lossy().into_owned(),
+    )
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let mut input = String::new();
+    io::stdin().read_to_string(&mut input)?;
+    let request: Request = serde_json::from_str(&input)?;
+    let env = Env {
+        lib: request.lib.clone(),
+        base: real(&request.base),
+        hub: "https://hub.bend-lang.com".to_owned(),
+    };
+    let lib = real(&request.lib);
+    let mut entries = Vec::with_capacity(request.entries.len());
+    for entry in request.entries {
+        let loaded = load(&Disk, &env, &entry);
+        let error = loaded.error.as_ref().map(|error| error.exp.clone());
+        entries.push(Entry {
+            uses: uses(&lib, &loaded),
+            path: entry,
+            error,
+        });
+    }
+    let mut output = io::stdout().lock();
+    serde_json::to_writer(&mut output, &Response { entries })?;
+    output.write_all(b"\n")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Fixture {
+        root: std::path::PathBuf,
+    }
+
+    impl Fixture {
+        fn new(name: &str) -> Self {
+            let root =
+                std::env::temp_dir().join(format!("jendhub-index-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join("lib/0xaa"))
+                .unwrap_or_else(|error| panic!("{error}"));
+            std::fs::create_dir_all(root.join("lib/0xbb"))
+                .unwrap_or_else(|error| panic!("{error}"));
+            Self { root }
+        }
+
+        fn write(&self, path: &str, text: &str) -> String {
+            let path = self.root.join(path);
+            std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
+            real(&path.to_string_lossy())
+        }
+
+        fn uses(&self, entry: &str) -> Vec<(String, String, String, String)> {
+            let lib = self.root.join("lib").to_string_lossy().into_owned();
+            let env = Env {
+                lib: lib.clone(),
+                base: self.write("base.bend", BASE),
+                hub: String::new(),
+            };
+            let loaded = load(&Disk, &env, entry);
+            assert!(loaded.error.is_none(), "{:?}", loaded.error);
+            uses(&real(&lib), &loaded)
+                .into_iter()
+                .map(|found| {
+                    (
+                        found.from.file,
+                        found.from.name,
+                        found.to.file,
+                        found.to.name,
+                    )
+                })
+                .collect()
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    const BASE: &str = "type Nat is Data:\n  Zero{}\n  Succ{pred: Nat}\n\ndef Nat.add(a: Nat, b: Nat) -> Nat:\n  a\n";
+
+    #[test]
+    fn uses_inside_a_package_cross_its_modules() {
+        let fixture = Fixture::new("local");
+        let lib = fixture.write(
+            "lib/0xaa/box.bend",
+            "import Base\n\ntype Box is Data:\n  Box{value: Nat}\n\ndef open(b: Box) -> Nat:\n  match b:\n    case Box{v}:\n      v\n",
+        );
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\nimport ./box.bend as B\n\ndef root(x: B.Box) -> Nat:\n  (B.open(x) + Zero{} : Nat)\n",
+        );
+        let found = fixture.uses(&main);
+        assert!(found.contains(&(main.clone(), "root".into(), lib.clone(), "open".into())));
+        assert!(found.contains(&(main.clone(), "root".into(), lib.clone(), "Box".into())));
+        assert!(
+            found.iter().all(|(_, _, file, _)| file == &lib),
+            "{found:?}"
+        );
+        let inside = fixture.uses(&lib);
+        assert_eq!(
+            inside,
+            vec![(lib.clone(), "open".into(), lib.clone(), "Box".into())]
+        );
+    }
+
+    #[test]
+    fn a_local_shadows_a_declaration() {
+        let fixture = Fixture::new("shadow");
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\n\ndef name(n: Nat) -> Nat:\n  n\n\ndef root(x: Nat) -> Nat:\n  name = x\n  name\n",
+        );
+        assert!(fixture.uses(&main).is_empty());
+    }
+
+    #[test]
+    fn other_packages_are_not_uses() {
+        let fixture = Fixture::new("other");
+        fixture.write(
+            "lib/0xbb/lib.bend",
+            "import Base\n\ndef far(n: Nat) -> Nat:\n  n\n",
+        );
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\nimport 0xbb/lib.bend as L\n\ndef root(x: Nat) -> Nat:\n  L.far(x)\n",
+        );
+        assert!(fixture.uses(&main).is_empty());
+    }
+}
