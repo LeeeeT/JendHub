@@ -83,10 +83,12 @@ top results of chosen pipelines.
 - The judge is `openai/gpt-6-luna` with medium reasoning, on OpenAI. It grades
   one query and one definition in each request, on the same 0 to 3 scale. A
   JSON schema restricts the answer to the grade.
-- The judge does not see the query kind. It sees the definitions that the
-  definition uses, and the definitions that use it, from the use graph. Each
-  list shows the heads of at most 10 definitions. The uses help the judge to
-  see what the definition does. The users help it to see if the definition is
+- The judge does not see the query kind. From the use graph, it sees the
+  definitions that the definition uses and the definitions that use it, at most
+  10 heads each. It also sees the roots that reach the definition: the
+  definitions that reach it through a chain of uses but that no definition of
+  its package uses, at most 5 heads. The uses help the judge to see what the
+  definition does. The users and the roots help it to see if the definition is
   a helper.
 - `data/judgments.sqlite` stores each grade with its query, its definition ID
   and the SHA-256 of the full request. Grade 0 rows are kept. No row is ever

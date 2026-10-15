@@ -16,6 +16,7 @@ from jendhub.judge import (
     current_judgments,
     pair,
     parse_grade,
+    roots,
     user_message,
 )
 from jendhub.judgments import Judgment
@@ -32,8 +33,8 @@ def definition(name: str) -> Definition:
 
 
 LIST_MAP = Definition("List.map", "def", "List.map", BASE, TEXT, TEXT, 0, 1)
-PAIR = Pair(MAP, LIST_MAP, (), ())
-OTHER = Pair(MAP, definition("Nat.add"), (), ())
+PAIR = Pair(MAP, LIST_MAP, (), (), ())
+OTHER = Pair(MAP, definition("Nat.add"), (), (), ())
 
 
 def completion(content: str, cost: float = 0.001) -> Json:
@@ -52,16 +53,28 @@ def key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_user_message_shows_the_query_the_definition_and_its_uses() -> None:
-    message = user_message(Pair(MAP, LIST_MAP, (definition("List.double"),), ()))
+    double = definition("List.double")
+    message = user_message(Pair(MAP, LIST_MAP, (double,), (), (double,)))
     assert message == (
         f"Query: map a list\n\nDefinition ID: List.map\n\n{TEXT}\n\n"
-        "Uses (0):\n\nUsed by (1):\n\nID: List.double\ndef List.double:"
+        "Uses (0):\n\nUsed by (1):\n\nID: List.double\ndef List.double:\n\n"
+        "Reached from (1):\n\nID: List.double\ndef List.double:"
     )
+
+
+def test_roots_are_the_users_without_users_that_reach_a_definition() -> None:
+    users = {
+        "step": frozenset({"middle", "entry"}),
+        "middle": frozenset({"top", "loop"}),
+        "loop": frozenset({"middle"}),
+    }
+    assert roots("step", users) == ["entry", "top"]
+    assert roots("top", users) == []
 
 
 def test_user_message_shows_a_limited_number_of_uses() -> None:
     users = tuple(definition(f"user{index:02}") for index in range(NEIGHBOR_LIMIT + 2))
-    message = user_message(Pair(MAP, LIST_MAP, users, ()))
+    message = user_message(Pair(MAP, LIST_MAP, users, (), ()))
     assert f"Used by ({NEIGHBOR_LIMIT + 2}):" in message
     assert f"ID: user{NEIGHBOR_LIMIT - 1:02}\n" in message
     assert f"ID: user{NEIGHBOR_LIMIT:02}\n" not in message
@@ -74,6 +87,7 @@ def test_pair_takes_the_uses_from_the_graph_in_id_order() -> None:
     found = pair(MAP, definitions["List.map"], graph, definitions)
     assert found.users == (definitions["a"], definitions["b"])
     assert found.uses == (definitions["c"],)
+    assert found.roots == (definitions["a"], definitions["b"])
     assert pair(MAP, definitions["c"], graph, definitions).users == ()
 
 
@@ -95,7 +109,7 @@ def test_the_key_changes_with_the_prompt_and_the_message() -> None:
     judge = Judge("prompt a")
     assert judge.key(PAIR) == Judge("prompt a").key(PAIR)
     assert judge.key(PAIR) != Judge("prompt b").key(PAIR)
-    assert judge.key(PAIR) != judge.key(Pair(MAP, LIST_MAP, (definition("List.double"),), ()))
+    assert judge.key(PAIR) != judge.key(Pair(MAP, LIST_MAP, (definition("List.double"),), (), ()))
 
 
 def test_current_judgments_split_the_stored_pairs_into_current_and_stale() -> None:
@@ -106,8 +120,8 @@ def test_current_judgments_split_the_stored_pairs_into_current_and_stale() -> No
     current = pair(MAP, LIST_MAP, graph, by_id)
     stored = {
         judge.key(current): Judgment("map a list", "List.map", 3),
-        judge.key(Pair(MAP, by_id["Nat.add"], (), ())): Judgment("map a list", "Nat.add", 1),
-        Judge("old").key(Pair(MAP, by_id["List.double"], (), ())): Judgment(
+        judge.key(Pair(MAP, by_id["Nat.add"], (), (), ())): Judgment("map a list", "Nat.add", 1),
+        Judge("old").key(Pair(MAP, by_id["List.double"], (), (), ())): Judgment(
             "map a list", "List.double", 2
         ),
         b"unknown query": Judgment("sort a list", "List.map", 2),

@@ -16,14 +16,19 @@ for example `bend-kit-json@0.5.0.1/json:parse.bytes`.
 After the definition, you get the definitions that it uses. They help you to
 see what the definition does, and if it does what the query asks for.
 
-You also get the definitions that use it. They help you to see if a module
-offers the definition to its users, or if it is a helper of a larger
-definition.
+You also get the definitions that use it, and the definitions that reach it
+through a chain of uses but that no definition of its package uses. They help
+you to see if a module offers the definition to its users, or if it exists only
+to implement other definitions.
 
 ## Grades
 
-Users look for the definitions that a module offers to its users. A helper
-does one step of a larger definition. Give at most grade `1` to a helper.
+Users look for the definitions that a module offers to its users. A helper is
+a definition that the user does not call: a definition that the module offers
+does the job and reaches the helper. Arguments that hold internal state are a
+sign of a helper, for example fuel, a flag that the caller computes, or a value
+that the caller has half processed. Give at most grade `1` to a helper, also
+when it does exactly what the query asks for.
 
 - `3`: the definition is exactly what the query asks for. A vague query can
   have more than one definition with grade `3`.

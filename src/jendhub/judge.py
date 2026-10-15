@@ -21,7 +21,8 @@ SEED = 0
 CONCURRENCY = 32
 PROGRESS_STEP = 500
 NEIGHBOR_LIMIT = 10
-USER_TEMPLATE = "Query: {query}\n\nDefinition ID: {id}\n\n{text}\n\n{uses}\n\n{users}"
+ROOT_LIMIT = 5
+USER_TEMPLATE = "Query: {query}\n\nDefinition ID: {id}\n\n{text}\n\n{uses}\n\n{users}\n\n{roots}"
 SECTION_TEMPLATE = "{title} ({count}):"
 NEIGHBOR_TEMPLATE = "ID: {id}\n{head}"
 MORE_TEMPLATE = "And {count} more."
@@ -48,6 +49,21 @@ class Pair:
     definition: Definition
     users: tuple[Definition, ...]
     uses: tuple[Definition, ...]
+    roots: tuple[Definition, ...]
+
+
+def roots(id_: str, users: dict[str, frozenset[str]]) -> list[str]:
+    seen = {id_}
+    stack = [id_]
+    found: list[str] = []
+    while stack:
+        for user in users.get(stack.pop(), frozenset()):
+            if user not in seen:
+                seen.add(user)
+                stack.append(user)
+                if user not in users:
+                    found.append(user)
+    return sorted(found)
 
 
 def pair(
@@ -56,13 +72,14 @@ def pair(
     def neighbors(found: dict[str, frozenset[str]]) -> tuple[Definition, ...]:
         return tuple(definitions[id_] for id_ in sorted(found.get(definition.id, frozenset())))
 
-    return Pair(query, definition, neighbors(graph.users), neighbors(graph.used))
+    reached = tuple(definitions[id_] for id_ in roots(definition.id, graph.users))
+    return Pair(query, definition, neighbors(graph.users), neighbors(graph.used), reached)
 
 
-def section(title: str, neighbors: tuple[Definition, ...]) -> str:
+def section(title: str, neighbors: tuple[Definition, ...], limit: int) -> str:
     shown = [
         NEIGHBOR_TEMPLATE.format(id=neighbor.id, head=neighbor.head)
-        for neighbor in neighbors[:NEIGHBOR_LIMIT]
+        for neighbor in neighbors[:limit]
     ]
     hidden = len(neighbors) - len(shown)
     more = [MORE_TEMPLATE.format(count=hidden)] if hidden else []
@@ -74,8 +91,9 @@ def user_message(pair: Pair) -> str:
         query=pair.query.query,
         id=pair.definition.id,
         text=pair.definition.text,
-        users=section("Used by", pair.users),
-        uses=section("Uses", pair.uses),
+        uses=section("Uses", pair.uses, NEIGHBOR_LIMIT),
+        users=section("Used by", pair.users, NEIGHBOR_LIMIT),
+        roots=section("Reached from", pair.roots, ROOT_LIMIT),
     )
 
 
