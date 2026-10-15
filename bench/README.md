@@ -136,20 +136,17 @@ Pooling costs about $0.15 for 1,000 pairs.
 
 `bench agreement` judges the original answers blind, and one random
 definition for each query. The random definitions come from a fixed seed. The
-shares of each judged grade, with medium reasoning, on the first 200 queries
-and the corpus of 20 packages:
+shares of each judged grade on all 300 queries:
 
 | Original grade | Pairs | Judged 0 | Judged 1 | Judged 2 | Judged 3 |
 |---|---|---|---|---|---|
-| 3 | 307 | 0.00 | 0.02 | 0.07 | 0.91 |
-| 2 | 333 | 0.04 | 0.51 | 0.29 | 0.16 |
-| 1 | 185 | 0.02 | 0.74 | 0.14 | 0.11 |
-| random | 200 | 0.92 | 0.07 | 0.01 | 0.00 |
+| 3 | 478 | 0.00 | 0.14 | 0.10 | 0.77 |
+| 2 | 525 | 0.01 | 0.64 | 0.21 | 0.14 |
+| 1 | 424 | 0.03 | 0.81 | 0.11 | 0.04 |
+| random | 300 | 0.96 | 0.04 | 0.00 | 0.00 |
 
-The judge gives the same grade in 62% of the original answers, and calls 98%
-of them relevant. This is in the usual range of agreement between human
-assessors. The judge is stricter than the query writer on grade 2. With low
-reasoning, the agreement was 59% and 92%.
+The judge gives the same grade in 57% of the original answers, and calls 99%
+of them relevant. It is stricter than the query writer on grades 2 and 3.
 
 ## Comparisons
 
@@ -168,17 +165,17 @@ queries of each kind.
 
 | Pipeline | nDCG@10 | short | judged@10 |
 |---|---|---|---|
-| `bm25` | 0.383 | 0.339 | 0.632 |
-| `bm25-head-package` | 0.425 | 0.364 | 0.846 |
-| `bm25-head-package+name-rrf` | 0.428 | 0.365 | 0.849 |
-| `bm25-head-package+name-rerank` | 0.460 | 0.398 | 1.000 |
-| `dense-head-package` | 0.683 | 0.686 | 0.805 |
-| `dense-text` | 0.731 | 0.735 | 0.977 |
-| `dense-text+name-rerank` | 0.740 | 0.741 | 1.000 |
-| `dense-text+metadata+name-rerank` | 0.776 | 0.796 | 1.000 |
-| `dense-text-summary+name-rerank` | 0.791 | 0.809 | 1.000 |
-| `dense-enriched+name-rerank` | 0.794 | 0.819 | 1.000 |
-| **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.815** | **0.830** | **1.000** |
+| `bm25` | 0.381 | 0.335 | 0.633 |
+| `bm25-head-package` | 0.426 | 0.365 | 0.847 |
+| `bm25-head-package+name-rrf` | 0.430 | 0.368 | 0.850 |
+| `bm25-head-package+name-rerank` | 0.463 | 0.399 | 1.000 |
+| `dense-head-package` | 0.674 | 0.682 | 0.807 |
+| `dense-text` | 0.710 | 0.709 | 0.979 |
+| `dense-text+name-rerank` | 0.721 | 0.718 | 1.000 |
+| `dense-text+metadata+name-rerank` | 0.763 | 0.778 | 1.000 |
+| `dense-text-summary+name-rerank` | 0.777 | 0.792 | 1.000 |
+| `dense-enriched+name-rerank` | 0.779 | 0.803 | 1.000 |
+| **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.826** | **0.839** | **1.000** |
 
 Rows with judged@10 below 0.95 are not pooled, so their scores are too low.
 
@@ -186,40 +183,44 @@ Main findings:
 
 - Dense search beats BM25 by a large margin on natural-language queries:
   `dense-text+name-rerank` against `bm25-head-package+name-rerank` gains
-  +0.253 on keywords, +0.336 on phrase and +0.451 on description. On
-  exact-signature queries, the difference is not significant.
+  +0.252 on keywords, +0.310 on phrase and +0.405 on description. On
+  exact-signature queries, it gains only +0.055.
 - Rank fusion of dense and lexical results made results worse: equal weight
   for a weak list hurts. A linear rerank with small weights works.
 - Enrichment improves natural-language queries. `dense-enriched+name-rerank`
-  against `dense-text+name-rerank` gains +0.073 on keywords, +0.077 on phrase,
-  +0.084 on description and +0.096 on name. Alone it hurts exact-signature
-  queries by 0.086.
+  against `dense-text+name-rerank` gains +0.070 on keywords, +0.095 on phrase,
+  +0.088 on description and +0.082 on name. Alone it hurts exact-signature
+  queries by 0.083.
 - The best pipeline adds the code embedding, BM25 and the role to the rerank.
-  Against `dense-enriched+name-rerank`, it gains +0.022 on all queries,
-  +0.070 on signature, +0.070 on exact-signature and +0.014 on keywords. On
-  phrase (+0.014) and description (+0.004), the change is not significant.
-- Description is the weakest of the short kinds (0.793). Signature queries
-  remain the weakest kind (0.653), but they are not the main goal.
+  Against `dense-enriched+name-rerank`, it gains +0.047 on all queries,
+  +0.119 on signature, +0.076 on exact-signature, +0.045 on keywords, +0.038
+  on phrase and +0.025 on description. Each gain except exact-name is
+  significant.
+- The role feature matters more since the judge sees the use graph. The best
+  weight set without it scores 0.033 lower on all queries.
+- Description is the weakest of the short kinds (0.772). Signature queries
+  remain the weakest kind (0.697), but they are not the main goal.
 
 ## Weight tuning
 
 The weights of the best pipeline were tuned on all 300 queries for nDCG@10. A
-grid search tried 3,234 weight sets for the code, BM25, role and name
+grid search tried 4,200 weight sets for the code, BM25, role and name
 features. The weight of the enriched embedding stays 1.0, because only the
 ratios change the order.
 
 | Feature | Grid | Best | Flat range |
 |---|---|---|---|
-| Code embedding | 0 to 1.0 | 0.3 | 0.1 to 0.5 |
+| Code embedding | 0 to 1.0 | 0.4 | 0.2 to 0.5 |
 | BM25, max-normalized | 0 to 0.2 | 0.075 | 0.05 to 0.1 |
-| Role | 0 to 0.1 | 0.03 | 0.02 to 0.05 |
-| Name overlap | 0 to 0.3 | 0.05 | 0 to 0.1 |
+| Role | 0 to 0.5 | 0.075 | 0.075 to 0.125 |
+| Name overlap | 0 to 0.3 | 0.05 | 0 to 0.15 |
 
-The best weights gave +0.009 against the old weights (0.5, 0.05, 0.02, 0.1)
-on the same queries. The maximum of many weight sets on the same queries is
-too high. A 5-fold cross-validation selected the weights on 4 folds and
-measured them on the fifth. Over 20 random splits, the gain on the unseen
-queries was +0.005 on average, and it was positive in each split.
+The best weights gave +0.010 against the weights before the new judge (0.3,
+0.075, 0.03, 0.05) on the same queries. Of the top weight sets, they have the
+highest judged@10, 0.982 before pooling. The maximum of many weight sets on
+the same queries is too high. A 5-fold cross-validation selected the weights
+on 4 folds and measured them on the fifth. Over 20 random splits, the gain on
+the unseen queries was +0.005 on average, and it was positive in each split.
 
 ## Limits
 

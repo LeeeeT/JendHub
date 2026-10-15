@@ -14,9 +14,9 @@ from jendhub.roles import ApiRole
 NAME_WEIGHT = 1.0
 DENSE_NAME_WEIGHT = 0.1
 METADATA_WEIGHT = 1.0
-HYBRID_TEXT_WEIGHT = 0.3
+HYBRID_TEXT_WEIGHT = 0.4
 HYBRID_BM25_WEIGHT = 0.075
-HYBRID_ROLE_WEIGHT = 0.03
+HYBRID_ROLE_WEIGHT = 0.075
 HYBRID_NAME_WEIGHT = 0.05
 INSTRUCTION = "Given a programmer's search query, retrieve the Bend definitions that match it"
 
