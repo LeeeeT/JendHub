@@ -1,3 +1,3 @@
-from jendhub.cli import main
+from jendhub.cli.main import main
 
 main()

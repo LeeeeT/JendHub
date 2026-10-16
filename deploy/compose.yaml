@@ -1,0 +1,90 @@
+name: jendhub
+
+x-jendhub: &jendhub
+  restart: unless-stopped
+  environment: &environment
+    JENDHUB_DATABASE_URL: postgresql://jendhub:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres/jendhub
+    JENDHUB_QDRANT_URL: http://qdrant:6333
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')
+    interval: 10s
+    timeout: 5s
+    retries: 5
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    qdrant:
+      condition: service_started
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jendhub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: jendhub
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, --username=jendhub]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
+    restart: unless-stopped
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
+    volumes:
+      - qdrant:/qdrant/storage
+
+  migrate:
+    image: jendhub-syncer:latest
+    entrypoint: [jendhub, migrate]
+    environment: *environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  syncer:
+    <<: *jendhub
+    image: jendhub-syncer:latest
+
+  worker:
+    <<: *jendhub
+    image: jendhub-worker:latest
+    environment:
+      <<: *environment
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
+    volumes:
+      - library:/data/library
+
+  search:
+    <<: *jendhub
+    image: jendhub-search:latest
+    environment:
+      <<: *environment
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
+
+  api:
+    <<: *jendhub
+    image: jendhub-api:latest
+    environment:
+      JENDHUB_SEARCH_URL: http://search:8000
+    ports:
+      - "${JENDHUB_API_PORT:-8080}:8000"
+    depends_on:
+      search:
+        condition: service_started
+
+volumes:
+  postgres:
+  qdrant:
+  library:

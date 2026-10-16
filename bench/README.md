@@ -1,9 +1,17 @@
 # The JendHub benchmark
 
 The benchmark measures each search pipeline on the dev corpus with nDCG@k.
-All commands run on `data/dev`.
+The production pipeline runs through the real search path: the worker code
+indexes the dev corpus into a generation of its own in Postgres and Qdrant, and
+the search engine answers each query. The other pipelines are experiments of
+the `lab` package. They run in memory on the definitions of the same
+generation.
+
+The commands need the dev services. Start them in one terminal, and run the
+commands in another:
 
 ```bash
+nix develop -c process-compose up
 nix develop
 jendhub bench check
 ```
@@ -22,7 +30,7 @@ jendhub bench check
 
 | File | Content |
 |---|---|
-| `dev.json` | The frozen dev corpus: the Base tag and 37 packages. |
+| `dev.json` | The frozen dev corpus: the Base tag and 36 packages. |
 | `PROMPT.md` | The prompt that made the last 100 queries. |
 | `queries.jsonl` | 300 queries with graded answers. |
 | `JUDGE.md` | The prompt of the LLM judge. |
@@ -90,7 +98,7 @@ top results of chosen pipelines.
   its package uses, at most 5 heads. The uses help the judge to see what the
   definition does. The users and the roots help it to see if the definition is
   a helper.
-- `data/judgments.sqlite` stores each grade with its query, its definition ID
+- The `judgments` table in Postgres stores each grade with its query, its definition ID
   and the SHA-256 of the full request. Grade 0 rows are kept. No row is ever
   deleted.
 - A grade is current if its request is the request that the judge gets today
@@ -177,9 +185,13 @@ queries of each kind.
 | `dense-text-summary+name-rerank` | 0.772 | 0.786 | 1.000 |
 | `dense-enriched+name-rerank` | 0.773 | 0.797 | 1.000 |
 | **`dense-enriched+text+bm25-enriched+role+name-rerank`** | **0.820** | **0.833** | **1.000** |
-| `dense-origin+graph+signature+name-rerank` | 0.819 | 0.817 | **1.000** |
+| `dense-origin+graph+signature+name-rerank` | 0.816 | 0.811 | **1.000** |
 
 Rows with judged@10 below 0.95 are not pooled, so their scores are too low.
+The production row comes from the search engine with the production vector
+setting (see below). Pooling judged its 79 new pairs. Before the move to the
+engine, the same ranking scored 0.819. Against the best enriched pipeline, the
+difference is -0.004, interval [-0.020, +0.012].
 
 Main findings:
 
@@ -261,6 +273,48 @@ judged candidates (LambdaRank) gave a higher condensed score and a lower
 score with unjudged results as 0. Without judgments, the two cannot be
 compared, so the simpler coordinate ascent stays.
 
+### The production search at scale
+
+The search engine keeps the features and weights of
+`dense-origin+graph+signature+name-rerank`, but it reads them from the index
+instead of from memory. Each change for scale was measured against the exact
+search with full vectors on the 300 queries:
+
+| Change | nDCG@10 change | Queries worse / better |
+|---|---|---|
+| HNSW instead of exact search | ±0 | 0 / 0 |
+| `ReachedMatch` from a pool of the top 1,000 instead of all definitions | ±0 | 2 / 1 |
+| int8 or binary quantization, rescored with full vectors | ±0 | 0 / 0 |
+| 2,048 dimensions instead of 4,096 | -0.006 [-0.009, -0.003] | 132 / 73 |
+| 1,024 dimensions | -0.011 [-0.016, -0.006] | 166 / 81 |
+| 512 dimensions | -0.022 [-0.028, -0.016] | 187 / 70 |
+| Exact-name candidates beside the ANN candidates | ±0 | 0 / 0 |
+| Trigram name candidates | -0.0004 | 5 / 0 |
+
+The quality bar allows a loss of 0.01. The cheapest setting inside it is 2,048
+dimensions with binary quantization: 256 bytes of RAM for each definition, and
+8 KB on disk for the rescoring vectors. The losses above count each new
+unjudged result as grade 0, so they are upper bounds. The embedding cache keeps
+the full vectors, so a change of the setting needs no new embeddings.
+
+A use of an older release of a package now counts as a use of the same module
+and name in its latest release. This marks 64 more definitions of the dev
+corpus as used by another release, for example the functions of
+`bend-kit-bytes` that other packages import through an older version. It
+moved nDCG@10 by -0.0006 before pooling.
+
+With all of these changes and the new pairs judged, the engine scores 0.816,
+0.003 below the exact search in memory.
+
+The Python extraction and the compiler declare the same names in each of the
+2,026 files of the latest releases that load. The worker checks this for each
+file and logs each difference.
+
+`bend-collections-laws@1.0.0.0` left the dev corpus, because it does not load
+with Base v2.0.37 and is therefore invalid. Its only file imports other
+packages and declares no definition, so the definitions, queries and scores
+did not change.
+
 ## Limits
 
 - There is no held-out query set. The weights of the rerankers were tuned on
@@ -269,6 +323,7 @@ compared, so the simpler coordinate ascent stays.
   limits this risk.
 - An LLM wrote the queries, and an LLM writes the enrichment queries. They can
   be more similar to each other than real agent queries are.
-- The dev corpus has 5,473 definitions. The search corpus will be much larger,
-  with more distractors: the latest releases alone hold about 71,600
-  definitions.
+- The dev corpus has 5,473 definitions. The search corpus is much larger, with
+  more distractors: the latest named releases and Base hold 73,883
+  definitions today, before the invalid releases are dropped. The dev corpus cannot show the recall of the HNSW index
+  or of binary quantization at that size.

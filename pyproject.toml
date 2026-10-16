@@ -8,7 +8,7 @@ select = ["ALL"]
 ignore = ["D", "COM812", "CPY", "TC", "EM", "TRY003"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "PLR2004", "ARG002"]
+"tests/**" = ["S101", "S603", "S607", "PLR2004", "ARG002"]
 
 [tool.pyright]
 typeCheckingMode = "strict"
@@ -16,3 +16,5 @@ include = ["src", "tests"]
 
 [tool.pytest]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

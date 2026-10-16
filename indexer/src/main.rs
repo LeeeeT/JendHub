@@ -26,6 +26,7 @@ struct Response {
 struct Entry {
     path: String,
     error: Option<String>,
+    declarations: BTreeSet<String>,
     uses: BTreeSet<Use>,
 }
 
@@ -109,6 +110,25 @@ fn uses(loaded: &Load) -> BTreeSet<Use> {
     found
 }
 
+/// The names of the top-level declarations of the entry, without constructors.
+fn entry_declarations(loaded: &Load) -> BTreeSet<String> {
+    loaded
+        .entry
+        .as_ref()
+        .and_then(|path| loaded.files.iter().rfind(|file| file.real == *path))
+        .map(|entry| {
+            entry
+                .occurrences
+                .iter()
+                .filter(|occurrence| {
+                    matches!(occurrence.meaning, Meaning::Declaration { ctr: false, .. })
+                })
+                .map(|occurrence| text(entry, occurrence.span.beg, occurrence.span.end))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn real(path: &str) -> String {
     std::fs::canonicalize(Path::new(path)).map_or_else(
         |_| path.to_owned(),
@@ -130,6 +150,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let loaded = load(&Disk, &env, &entry);
         let error = loaded.error.as_ref().map(|error| error.exp.clone());
         entries.push(Entry {
+            declarations: entry_declarations(&loaded),
             uses: uses(&loaded),
             path: entry,
             error,
@@ -252,6 +273,23 @@ mod tests {
             "import Base\nimport ./missing.bend as M\n\ndef root(x: Nat) -> Nat:\n  Nat.add(x, x)\n",
         );
         assert!(fixture.uses(&main).is_empty());
+    }
+
+    #[test]
+    fn declarations_name_the_top_level_declarations_of_the_entry() {
+        let fixture = Fixture::new("declarations");
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\n\ntype Shape is Data:\n  Circle{radius: Nat}\n\ndef area(s: Shape) -> Nat:\n  Zero{}\n",
+        );
+        let lib = fixture.root.join("lib").to_string_lossy().into_owned();
+        let env = Env {
+            lib,
+            base: fixture.write("base.bend", BASE),
+            hub: String::new(),
+        };
+        let found = entry_declarations(&load(&Disk, &env, &main));
+        assert_eq!(found, ["Shape".to_owned(), "area".to_owned()].into());
     }
 
     #[test]

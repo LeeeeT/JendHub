@@ -177,11 +177,6 @@
       "version": "0.5.0.0"
     },
     {
-      "hash": "0x993b989cb899a5e5c6facb3d6fbccf8f",
-      "name": "bend-collections-laws",
-      "version": "1.0.0.0"
-    },
-    {
       "hash": "0x7205ddcee53cfdb6b62686553b824b13",
       "name": "bend-math-lib",
       "version": "0.0.0.1"

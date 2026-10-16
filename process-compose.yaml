@@ -1,0 +1,80 @@
+version: "0.5"
+
+
+processes:
+  postgres:
+    command: |
+      if [ ! -d data/postgres/cluster ]; then
+        initdb --pgdata=data/postgres/cluster --username=jendhub --auth=trust \
+          --encoding=UTF8 --locale=C
+      fi
+      mkdir -p data/postgres/socket
+      exec postgres -D data/postgres/cluster -k "$PWD/data/postgres/socket" \
+        -c listen_addresses=''
+    readiness_probe:
+      exec:
+        command: pg_isready --host="$PWD/data/postgres/socket" --username=jendhub
+    shutdown:
+      signal: 2
+
+  database:
+    command: |
+      psql --host="$PWD/data/postgres/socket" --username=jendhub --dbname=postgres \
+        --tuples-only --command="SELECT 1 FROM pg_database WHERE datname = 'jendhub'" \
+        | grep -q 1 \
+        || createdb --host="$PWD/data/postgres/socket" --username=jendhub jendhub
+      jendhub migrate
+    depends_on:
+      postgres:
+        condition: process_healthy
+
+  qdrant:
+    command: |
+      mkdir -p data/qdrant
+      cd data/qdrant
+      exec qdrant
+    environment:
+      - "QDRANT__TELEMETRY_DISABLED=true"
+    readiness_probe:
+      http_get:
+        host: localhost
+        port: 6333
+        path: /readyz
+
+  syncer:
+    command: jendhub-service syncer --port 8001
+    disabled: true
+    depends_on:
+      database:
+        condition: process_completed_successfully
+      qdrant:
+        condition: process_healthy
+
+  worker:
+    command: jendhub-service worker --port 8002
+    disabled: true
+    environment:
+      - "JENDHUB_LIBRARY_PATH=data/library"
+    depends_on:
+      database:
+        condition: process_completed_successfully
+      qdrant:
+        condition: process_healthy
+
+  search:
+    command: jendhub-service search --port 8003
+    disabled: true
+    depends_on:
+      database:
+        condition: process_completed_successfully
+      qdrant:
+        condition: process_healthy
+
+  api:
+    command: jendhub-service api --port 8080
+    disabled: true
+    environment:
+      - "JENDHUB_SEARCH_URL=http://127.0.0.1:8003"
+    depends_on:
+      search:
+        condition: process_started
