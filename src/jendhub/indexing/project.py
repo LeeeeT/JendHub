@@ -34,3 +34,15 @@ async def project(
         )
     await index.add_collection(generation_id, collection)
     logger.info("projected generation %d into %s", generation_id, collection.name)
+
+
+async def restore_vectors(
+    index: IndexStore, vectors: VectorIndex, cache: EmbeddingCache
+) -> list[str]:
+    restored: list[str] = []
+    for generation_id, collection in await index.active_collections():
+        if await vectors.exists(collection.name):
+            continue
+        await project(index, vectors, cache, generation_id, collection)
+        restored.append(collection.name)
+    return restored

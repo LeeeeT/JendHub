@@ -149,16 +149,45 @@ services.
 
 ```bash
 git clone --recurse-submodules <url>
-nix develop -c process-compose up      # Postgres, Qdrant and the migrations
-nix develop                            # in a second terminal
-jendhub --help
+nix develop -c process-compose up
 ```
 
-`process-compose up` keeps its data in `data/postgres` and `data/qdrant`. The
-five services are also defined there, but they are off by default, because
-they call BendHub and OpenRouter. Start one with `process-compose process start
-<name>`. The `web` process runs the Vite dev server on port 8090, and it needs
-`npm install` in `web` first.
+This starts Postgres, Qdrant, the migrations, `search`, `api` and `web`, in
+this order. Then open http://127.0.0.1:8090. The API is at
+http://127.0.0.1:8080. The `web` process runs `npm install` in `web` before it
+starts the Vite dev server, so the first start takes longer.
+
+Postgres and Qdrant come from nix and run as normal processes, with their data
+in `data/postgres` and `data/qdrant`. Search needs a live index in that data.
+Without one, the pages answer that the index is not ready.
+
+`syncer` and `worker` are off by default, because they call BendHub and
+OpenRouter on their own. Start one with `process-compose process start
+<name>`. For the CLI, open a second terminal with `nix develop`, and run
+`jendhub --help`.
+
+### The production stack on your machine
+
+`jendhub-stack` runs the production images with `deploy/compose.yaml`, as a
+deploy does. Use it to check a change before a deploy. It needs Docker, and it
+uses its own volumes and the ports 18090 (web) and 18080 (API), so it can run
+next to `process-compose up`.
+
+```bash
+nix develop -c process-compose up postgres qdrant database   # the dev stores
+nix run .#stack -- seed      # copy the dev index into the stack, once
+nix run .#stack -- up        # build and load the images, then start everything
+nix run .#stack -- down      # stop; the volumes stay
+```
+
+`seed` copies the dev database into the stack, and then writes the Qdrant
+collections from the embedding cache with `jendhub index restore-vectors`. It
+pays for no embedding, and it takes about 5 minutes. `up` refuses to start a
+stack with no live index, because the syncer and the worker would then build a
+full index and pay OpenRouter for each embedding. `up --fresh` does that on
+purpose. When the stack runs, its syncer and worker index each new BendHub
+release, as in a deploy. Any other argument goes to `docker compose`, for
+example `nix run .#stack -- logs -f web`.
 
 The web app gets its API types from `web/openapi.json`, a copy of the OpenAPI
 schema of `api`. After a change to the API, write the copy again:
@@ -191,6 +220,7 @@ The default is `data`.
 | `jendhub index status` | Shows each generation and the states of its jobs. |
 | `jendhub index schedule` | Does one cycle of the syncer without the sync: queues jobs and promotes. |
 | `jendhub index retry GENERATION` | Queues the failed jobs of a generation again. |
+| `jendhub index restore-vectors` | Writes each Qdrant collection that Postgres lists and Qdrant does not have, from the embedding cache. It pays for no embedding. |
 | `jendhub uses ID` | Shows the definitions of the live index that a definition uses, and the ones that use it. |
 | `jendhub bench ...` | Runs the benchmark. See [bench/README.md](bench/README.md). |
 

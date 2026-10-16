@@ -20,14 +20,17 @@ from jendhub.corpus.corpus import Corpus
 from jendhub.corpus.dev import DEV_CORPUS_LIST, dev_corpus_list, open_corpus
 from jendhub.db.migrate import migrate
 from jendhub.db.pool import Pool, open_pool
+from jendhub.embedding.cache import EmbeddingCache
 from jendhub.enrich.store import EnrichmentStore
 from jendhub.errors import JendHubError
 from jendhub.hub.library import Library
 from jendhub.hub.store import PackageStore
+from jendhub.indexing.project import restore_vectors
 from jendhub.indexing.schedule import clean_retired, schedule_live
 from jendhub.indexing.store import IndexStore
 from jendhub.logs import configure_logging
-from jendhub.settings import DatabaseSettings, load_settings
+from jendhub.settings import DatabaseSettings, QdrantSettings, load_settings
+from jendhub.vectors.index import open_vector_index
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -72,6 +75,11 @@ def parse_arguments() -> argparse.Namespace:
     index_commands.add_parser("status", help="show the generations and their jobs")
     index_commands.add_parser(
         "schedule", help="queue the jobs of the live index and promote a finished generation"
+    )
+    index_commands.add_parser(
+        "restore-vectors",
+        help="write each Qdrant collection that Postgres lists and Qdrant lacks,"
+        " from the embedding cache",
     )
     retry_parser = index_commands.add_parser("retry", help="queue the failed jobs again")
     retry_parser.add_argument("generation", type=int)
@@ -185,14 +193,20 @@ async def run_store_command(pool: Pool, arguments: argparse.Namespace) -> None:
 
 
 async def run_index_command(arguments: argparse.Namespace) -> None:
-    async with open_services() as services:
-        index = IndexStore(services.pool)
+    async with (
+        open_pool(load_settings(DatabaseSettings)) as pool,
+        open_vector_index(load_settings(QdrantSettings)) as vectors,
+    ):
+        index = IndexStore(pool)
         match arguments.subcommand:
             case "status":
-                await show_status(services.pool)
+                await show_status(pool)
             case "schedule":
-                await schedule_live(index, PackageStore(services.pool), services.vectors)
-                await clean_retired(index, services.vectors)
+                await schedule_live(index, PackageStore(pool), vectors)
+                await clean_retired(index, vectors)
+            case "restore-vectors":
+                for name in await restore_vectors(index, vectors, EmbeddingCache(pool)):
+                    sys.stdout.write(f"restored {name}\n")
             case "retry":
                 await index.retry_failed(arguments.generation)
             case subcommand:

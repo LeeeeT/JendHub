@@ -63,7 +63,13 @@ processes:
 
   search:
     command: jendhub-service search --port 8003
-    disabled: true
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8003
+        path: /healthz
+      period_seconds: 1
+      failure_threshold: 60
     depends_on:
       database:
         condition: process_completed_successfully
@@ -72,18 +78,32 @@ processes:
 
   api:
     command: jendhub-service api --port 8080
-    disabled: true
     environment:
       - "JENDHUB_SEARCH_URL=http://127.0.0.1:8003"
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8080
+        path: /healthz
+      period_seconds: 1
+      failure_threshold: 60
     depends_on:
       search:
-        condition: process_started
+        condition: process_healthy
 
   web:
-    command: npm --prefix web run dev -- --host 127.0.0.1 --port 8090
-    disabled: true
+    command: |
+      npm --prefix web install --no-audit --no-fund
+      exec npm --prefix web run dev -- --host 127.0.0.1 --port 8090 --strictPort
     environment:
       - "JENDHUB_API_URL=http://127.0.0.1:8080"
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8090
+        path: /healthz
+      period_seconds: 1
+      failure_threshold: 120
     depends_on:
       api:
-        condition: process_started
+        condition: process_healthy

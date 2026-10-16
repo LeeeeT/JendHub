@@ -69,8 +69,11 @@ class VectorIndex:
     def __init__(self, client: AsyncQdrantClient) -> None:
         self.client = client
 
+    async def exists(self, name: str) -> bool:
+        return await self.client.collection_exists(name)
+
     async def create(self, name: str, config: VectorConfig) -> None:
-        if await self.client.collection_exists(name):
+        if await self.exists(name):
             return
         await self.client.create_collection(
             name,

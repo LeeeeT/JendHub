@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from jendhub.db.pool import Pool
+from jendhub.embedding.cache import CachedEmbedder, EmbeddingCache
 from jendhub.embedding.model import DIMENSIONS, Vectors
 from jendhub.hub.api import Listing, Package, Release
 from jendhub.hub.base import Base
@@ -44,7 +45,8 @@ async def index_live(pool: Pool, vectors: VectorIndex, library: Path) -> tuple[I
     packages = PackageStore(pool)
     index = IndexStore(pool)
     await schedule_live(index, packages, vectors)
-    worker = Worker(index, packages, Library(library), vectors, WordEmbedder())
+    embedder = CachedEmbedder(EmbeddingCache(pool), WordEmbedder())
+    worker = Worker(index, packages, Library(library), vectors, embedder)
     [generation] = await index.generations(LIVE)
     await worker.drain(generation.id)
     await promote_ready(index, LIVE)

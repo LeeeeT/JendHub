@@ -134,6 +134,19 @@ class IndexStore:
             for name, dimensions, quantization in rows
         ]
 
+    async def active_collections(self) -> list[tuple[int, Collection]]:
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute(
+                "SELECT c.generation, c.name, c.dimensions, c.quantization FROM collections c"
+                " JOIN generations g ON g.id = c.generation"
+                " WHERE g.state <> 'retired' ORDER BY c.generation, c.name"
+            )
+            rows: list[tuple[int, str, int, Quantization]] = await cursor.fetchall()
+        return [
+            (generation_id, Collection(name, VectorConfig(dimensions, quantization)))
+            for generation_id, name, dimensions, quantization in rows
+        ]
+
     async def live_collection(self, corpus: str, config: VectorConfig) -> tuple[int, str] | None:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
