@@ -306,6 +306,17 @@ moved nDCG@10 by -0.0006 before pooling.
 With all of these changes and the new pairs judged, the engine scores 0.816,
 0.003 below the exact search in memory.
 
+The dev corpus is too small to show the recall of the HNSW index. On the
+first live index, 56,650 definitions, the 300 queries compare the production
+search with exact search on the same 2,048-dimension vectors: recall is 1.000
+at 10 and at 50, and 0.999 at 1,000, the pool of `ReachedMatch`. Against exact
+search on the full 4,096 dimensions, recall is 0.92 at 10 and 0.90 at 1,000,
+which is the cost of the cut that the dev benchmark measures. After the rerank,
+the production engine and an engine with exact full-dimension search agree on
+the first result for 95% of the queries, and share 94% of the top 10. The
+production vector search takes 16 ms (median) and 17 ms (p95) for a pool of
+1,000.
+
 The Python extraction and the compiler declare the same names in each of the
 2,026 files of the latest releases that load. The worker checks this for each
 file and logs each difference.

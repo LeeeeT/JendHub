@@ -18,6 +18,7 @@ TASK_INSTRUCTION = (
 )
 DEPTH = 50
 POOL = 1000
+CONCURRENCY = 8
 NAME_CANDIDATES = 10
 
 
@@ -150,7 +151,13 @@ class SearchEngine:
             )
             for text, vector in zip(queries, vectors, strict=True)
         ]
-        return list(await asyncio.gather(*(self.search_one(query, limit) for query in prepared)))
+        slots = asyncio.Semaphore(CONCURRENCY)
+
+        async def bounded(query: Query) -> list[Hit]:
+            async with slots:
+                return await self.search_one(query, limit)
+
+        return list(await asyncio.gather(*(bounded(query) for query in prepared)))
 
     async def search_one(self, query: Query, limit: int) -> list[Hit]:
         depth = max(limit, DEPTH)
