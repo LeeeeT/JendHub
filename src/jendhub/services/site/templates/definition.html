@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% set detail = view.detail %}
+{% block title %}{{ detail.id }} · JendHub{% endblock %}
+{% block head %}<meta name="description" content="The Bend {{ detail.kind }} {{ detail.id }}, its code and what it uses.">{% endblock %}
+{% block main %}
+<h1 class="id">{{ detail.id }}</h1>
+<p class="muted where">{{ detail.kind }} · {{ macros.where(detail.package, detail.version, detail.module) }} · <a href="{{ file_href(view.usage.file) }}#L{{ detail.first_line + 1 }}">lines {{ detail.first_line + 1 }} to {{ detail.end_line }}</a></p>
+<pre class="import"><code>{{ view.usage.import_line }}</code></pre>
+<p class="muted use">Then call <code>{{ view.usage.call_name }}</code>.</p>
+<pre class="source"><code>{% for line in detail.imports %}<span class="line">{{ line }}
+</span>{% endfor %}{% if detail.imports %}<span class="line">
+</span>{% endif %}{% for line in detail.text.split("\n") %}<span class="line" data-line="{{ detail.first_line + loop.index }}">{{ line }}
+</span>{% endfor %}</code></pre>
+<section>
+<h2>Uses <span>({{ detail.uses | length }})</span></h2>
+{% if not detail.uses %}
+<p class="muted">This definition uses no other definition.</p>
+{% else %}
+<ul class="ids">
+{% for id in detail.uses %}<li><a class="id" href="{{ definition_href(id) }}">{{ id }}</a></li>
+{% endfor %}
+</ul>
+{% endif %}
+</section>
+{% endblock %}

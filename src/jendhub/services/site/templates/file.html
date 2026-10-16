@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ file.release }}/{{ file.path }} · JendHub{% endblock %}
+{% block head %}<meta name="description" content="The Bend file {{ file.path }} of {{ file.release }}.">{% endblock %}
+{% block main %}
+<h1 class="id">{{ file.path }}</h1>
+<p class="muted"><a href="{{ release_href(file.release) }}">{{ file.release }}</a> · {{ lines | length }} lines</p>
+<pre class="source"><code>{% for line in lines %}<span class="line" id="L{{ loop.index }}" data-line="{{ loop.index }}">{% if line.link is none %}{{ line.text }}{% else %}{{ line.link.before }}<a href="{{ file_href(line.link.file) }}">{{ line.link.label }}</a>{{ line.link.after }}{% endif %}
+</span>{% endfor %}</code></pre>
+{% endblock %}

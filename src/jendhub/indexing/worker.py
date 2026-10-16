@@ -16,6 +16,7 @@ from jendhub.vectors.index import VectorIndex
 
 LEASE = timedelta(minutes=15)
 IDLE_SECONDS = 5.0
+CHUNK = 512
 
 JOBS = Counter("jendhub_index_jobs", "The index jobs that a worker finished.", ["outcome"])
 MISMATCHES = Counter(
@@ -63,7 +64,9 @@ class Worker:
                 sorted(mismatch.only_extracted),
                 sorted(mismatch.only_declared),
             )
-        vectors = await self.embedder.embed([d.document for d in artifacts.definitions])
+        documents = [definition.document for definition in artifacts.definitions]
+        for start in range(0, len(documents), CHUNK):
+            await self.embedder.embed(documents[start : start + CHUNK])
         written = await self.index.write(generation.id, artifacts)
         if isinstance(written, Superseded):
             logger.info("%s is superseded by %s", job.release, written.by)
@@ -72,9 +75,12 @@ class Worker:
             return
         for release in written.removed:
             await self.vectors.delete_release(generation.collection, release)
-        await self.vectors.upsert(
-            generation.collection, generation.config, written.points, vectors, job.release
-        )
+        for start in range(0, len(documents), CHUNK):
+            vectors = await self.embedder.embed(documents[start : start + CHUNK])
+            points = written.points[start : start + CHUNK]
+            await self.vectors.upsert(
+                generation.collection, generation.config, points, vectors, job.release
+            )
         if not await self.index.release_size(generation.id, job.release):
             await self.vectors.delete_release(generation.collection, job.release)
         await self.index.refresh_external(generation.id, written.keys)

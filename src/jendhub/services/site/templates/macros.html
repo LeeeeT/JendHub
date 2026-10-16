@@ -1,0 +1,24 @@
+{% macro search_form(query="", large=False) -%}
+<form class="search-form{% if large %} large{% endif %}" method="get" action="/search" role="search">
+<input type="search" name="q" value="{{ query }}" maxlength="1000" required placeholder="a task or a name" aria-label="Search Bend definitions">
+<button type="submit">search</button>
+</form>
+{%- endmacro %}
+
+{% macro pager(found) -%}
+{% if found %}
+<nav class="pager" aria-label="Pages">
+{% if found.previous is not none %}<a href="{{ found.previous }}" rel="prev">← previous</a>{% endif %}
+<span class="muted">{{ found.first }} to {{ found.last }} of {{ found.total }}</span>
+{% if found.next is not none %}<a href="{{ found.next }}" rel="next">next →</a>{% endif %}
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{% macro release_state(state) -%}
+<span class="state-{{ state }}">{{ state }}</span>
+{%- endmacro %}
+
+{% macro where(package, version, module) -%}
+{% if package is none %}Base{% else %}<a href="{{ package_href(package) }}">{{ package }}</a>@{{ version }} · {{ module }}.bend{% endif %}
+{%- endmacro %}

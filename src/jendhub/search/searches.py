@@ -5,14 +5,10 @@ from jendhub.db.pool import Pool
 
 type Client = Literal["agents", "web"]
 
-CLIENT_HEADER = "x-jendhub-client"
-USER_AGENT_HEADER = "x-jendhub-user-agent"
-CLIENTS: tuple[Client, ...] = ("agents", "web")
-
 
 @dataclass(frozen=True)
 class Search:
-    client: Client | None
+    client: Client
     user_agent: str | None
     query: str
     offset: int
@@ -20,10 +16,6 @@ class Search:
     generation: int
     results: list[str]
     seconds: float
-
-
-def client_of(value: str | None) -> Client | None:
-    return next((client for client in CLIENTS if client == value), None)
 
 
 async def record_search(pool: Pool, search: Search) -> None:

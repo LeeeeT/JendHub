@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ files.release }} · JendHub{% endblock %}
+{% block head %}<meta name="description" content="The files of the Bend release {{ files.release }}.">{% endblock %}
+{% block main %}
+<h1 class="id">{{ files.release }}</h1>
+{% if files.hash is not none and files.hash != files.release %}<p class="muted"><code>{{ files.hash }}</code></p>{% endif %}
+<section>
+<h2>Files <span>({{ files.paths | length }})</span></h2>
+<ul class="files">
+{% for path in files.paths %}<li><a href="{{ file_href(files.release ~ '/' ~ path) }}">{{ path }}</a></li>
+{% endfor %}
+</ul>
+</section>
+{% endblock %}

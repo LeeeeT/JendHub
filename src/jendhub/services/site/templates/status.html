@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Status · JendHub{% endblock %}
+{% block main %}
+<h1>Index status</h1>
+<section>
+<h2>Generations</h2>
+{% if not view.generations %}
+<p class="muted">No index is built yet.</p>
+{% else %}
+<div class="table">
+<table>
+<thead><tr><th>Generation</th>{% for generation in view.generations %}<th class="number">{{ generation.id }} <span class="{{ 'live' if generation.state == 'live' else 'muted' }}">{{ generation.state }}</span></th>{% endfor %}</tr></thead>
+<tbody>
+<tr><td>Base</td>{% for generation in view.generations %}<td class="number">{{ generation.base_tag }}</td>{% endfor %}</tr>
+<tr><td>Vectors</td>{% for generation in view.generations %}<td class="number">{{ generation.vectors }}</td>{% endfor %}</tr>
+{% for label, count in counts %}
+<tr><td>{{ label }}</td>{% for generation in view.generations %}<td class="number">{{ "{:,}".format(count(generation)) }}</td>{% endfor %}</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+</section>
+<section>
+<h2>Invalid releases <span>({{ view.invalid_total }})</span></h2>
+<p class="muted">A release is invalid when one of its files does not load with Base. JendHub never indexes an invalid release, and search uses the latest valid release of the same package.</p>
+{% if view.invalid %}
+<ul class="list">
+{% for release in view.invalid %}
+<li>
+{% if release.name is none %}<code>{{ release.hash }}</code>{% else %}<a class="id" href="{{ package_href(release.name) }}">{{ release.name }}</a>@{{ release.version }}{% endif %}
+<span class="muted">· Base {{ release.base_tag }} · {{ release.found_at.strftime("%b %-d, %Y") }}</span>
+<details><summary>reason</summary><pre>{{ release.reason }}</pre></details>
+</li>
+{% endfor %}
+</ul>
+{{ macros.pager(pages) }}
+{% endif %}
+</section>
+{% endblock %}

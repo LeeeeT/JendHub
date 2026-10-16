@@ -10,6 +10,7 @@
       dependencies = ps: [
         ps.fastapi
         ps.httpx
+        ps.jinja2
         ps.numpy
         ps.prometheus-client
         ps.psycopg
@@ -79,12 +80,17 @@
       image = service: pkgs.dockerTools.buildLayeredImage {
         name = "jendhub-${service}";
         tag = "latest";
-        contents = [ python jendhub pkgs.cacert pkgs.dockerTools.fakeNss ];
-        extraCommands = "mkdir -p data/library tmp && chmod 1777 tmp";
+        contents = [ python jendhub ];
+        extraCommands = ''
+          mkdir -p data/library tmp etc
+          chmod 1777 tmp
+          cp ${pkgs.dockerTools.fakeNss}/etc/passwd ${pkgs.dockerTools.fakeNss}/etc/group \
+            ${pkgs.dockerTools.fakeNss}/etc/nsswitch.conf etc/
+        '';
         fakeRootCommands = "chown -R 65534:65534 data";
         config = {
           Entrypoint = [ "${jendhubService}/bin/jendhub-service" ];
-          Cmd = [ service "--host" "0.0.0.0" "--port" "8000" ];
+          Cmd = [ service "--host" "0.0.0.0" "--port" "8000" "--metrics-port" "9000" ];
           Env = [
             "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             "JENDHUB_LIBRARY_PATH=/data/library"
@@ -94,65 +100,18 @@
           WorkingDir = "/data";
         };
       };
-      serviceNames = [ "agents" "search" "syncer" "worker" ];
-      searchSchema = pkgs.runCommand "jendhub-search-openapi.json" { } ''
-        PYTHONPATH=${source} ${python}/bin/python -m jendhub.services search --openapi > $out
-      '';
-      nodejs = pkgs.nodejs_24;
-      web = pkgs.buildNpmPackage {
-        pname = "jendhub-web";
-        version = "0.1.0";
-        inherit nodejs;
-        src = pkgs.lib.fileset.toSource {
-          root = ./web;
-          fileset = pkgs.lib.fileset.difference ./web (pkgs.lib.fileset.unions [
-            (pkgs.lib.fileset.maybeMissing ./web/node_modules)
-            (pkgs.lib.fileset.maybeMissing ./web/build)
-            (pkgs.lib.fileset.maybeMissing ./web/.svelte-kit)
-            (pkgs.lib.fileset.maybeMissing ./web/src/lib/search/schema.d.ts)
-          ]);
-        };
-        npmDeps = pkgs.importNpmLock { npmRoot = ./web; };
-        npmConfigHook = pkgs.importNpmLock.npmConfigHook;
-        preBuild = ''
-          npx openapi-typescript ${searchSchema} --output src/lib/search/schema.d.ts
-          npx svelte-kit sync
-        '';
-        doCheck = true;
-        checkPhase = ''
-          runHook preCheck
-          npm run check
-          npm run lint
-          npx vitest run
-          runHook postCheck
-        '';
-        installPhase = ''
-          runHook preInstall
-          npm prune --omit=dev --offline
-          mkdir -p $out/lib/jendhub-web
-          cp -r build node_modules package.json $out/lib/jendhub-web/
-          runHook postInstall
-        '';
-      };
-      webImage = pkgs.dockerTools.buildLayeredImage {
-        name = "jendhub-web";
-        tag = "latest";
-        contents = [ nodejs pkgs.dockerTools.fakeNss ];
-        config = {
-          Entrypoint = [ "${nodejs}/bin/node" "${web}/lib/jendhub-web/build/index.js" ];
-          Env = [ "HOST=0.0.0.0" "PORT=8000" "NODE_ENV=production" ];
-          ExposedPorts."8000/tcp" = { };
-          User = "65534:65534";
-        };
-      };
-      stackImages = map image serviceNames ++ [ webImage ];
+      serviceNames = [ "site" "syncer" "worker" ];
+      images = map image serviceNames;
+      imageList = pkgs.lib.concatStringsSep " " (map toString images);
+      deployFiles = ./deploy;
       stack = pkgs.writeShellApplication {
         name = "jendhub-stack";
         runtimeInputs = [ pkgs.postgresql_17 ];
         text = ''
           export POSTGRES_PASSWORD="''${POSTGRES_PASSWORD:-jendhub-local}"
-          export JENDHUB_AGENTS_PORT="''${JENDHUB_AGENTS_PORT:-18080}"
-          export JENDHUB_WEB_PORT="''${JENDHUB_WEB_PORT:-18090}"
+          export JENDHUB_SITE_PORT="''${JENDHUB_SITE_PORT:-18080}"
+          export JENDHUB_PROMETHEUS_PORT="''${JENDHUB_PROMETHEUS_PORT:-19090}"
+          export JENDHUB_SITE_URL="''${JENDHUB_SITE_URL:-http://127.0.0.1:$JENDHUB_SITE_PORT}"
           if [ -z "''${OPENROUTER_API_KEY:-}" ] && [ -f .env ]; then
             set -a
             # shellcheck disable=SC1091
@@ -165,11 +124,12 @@
           fi
 
           compose() {
-            docker compose --project-name jendhub-local --file ${./deploy/compose.yaml} "$@"
+            docker compose --project-name jendhub-local --file ${deployFiles}/compose.yaml \
+              --file ${deployFiles}/compose.local.yaml "$@"
           }
 
           load_images() {
-            for image in ${pkgs.lib.concatStringsSep " " (map toString stackImages)}; do
+            for image in ${imageList}; do
               docker load --quiet < "$image"
             done
           }
@@ -187,7 +147,7 @@
               exit 1
             fi
             load_images
-            compose rm --stop --force syncer worker search agents web qdrant
+            compose rm --stop --force syncer worker site qdrant
             docker volume rm --force jendhub-local_qdrant > /dev/null
             compose up --detach --wait postgres qdrant
             echo "copying the dev database"
@@ -195,6 +155,7 @@
               --no-owner \
               | compose exec -T postgres pg_restore --username=jendhub --dbname=jendhub \
                 --clean --if-exists --no-owner --single-transaction
+            compose run --rm migrate
             echo "writing the vectors from the embedding cache"
             compose run --rm --no-deps --entrypoint jendhub migrate index restore-vectors
           }
@@ -209,7 +170,7 @@
               exit 1
             fi
             compose up --detach --wait --remove-orphans
-            echo "web: http://127.0.0.1:$JENDHUB_WEB_PORT  agents: http://127.0.0.1:$JENDHUB_AGENTS_PORT"
+            echo "site: $JENDHUB_SITE_URL  prometheus: http://127.0.0.1:$JENDHUB_PROMETHEUS_PORT"
           }
 
           case "''${1:-}" in
@@ -222,6 +183,126 @@
           esac
         '';
       };
+      deploy = pkgs.writeShellApplication {
+        name = "jendhub-deploy";
+        runtimeInputs = [ pkgs.openssh pkgs.gnutar pkgs.coreutils ];
+        text = ''
+          target="''${JENDHUB_DEPLOY_TARGET:-root@195.63.145.165}"
+          directory="''${JENDHUB_DEPLOY_DIRECTORY:-/opt/jendhub}"
+          site_url="''${JENDHUB_SITE_URL:-https://jend.leeeet.dev}"
+          if [ -f .env ]; then
+            set -a
+            # shellcheck disable=SC1091
+            source ./.env
+            set +a
+          fi
+          for name in OPENROUTER_API_KEY CLOUDFLARE_TUNNEL_TOKEN; do
+            if [ -z "''${!name:-}" ]; then
+              echo "jendhub-deploy: set $name, or put it in .env" >&2
+              exit 1
+            fi
+          done
+
+          remote() {
+            # shellcheck disable=SC2029
+            ssh "$target" "$@"
+          }
+
+          compose() {
+            remote "cd $directory && docker compose --profile public $(printf '%q ' "$@")"
+          }
+
+          retire_old() {
+            remote "if [ -f $directory/app.env ]; then
+              mkdir -p /opt/jendhub-old
+              mv $directory/app.env $directory/tunnel.env $directory/data \
+                $directory/data.tar.gz $directory/image.tar.gz /opt/jendhub-old/ 2>/dev/null || true
+              docker rm --force jendhub-app-1 > /dev/null 2>&1 || true
+              echo 'moved the old deployment to /opt/jendhub-old'
+            fi"
+          }
+
+          copy_files() {
+            remote "mkdir -p $directory"
+            tar --create --directory=${deployFiles} compose.yaml prometheus \
+              | remote "tar --extract --no-same-owner --directory=$directory"
+            local password
+            password="$(remote "sed -n 's/^POSTGRES_PASSWORD=//p' $directory/.env 2>/dev/null" || true)"
+            if [ -z "$password" ]; then
+              password="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)"
+            fi
+            printf '%s\n' \
+              "POSTGRES_PASSWORD=$password" \
+              "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
+              "CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN" \
+              "JENDHUB_SITE_URL=$site_url" \
+              "JENDHUB_CLIENT_IP_HEADER=cf-connecting-ip" \
+              | remote "umask 077 && cat > $directory/.env"
+          }
+
+          load_images() {
+            for image in ${imageList}; do
+              remote docker load --quiet < "$image"
+            done
+          }
+
+          live_generations() {
+            compose exec -T postgres psql --username=jendhub --dbname=jendhub --tuples-only \
+              --no-align --command="SELECT count(*) FROM generations WHERE state = 'live'" \
+              2>/dev/null || echo 0
+          }
+
+          prepare() {
+            retire_old
+            copy_files
+            load_images
+          }
+
+          seed() {
+            prepare
+            local source=(docker compose --project-name jendhub-local exec -T postgres)
+            if ! "''${source[@]}" pg_isready --quiet --username=jendhub; then
+              echo "jendhub-deploy: start the local stack first: nix run .#stack -- up" >&2
+              exit 1
+            fi
+            compose rm --stop --force syncer worker site tunnel qdrant
+            remote "docker volume rm --force jendhub_qdrant > /dev/null"
+            compose up --detach --wait postgres qdrant
+            echo "copying the database of the local stack"
+            "''${source[@]}" pg_dump --username=jendhub --dbname=jendhub --format=custom \
+              --no-owner --exclude-table-data=searches \
+              | compose exec -T postgres pg_restore --username=jendhub --dbname=jendhub \
+                --clean --if-exists --no-owner --single-transaction
+            compose run --rm migrate
+            compose exec -T postgres psql --username=jendhub --dbname=jendhub \
+              --command="DELETE FROM generations WHERE corpus <> 'live'"
+            echo "writing the vectors from the embedding cache"
+            compose run --rm --no-deps --entrypoint jendhub migrate index restore-vectors
+          }
+
+          up() {
+            prepare
+            compose up --detach --wait postgres
+            if [ "$(live_generations)" = 0 ] && [ "''${1:-}" != --fresh ]; then
+              echo "jendhub-deploy: the server has no live index." >&2
+              echo "Run 'nix run .#deploy -- seed' to copy the index of the local stack, or" >&2
+              echo "'nix run .#deploy -- up --fresh' to build one, which pays for each embedding." >&2
+              exit 1
+            fi
+            compose up --detach --wait --remove-orphans
+            echo "deployed to $site_url"
+          }
+
+          case "''${1:-up}" in
+            up) shift || true; up "$@" ;;
+            seed) seed ;;
+            help | --help)
+              echo "usage: nix run .#deploy -- [up [--fresh] | seed | <docker compose command>]"
+              ;;
+            *) compose "$@" ;;
+          esac
+        '';
+      };
     in
     {
       apps.x86_64-linux.stack = {
@@ -229,10 +310,13 @@
         program = "${stack}/bin/jendhub-stack";
       };
 
+      apps.x86_64-linux.deploy = {
+        type = "app";
+        program = "${deploy}/bin/jendhub-deploy";
+      };
+
       packages.x86_64-linux = {
         default = jendhub;
-        inherit web;
-        image-web = webImage;
       } // builtins.listToAttrs (map (service: {
         name = "image-${service}";
         value = image service;
@@ -247,7 +331,6 @@
           pkgs.pyright
           pkgs.ruff
           pkgs.process-compose
-          nodejs
         ] ++ services;
         shellHook = ''
           export PYTHONPATH="$PWD/src"
@@ -263,8 +346,6 @@
       };
 
       checks.x86_64-linux.indexer = indexerLints;
-
-      checks.x86_64-linux.web = web;
 
       checks.x86_64-linux.default = pkgs.runCommand "jendhub-checks" {
         nativeBuildInputs = [ devPython indexer pkgs.pyright pkgs.ruff ] ++ services;

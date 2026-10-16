@@ -4,8 +4,10 @@ import numpy as np
 
 from jendhub.embedding.cache import EmbeddingCache
 from jendhub.errors import JendHubError
-from jendhub.indexing.store import Generation, IndexStore, projections
+from jendhub.indexing.store import Generation, IndexStore, Projection, projections
 from jendhub.vectors.index import VectorIndex
+
+CHUNK = 512
 
 logger = logging.getLogger(__name__)
 
@@ -15,20 +17,37 @@ class ProjectionError(JendHubError):
 
 
 async def project(
-    index: IndexStore, vectors: VectorIndex, cache: EmbeddingCache, generation: Generation
+    vectors: VectorIndex,
+    cache: EmbeddingCache,
+    generation: Generation,
+    found: list[Projection],
 ) -> None:
-    await vectors.create(generation.collection, generation.config)
-    for found in await projections(index.pool, generation.id):
-        stored = await cache.load(found.digests)
-        missing = [digest for digest in found.digests if digest not in stored]
+    async with vectors.bulk(generation.collection):
+        for release in found:
+            await project_release(vectors, cache, generation, release)
+    logger.info(
+        "projected %d releases of generation %d into %s",
+        len(found),
+        generation.id,
+        generation.collection,
+    )
+
+
+async def project_release(
+    vectors: VectorIndex, cache: EmbeddingCache, generation: Generation, release: Projection
+) -> None:
+    await vectors.delete_release(generation.collection, release.release)
+    for start in range(0, len(release.points), CHUNK):
+        digests = release.digests[start : start + CHUNK]
+        stored = await cache.load(digests)
+        missing = [digest for digest in digests if digest not in stored]
         if missing:
-            raise ProjectionError(f"{len(missing)} vectors of {found.release} are not cached")
-        matrix = np.stack([stored[digest] for digest in found.digests])
-        await vectors.delete_release(generation.collection, found.release)
+            raise ProjectionError(f"{len(missing)} vectors of {release.release} are not cached")
+        matrix = np.stack([stored[digest] for digest in digests])
+        points = release.points[start : start + CHUNK]
         await vectors.upsert(
-            generation.collection, generation.config, found.points, matrix, found.release
+            generation.collection, generation.config, points, matrix, release.release
         )
-    logger.info("projected generation %d into %s", generation.id, generation.collection)
 
 
 async def restore_vectors(
@@ -36,8 +55,15 @@ async def restore_vectors(
 ) -> list[str]:
     restored: list[str] = []
     for generation in await index.generations(None):
-        if await vectors.exists(generation.collection):
-            continue
-        await project(index, vectors, cache, generation)
-        restored.append(generation.collection)
+        await vectors.create(generation.collection, generation.config)
+        found = await projections(index.pool, generation.id)
+        incomplete = [
+            release
+            for release in found
+            if await vectors.release_size(generation.collection, release.release)
+            != len(release.points)
+        ]
+        if incomplete:
+            await project(vectors, cache, generation, incomplete)
+            restored.append(generation.collection)
     return restored

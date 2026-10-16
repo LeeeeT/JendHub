@@ -4,7 +4,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
+from prometheus_client import Histogram
 
 REQUEST_SECONDS = Histogram(
     "jendhub_http_request_seconds",
@@ -13,7 +13,10 @@ REQUEST_SECONDS = Histogram(
 )
 
 SECURITY_HEADERS = {
-    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Content-Security-Policy": (
+        "default-src 'none'; style-src 'self'; img-src data:; form-action 'self';"
+        " base-uri 'none'; frame-ancestors 'none'"
+    ),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Strict-Transport-Security": "max-age=31536000",
@@ -48,10 +51,6 @@ def service_app(name: str, lifespan: Lifespan, ready: Readiness) -> FastAPI:
         )
         response.headers.update(SECURITY_HEADERS)
         return response
-
-    @app.get("/metrics")
-    async def metrics() -> Response:
-        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

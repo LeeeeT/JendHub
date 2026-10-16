@@ -1,0 +1,39 @@
+groups:
+  - name: jendhub
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 5m
+        annotations:
+          summary: "{{ $labels.instance }} does not answer the metrics scrape."
+
+      - alert: SyncStopped
+        expr: time() - jendhub_sync_last_cycle_seconds > 3600
+        for: 5m
+        annotations:
+          summary: The syncer finished no cycle in the last hour.
+
+      - alert: IndexJobsFailed
+        expr: increase(jendhub_index_jobs_total{outcome="failed"}[1h]) > 0
+        annotations:
+          summary: "{{ $value }} index jobs failed in the last hour."
+
+      - alert: EmbeddingCostHigh
+        expr: sum(increase(jendhub_embedding_cost_dollars_total[1d])) > 1
+        annotations:
+          summary: "The embeddings cost {{ $value }} USD in the last day."
+
+      - alert: ServerErrors
+        expr: sum(rate(jendhub_http_request_seconds_count{status=~"5.."}[10m])) > 0.05
+        for: 10m
+        annotations:
+          summary: The site answers with server errors.
+
+      - alert: SlowSearch
+        expr: >
+          histogram_quantile(0.95,
+            sum by (le) (rate(jendhub_http_request_seconds_bucket{route=~"/search(.txt)?"}[30m]))
+          ) > 5
+        for: 30m
+        annotations:
+          summary: "The slowest 5% of searches take more than 5 s."

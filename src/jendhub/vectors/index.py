@@ -16,6 +16,7 @@ HNSW_M = 16
 HNSW_EF_CONSTRUCT = 128
 OVERSAMPLING = 2.0
 UPSERT_BATCH = 256
+TIMEOUT_SECONDS = 120
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,27 @@ class VectorIndex:
 
     async def exists(self, name: str) -> bool:
         return await self.client.collection_exists(name)
+
+    async def release_size(self, name: str, release: str) -> int:
+        condition = models.FieldCondition(key=RELEASE, match=models.MatchValue(value=release))
+        found = await self.client.count(
+            name, count_filter=models.Filter(must=[condition]), exact=True
+        )
+        return found.count
+
+    @asynccontextmanager
+    async def bulk(self, name: str) -> AsyncGenerator[None]:
+        described = await self.client.get_collection(name)
+        threshold = described.config.optimizer_config.indexing_threshold
+        await self.client.update_collection(
+            name, optimizers_config=models.OptimizersConfigDiff(indexing_threshold=0)
+        )
+        try:
+            yield
+        finally:
+            await self.client.update_collection(
+                name, optimizers_config=models.OptimizersConfigDiff(indexing_threshold=threshold)
+            )
 
     async def create(self, name: str, config: VectorConfig) -> None:
         if await self.exists(name):
@@ -145,7 +167,9 @@ class VectorIndex:
 @asynccontextmanager
 async def open_vector_index(settings: QdrantSettings) -> AsyncGenerator[VectorIndex]:
     key = None if settings.qdrant_api_key is None else settings.qdrant_api_key.get_secret_value()
-    client = AsyncQdrantClient(url=settings.qdrant_url, api_key=key, check_compatibility=False)
+    client = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=key, timeout=TIMEOUT_SECONDS, check_compatibility=False
+    )
     try:
         yield VectorIndex(client)
     finally:

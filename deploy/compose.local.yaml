@@ -1,0 +1,4 @@
+services:
+  site:
+    ports:
+      - "${JENDHUB_SITE_PORT:-8080}:8000"

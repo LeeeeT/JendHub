@@ -2,15 +2,15 @@
 
 JendHub is a search engine for Bend definitions. The corpus is every package
 on [BendHub](https://hub.bend-lang.com) and the latest released `base.bend`.
-AI agents are the main users. They read plain text from the agent interface.
-People see the same data in a web app.
+AI agents are the main users, and they read plain text. People see the same
+data as web pages. Both are on one site, https://jend.leeeet.dev.
 
 ## Design decisions
 
-- **Users:** AI agents first. The agent interface answers in plain text with
-  full URLs, because agents read text more easily than JSON, and most fetch
-  tools cannot ask for a format. The web app shows the same data to people, and
-  it has no data of its own.
+- **Users:** AI agents first. Agents get plain text with full URLs, because
+  they read text more easily than JSON, and most fetch tools cannot ask for a
+  format. People get the same data as HTML pages with no JavaScript. One
+  service serves both forms, because they are one product with one life cycle.
 - **Corpus:** the store keeps every version of every package, because packages
   import each other by hash. Search uses only the latest valid version of each
   named package, as if other versions do not exist.
@@ -41,38 +41,35 @@ People see the same data in a web app.
 |---|---|---|
 | `syncer` | Stores the new packages of BendHub and each new Base release. Queues an index job for each new latest release. Promotes a finished generation and deletes retired ones. | none |
 | `worker` | Runs the index jobs: extracts the definitions of a release, resolves its uses with the Rust indexer, computes the rerank features, embeds the documents and writes Postgres and Qdrant. Scale it out with more replicas. | a local copy of the package files |
-| `search` | The search engine. Embeds the query, gets candidates from Qdrant and from an exact-name index, and reranks them. Internal. | none |
-| `agents` | The agent interface. Validates requests, calls `search`, and answers in plain text. | none |
-| `web` | The web app for people. A SvelteKit server that renders each page from the JSON of `search`. It sends no JavaScript to the browser. | none |
+| `site` | The public site. Runs the search (embeds the query, gets candidates from Qdrant and from an exact-name index, and reranks them), and answers people with HTML pages and agents with plain text. | none |
 
 Postgres and Qdrant are the only stores.
 
 ```
 BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
                           ▲                      ▲
-                          └────── search ────────┘
-                                  ▲   ▲
-            AI agents ──> agents ─┘   │
-               people ──> web ────────┘
+                          └─────── site ─────────┘
+                                    ▲
+                 AI agents, people ─┘
 ```
 
-### The agent interface
+### Paths
 
-| Request | Answer |
-|---|---|
-| `GET /search?q=<query>&limit=10&offset=0` | The best definitions: ID, kind, name, package, version, module, head, score, the import line, the name to call, and the file. `limit` is 1 to 50. The ranking holds at most 50 results, and `offset` pages through it. |
-| `GET /definitions/<id>` | The text of a definition, its lines, the import lines that its code uses, and the definitions that it uses. |
-| `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. |
-| `GET /files/<release>` | The paths of the files of a release. |
-| `GET /packages/<name>?definitions_offset=0&definitions_limit=100` | Each release of a package, newest first, with its state (`indexed`, `invalid` with the reason, or `unindexed`), and one page of the definitions of the indexed release. |
-| `GET /status?invalid_releases_offset=0&invalid_releases_limit=100` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases, newest first. |
-| `GET /llms.txt` | How an agent uses the interface, and when it imports a result or copies its code. |
+| For agents (plain text) | For people (HTML) | Answer |
+|---|---|---|
+| `GET /llms.txt` | `GET /` | How to use JendHub. |
+| `GET /search.txt?q=<query>&limit=10&offset=0` | `GET /search?q=<query>&offset=0` | The best definitions with their import line and the name to call. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
+| `GET /src/<release>/<path>?def=<name>` | `GET /definitions/<id>` | A definition with the import lines that its code uses, and the definitions that it uses. |
+| `GET /src/<release>/<path>` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. |
+| `GET /src/<release>/` | `GET /files/<release>` | The files of a release. |
+| `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with the reason, or `unindexed`), and one page of the definitions of the indexed release. |
+| `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases, newest first. |
 
-Each answers in plain text, also an error. The links are full URLs, and a
+A text answer is plain text, also an error. Its links are full URLs, and a
 paged answer ends with the URL of the next page:
 
 ```
-1. Json.parse (https://<agents>/definitions/bend-net-json@0.3.0.0/json:parse)
+1. Json.parse (https://jend.leeeet.dev/src/bend-net-json@0.3.0.0/json.bend?def=parse)
    import bend-net-json@0.3.0.0/json.bend as Json
    # One JSON text: a value with optional whitespace around it.
    def parse(+s: String) -> Maybe<&2, Val>:
@@ -81,14 +78,21 @@ paged answer ends with the URL of the next page:
 A package definition is imported from its exact release. Its alias is the
 module name in PascalCase, or the package name for a `main` module. A Base
 definition needs only `import Base`. A file of a release gets its relative
-imports and its hash imports written as `name@version` paths.
+imports and its hash imports written as `name@version` paths. Each page links
+to its text form with `<link rel="alternate" type="text/plain">`.
 
-Every service also has `/healthz` (the process runs), `/readyz` (it can do its
-job) and `/metrics` (Prometheus). The services log JSON lines. Each response
-has `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`,
-and a strict Content-Security-Policy. `/robots.txt` allows all of the agent interface,
-and it keeps crawlers away from the search pages of the web app, because some LLM
-tools do not fetch a URL that `robots.txt` disallows.
+Each client IP gets at most 30 searches and 600 requests a minute, with a
+burst of 10 searches and 120 requests. More get `429 Too Many Requests` with
+`Retry-After`. Behind the Cloudflare Tunnel, the client IP is the
+`CF-Connecting-IP` header.
+
+Every service has `/healthz` (the process runs) and `/readyz` (it can do its
+job) on its port, and `/metrics` for Prometheus on the internal port 9000 only.
+The services log JSON lines. Each response has `X-Content-Type-Options`,
+`Referrer-Policy`, `Strict-Transport-Security`, and a strict
+Content-Security-Policy that allows no script. `/robots.txt` keeps crawlers
+away from the search pages, and allows the rest, because some LLM tools do not
+fetch a URL that `robots.txt` disallows.
 
 ### Index generations
 
@@ -155,15 +159,14 @@ the latest release. On the dev benchmark, nDCG@10 is 0.816 with each result
 judged, against 0.819 before the scale changes. See
 [bench/README.md](bench/README.md) for the measurements behind each choice.
 
-The search service stores every search that `agents` and `web` send in the
-`searches` table, to improve the search with real queries later. It writes the
+The site stores every search of agents and people in the `searches` table, to improve the search with real queries later. It writes the
 row after the answer, so the log adds no latency, and a failed write does not
 fail the search. The row holds the whole ranking, not only the page, and no
 IP address.
 
 The first live index holds 56,650 definitions: Base and the latest valid
 release of 106 packages. A query answers in 20 to 70 ms when its embedding is
-in the cache of the search service. A new query waits 0.8 to 4 s for the
+in the cache of the site. A new query waits 0.8 to 4 s for the
 embedding from OpenRouter, which is the largest part of the latency.
 
 ## Development
@@ -177,10 +180,9 @@ git clone --recurse-submodules <url>
 nix develop -c process-compose up
 ```
 
-This starts Postgres, Qdrant, the migrations, `search`, `agents` and `web`, in
-this order. Then open http://127.0.0.1:8090. The agent interface is at
-http://127.0.0.1:8080. The `web` process runs `npm install` in `web` before it
-starts the Vite dev server, so the first start takes longer.
+This starts Postgres, Qdrant, the migrations and `site`, in this order. Then
+open http://127.0.0.1:8080, and http://127.0.0.1:8080/llms.txt for the agent
+form.
 
 Postgres and Qdrant come from nix and run as normal processes, with their data
 in `data/postgres` and `data/qdrant`. Search needs a live index in that data.
@@ -195,8 +197,8 @@ OpenRouter on their own. Start one with `process-compose process start
 
 `nix run .#stack` runs the production images with `deploy/compose.yaml`, as a
 deploy does. Use it to check a change before a deploy. It needs Docker, and it
-uses its own volumes and the ports 18090 (web) and 18080 (agents), so it can run
-next to `process-compose up`.
+uses its own volumes, the port 18080 for the site and 19090 for Prometheus, so
+it can run next to `process-compose up`.
 
 ```bash
 nix develop -c process-compose up postgres qdrant database   # the dev stores
@@ -212,18 +214,10 @@ stack with no live index, because the syncer and the worker would then build a
 full index and pay OpenRouter for each embedding. `up --fresh` does that on
 purpose. When the stack runs, its syncer and worker index each new BendHub
 release, as in a deploy. Any other argument goes to `docker compose`, for
-example `nix run .#stack -- logs -f web`.
-
-The web app gets its types from the OpenAPI schema of `search`. In `web`,
-`npm run generate` reads the schema from `jendhub-service search --openapi`, so
-it needs the dev shell. The nix build of `web` reads the schema from the Python
-source. Thus the types always match `search`, and no copy of the schema is in
-git.
+example `nix run .#stack -- logs -f site`.
 
 `nix flake check` runs all checks: the Python tests, which start their own
-Postgres and Qdrant, Ruff, Pyright, the Rust lints and the web checks. In `web`, `npm run check`
-type-checks, `npm run lint` runs Prettier and ESLint, and `npm test` builds the
-app and tests the pages against a stub of `search`.
+Postgres and Qdrant, Ruff, Pyright and the Rust lints.
 
 ## Commands
 
@@ -242,10 +236,9 @@ The default is `data`.
 | `jendhub index restore-vectors` | Writes the Qdrant collection of each generation that Qdrant does not have, from the embedding cache. It pays for no embedding. |
 | `jendhub bench ...` | Runs the benchmark. See [bench/README.md](bench/README.md). |
 
-`python -m jendhub.services <agents|search|syncer|worker> [--host H] [--port P]`
-runs a service, and `--openapi` prints its OpenAPI schema. In the dev shell,
-`jendhub-service` does the same. `node web/build` runs the web app after
-`npm run build`.
+`python -m jendhub.services <site|syncer|worker> [--host H] [--port P]
+[--metrics-port M]` runs a service. In the dev shell, `jendhub-service` does the
+same.
 
 ### Settings
 
@@ -253,37 +246,61 @@ All settings come from the environment.
 
 | Variable | Used by | Default |
 |---|---|---|
-| `JENDHUB_DATABASE_URL` | `search`, `syncer`, `worker` | required |
-| `JENDHUB_DATABASE_POOL_SIZE` | `search`, `syncer`, `worker` | 10 |
-| `JENDHUB_QDRANT_URL`, `JENDHUB_QDRANT_API_KEY` | `search`, `syncer`, `worker` | required, none |
-| `OPENROUTER_API_KEY` | `search`, `worker`, the benchmark | required |
-| `JENDHUB_SEARCH_URL` | `agents`, `web` | required |
+| `JENDHUB_DATABASE_URL`, `JENDHUB_DATABASE_POOL_SIZE` | all | required, 10 |
+| `JENDHUB_QDRANT_URL`, `JENDHUB_QDRANT_API_KEY` | all | required, none |
+| `OPENROUTER_API_KEY` | `site`, `worker`, the benchmark | required |
+| `JENDHUB_SITE_URL` | `site`: its public URL, for the full URLs in the text answers | required |
+| `JENDHUB_CLIENT_IP_HEADER` | `site`: the header that holds the client IP; without it, the IP of the connection | none |
+| `JENDHUB_SEARCHES_PER_MINUTE`, `JENDHUB_SEARCH_BURST` | `site`: the search limit of each client IP | 30, 10 |
+| `JENDHUB_REQUESTS_PER_MINUTE`, `JENDHUB_REQUEST_BURST` | `site`: the request limit of each client IP | 600, 120 |
+| `JENDHUB_QUERY_CACHE_SIZE`, `JENDHUB_TARGET_REFRESH_SECONDS` | `site` | 10,000, 10 |
+| `JENDHUB_STATUS_SECONDS` | `site`: the time it keeps the sizes of the generations | 30 |
 | `JENDHUB_SYNC_INTERVAL_SECONDS` | `syncer` | 300 |
 | `JENDHUB_LIBRARY_PATH`, `JENDHUB_WORKER_CONCURRENCY` | `worker` | `library`, 2 |
-| `JENDHUB_QUERY_CACHE_SIZE`, `JENDHUB_TARGET_REFRESH_SECONDS` | `search` | 10,000, 10 |
-| `JENDHUB_STATUS_SECONDS` | `search`: the time it keeps the sizes of the generations | 30 |
-| `JENDHUB_AGENTS_URL` | `agents` and `web`: the public URL of the agent interface, for the links in its answers and on the web pages | required |
-| `HOST`, `PORT` | `web` | `0.0.0.0`, 3000 (8000 in the image) |
 
 ## Deployment
 
-`nix build .#image-<service>` builds one OCI image for each service. Each image
-runs as an unprivileged user and holds no shell. The `web` image holds Node.js
-and the built app. `deploy/compose.yaml` runs the
-whole system with Postgres 17 and Qdrant 1.18.2:
+The production site is https://jend.leeeet.dev. It runs on one server with
+`deploy/compose.yaml`: Postgres 17, Qdrant 1.18.2, `site`, `syncer`, `worker`,
+Prometheus and a Cloudflare Tunnel. No port is open to the internet:
+`cloudflared` connects out to Cloudflare, and Cloudflare sends the requests for
+`jend.leeeet.dev` to `http://site:8000`. Each JendHub image runs as an
+unprivileged user and holds no shell. Each container has a memory limit, and
+Docker keeps at most 3 log files of 10 MB for each container. The server has 1
+CPU and 1.6 GiB of RAM, so it needs a swap file: without one, the page cache
+cannot hold Qdrant's vectors, and the restore of the vectors fails. It has a 4
+GB `/swapfile` with `vm.swappiness=10`.
+
+`nix run .#deploy` deploys from your machine. It needs SSH access to the server
+and `OPENROUTER_API_KEY` and `CLOUDFLARE_TUNNEL_TOKEN` in `.env`:
 
 ```bash
-for service in agents search syncer worker web; do
-  docker load < "$(nix build .#image-$service --no-link --print-out-paths)"
-done
-POSTGRES_PASSWORD=... OPENROUTER_API_KEY=... docker compose -f deploy/compose.yaml up -d
+nix run .#deploy                 # build, copy and start the current version
+nix run .#deploy -- seed         # copy the database of the local stack, once
+nix run .#deploy -- logs site    # any other argument goes to docker compose
 ```
 
-The `migrate` container applies the migrations before the services start. Only
-`search` and `worker` get the OpenRouter key. Only `agents` and `web` publish a
-port: 8080 and 8090 by default, set `JENDHUB_AGENTS_PORT` and `JENDHUB_WEB_PORT`.
-Set `JENDHUB_AGENTS_URL` to the public URL of the agent interface. The default
-is `http://127.0.0.1:<JENDHUB_AGENTS_PORT>`.
+A deploy builds the images with nix, streams them over SSH into the server's
+Docker, copies the compose file and the Prometheus configuration to
+`/opt/jendhub`, and writes `/opt/jendhub/.env` (mode 600) with the secrets. It
+keeps the Postgres password of the server, or makes one on the first deploy.
+Then `docker compose up --wait` applies the migrations and starts the new
+version. Like `nix run .#stack -- up`, it refuses to start without a live
+index. `seed` copies the database of the local stack without its search log,
+deletes the generations of the dev corpus, and writes the Qdrant collection
+from the embedding cache. Set `JENDHUB_DEPLOY_TARGET` (default
+`root@195.63.145.165`) and `JENDHUB_DEPLOY_DIRECTORY` (default `/opt/jendhub`)
+for another server.
+
+Prometheus scrapes the metrics port of each service every 30 s, keeps 30 days,
+and evaluates the rules in `deploy/prometheus/alerts.yml`: a service that does
+not answer, a syncer with no cycle in an hour, failed index jobs, embeddings
+that cost more than 1 USD a day, server errors, and slow searches. Nothing
+sends the alerts yet. Prometheus listens only on the server's loopback address:
+
+```bash
+ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:9090/alerts
+```
 
 ## Data
 
@@ -295,7 +312,7 @@ is `http://127.0.0.1:<JENDHUB_AGENTS_PORT>`.
 | Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
-| Postgres `searches` | Every real search: time, client (`agents` or `web`), the caller's User-Agent, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
+| Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages), the caller's User-Agent, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
 | Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
 | `data/library` | The worker's copy of the package files in the `BEND_LIB` layout, for the Rust indexer. |
 
@@ -354,7 +371,7 @@ this table. The tests in `tests` have the same layout.
 | `indexing` | The artifacts of a release, the index store, the worker, the scheduler and the restore of vectors. |
 | `lab` | Experimental pipelines that run in memory: BM25, dense search, fusion and reranking. |
 | `bench` | The benchmark: queries, judgments, the judge, pooling and the measures. |
-| `services` | The HTTP services and their contracts. |
+| `services` | The HTTP services: `site` with its pages, text answers and rate limit, `syncer` and `worker`. |
 | `cli` | The admin commands. |
 
 ## External models

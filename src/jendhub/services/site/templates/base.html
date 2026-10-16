@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{% block title %}JendHub{% endblock %}</title>
+{% block head %}{% endblock %}
+{% if alternate %}<link rel="alternate" type="text/plain" href="{{ alternate }}">{% endif %}
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="site-header">
+<a class="brand" href="/">~/jendhub</a>
+<nav>
+<a href="/#agents">agents</a>
+<a href="/status">status</a>
+<a href="https://bend-lang.org">bend</a>
+</nav>
+</header>
+{% if not home %}<div class="top-search">{{ macros.search_form(query) }}</div>{% endif %}
+<main>
+{% block main %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ query }} · JendHub{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block main %}
+<h1 class="sr-only">Results for “{{ query }}”</h1>
+{% if not found.results %}
+<p>No definition matches “{{ query }}”.</p>
+{% else %}
+<ol class="list results">
+{% for result in found.results %}
+<li>
+<div class="title">
+<span class="muted">{{ found.offset + loop.index }}.</span>
+<a class="id" href="{{ definition_href(result.hit.id) }}">{{ result.hit.id }}</a>
+<span class="muted">{{ result.hit.kind }}</span>
+</div>
+<div class="muted where">{{ macros.where(result.hit.package, result.hit.version, result.hit.module) }}</div>
+<pre><code>{{ result.hit.head }}</code></pre>
+<pre class="import"><code>{{ result.usage.import_line }}</code></pre>
+</li>
+{% endfor %}
+</ol>
+{{ macros.pager(pages) }}
+{% endif %}
+{% endblock %}

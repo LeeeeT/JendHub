@@ -73,6 +73,24 @@ def usage(name: str, package: str | None, version: str | None, module: str) -> U
     )
 
 
+def id_source(id_: str) -> tuple[str, str]:
+    release, slash, rest = id_.partition("/")
+    if not slash or "@" not in release:
+        return f"{BASE}/{BASE_FILE}", id_
+    module, _, name = rest.partition(":")
+    return f"{release}/{module}.bend", name
+
+
+async def source_id(pool: Pool, release: str, path: str, name: str) -> str | None:
+    if release == BASE:
+        return name if path == BASE_FILE else None
+    async with pool.connection() as connection:
+        stored = await stored_release(connection, release)
+    if stored is None or stored.hash == stored.label or not path.endswith(".bend"):
+        return None
+    return f"{stored.label}/{path.removesuffix('.bend')}:{name}"
+
+
 def label(hash_: str, name: str | None, version: str | None) -> str:
     return hash_ if name is None else f"{name}@{version}"
 

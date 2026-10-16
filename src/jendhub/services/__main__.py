@@ -1,20 +1,17 @@
 import argparse
-import json
-import sys
 from collections.abc import Callable
 
 import uvicorn
 from fastapi import FastAPI
+from prometheus_client import start_http_server
 
 from jendhub.logs import configure_logging
-from jendhub.services.agents.app import create_app as create_agents
-from jendhub.services.search.app import create_app as create_search
+from jendhub.services.site.app import create_app as create_site
 from jendhub.services.syncer.app import create_app as create_syncer
 from jendhub.services.worker.app import create_app as create_worker
 
 SERVICES: dict[str, Callable[[], FastAPI]] = {
-    "agents": create_agents,
-    "search": create_search,
+    "site": create_site,
     "syncer": create_syncer,
     "worker": create_worker,
 }
@@ -26,14 +23,14 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
-        "--openapi", action="store_true", help="print the OpenAPI schema of the service and stop"
+        "--metrics-port",
+        type=int,
+        default=9000,
+        help="the internal port of the Prometheus metrics",
     )
     arguments = parser.parse_args()
-    if arguments.openapi:
-        schema = SERVICES[arguments.service]().openapi()
-        sys.stdout.write(json.dumps(schema, indent=2, sort_keys=True) + "\n")
-        return
     configure_logging(structured=True)
+    start_http_server(arguments.metrics_port, addr=arguments.host)
     uvicorn.run(
         SERVICES[arguments.service](), host=arguments.host, port=arguments.port, log_config=None
     )

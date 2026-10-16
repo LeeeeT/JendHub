@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% set package = view.package %}
+{% block title %}{{ package.name }} · JendHub{% endblock %}
+{% block head %}<meta name="description" content="The releases and definitions of the Bend package {{ package.name }}.">{% endblock %}
+{% block main %}
+<h1 class="id">{{ package.name }}</h1>
+{% set indexed = package.releases | selectattr("state", "equalto", "indexed") | first %}
+<p class="muted">{% if indexed %}Search uses release {{ indexed.version }}.{% else %}No release of this package is in the index.{% endif %}</p>
+<section>
+<h2>Releases <span>({{ package.releases | length }})</span></h2>
+<div class="table">
+<table>
+<thead><tr><th>Version</th><th>State</th><th>Hash</th></tr></thead>
+<tbody>
+{% for release in package.releases %}
+<tr>
+<td><a href="{{ release_href(package.name ~ '@' ~ release.version) }}">{{ release.version }}</a></td>
+<td>{{ macros.release_state(release.state) }}{% if release.reason is not none %}
+<details><summary>reason</summary><pre>{{ release.reason }}</pre></details>{% endif %}</td>
+<td class="muted"><code>{{ release.hash }}</code></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2>Definitions <span>({{ package.definitions_total }})</span></h2>
+{% if package.definitions_total == 0 %}
+<p class="muted">The index has no definition of this package.</p>
+{% else %}
+<ul class="list">
+{% for definition in package.definitions %}
+<li>
+<a class="id" href="{{ definition_href(definition.id) }}">{{ definition.id }}</a>
+<span class="muted">{{ definition.kind }}</span>
+<pre><code>{{ definition.head }}</code></pre>
+</li>
+{% endfor %}
+</ul>
+{{ macros.pager(pages) }}
+{% endif %}
+</section>
+{% endblock %}

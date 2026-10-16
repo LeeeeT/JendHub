@@ -1,5 +1,0 @@
-node_modules
-/.svelte-kit
-/build
-/src/lib/search/schema.d.ts
-vite.config.ts.timestamp-*

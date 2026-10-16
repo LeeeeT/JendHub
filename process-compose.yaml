@@ -42,7 +42,7 @@ processes:
         path: /readyz
 
   syncer:
-    command: jendhub-service syncer --port 8001
+    command: jendhub-service syncer --port 8001 --metrics-port 9001
     disabled: true
     depends_on:
       database:
@@ -51,7 +51,7 @@ processes:
         condition: process_healthy
 
   worker:
-    command: jendhub-service worker --port 8002
+    command: jendhub-service worker --port 8002 --metrics-port 9002
     disabled: true
     environment:
       - "JENDHUB_LIBRARY_PATH=data/library"
@@ -61,26 +61,10 @@ processes:
       qdrant:
         condition: process_healthy
 
-  search:
-    command: jendhub-service search --port 8003
-    readiness_probe:
-      http_get:
-        host: 127.0.0.1
-        port: 8003
-        path: /healthz
-      period_seconds: 1
-      failure_threshold: 60
-    depends_on:
-      database:
-        condition: process_completed_successfully
-      qdrant:
-        condition: process_healthy
-
-  agents:
-    command: jendhub-service agents --port 8080
+  site:
+    command: jendhub-service site --port 8080 --metrics-port 9003
     environment:
-      - "JENDHUB_SEARCH_URL=http://127.0.0.1:8003"
-      - "JENDHUB_AGENTS_URL=http://127.0.0.1:8080"
+      - "JENDHUB_SITE_URL=http://127.0.0.1:8080"
     readiness_probe:
       http_get:
         host: 127.0.0.1
@@ -89,23 +73,7 @@ processes:
       period_seconds: 1
       failure_threshold: 60
     depends_on:
-      search:
-        condition: process_healthy
-
-  web:
-    command: |
-      npm --prefix web install --no-audit --no-fund
-      exec npm --prefix web run dev -- --host 127.0.0.1 --port 8090 --strictPort
-    environment:
-      - "JENDHUB_SEARCH_URL=http://127.0.0.1:8003"
-      - "JENDHUB_AGENTS_URL=http://127.0.0.1:8080"
-    readiness_probe:
-      http_get:
-        host: 127.0.0.1
-        port: 8090
-        path: /healthz
-      period_seconds: 1
-      failure_threshold: 120
-    depends_on:
-      search:
+      database:
+        condition: process_completed_successfully
+      qdrant:
         condition: process_healthy
