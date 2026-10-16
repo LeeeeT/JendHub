@@ -2,11 +2,13 @@
 
 JendHub is a search engine for Bend definitions. The corpus is every package
 on [BendHub](https://hub.bend-lang.com) and the latest released `base.bend`.
-AI agents are the users. They search through a JSON or text HTTP API.
+AI agents are the main users. They search through a JSON or text HTTP API.
+People can see the same data in a web app.
 
 ## Design decisions
 
-- **Users:** AI agents, not people. A result is a definition ID with its head.
+- **Users:** AI agents first. A result is a definition ID with its head. The
+  web app is a view of the API for people, and it has no data of its own.
 - **Corpus:** the store keeps every version of every package, because packages
   import each other by hash. Search uses only the latest valid version of each
   named package, as if other versions do not exist.
@@ -39,9 +41,9 @@ AI agents are the users. They search through a JSON or text HTTP API.
 | `worker` | Runs the index jobs: extracts the definitions of a release, resolves its uses with the Rust indexer, computes the rerank features, embeds the documents and writes Postgres and Qdrant. Scale it out with more replicas. | a local copy of the package files |
 | `search` | The search engine. Embeds the query, gets candidates from Qdrant and from an exact-name index, and reranks them. Internal. | none |
 | `api` | The public API for agents. Validates requests, calls `search`, and answers in JSON or text. | none |
+| `web` | The web app for people. A SvelteKit server that renders each page from `api`. It sends no JavaScript to the browser. | none |
 
-Postgres and Qdrant are the only stores. A frontend will be one more service
-that calls `api`.
+Postgres and Qdrant are the only stores.
 
 ```
 BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
@@ -49,6 +51,8 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
                           └────── search ────────┘
                                     ▲
                      agents ──> api ┘
+                                ▲
+              people ──> web ───┘
 ```
 
 ### Public API, version 1
@@ -57,8 +61,10 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 |---|---|
 | `GET /v1/search?q=<query>&limit=10` | The best definitions: ID, kind, name, package, version, module, head and score. `limit` is 1 to 50. |
 | `GET /v1/definitions/<id>?used_by_offset=0&used_by_limit=100` | The text of a definition, its lines, the definitions that it uses, and one page of the definitions that use it. |
+| `GET /v1/packages/<name>?definitions_offset=0&definitions_limit=100` | Each release of a package, newest first, with its state (`indexed`, `invalid` with the reason, or `unindexed`), and one page of the definitions of the indexed release. |
+| `GET /v1/status?invalid_releases_offset=0&invalid_releases_limit=100` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases, newest first. |
 
-Both answer in JSON. With `Accept: text/plain`, they answer in a compact text
+Each answers in JSON. With `Accept: text/plain`, each answers in a compact text
 form for agents:
 
 ```
@@ -149,9 +155,21 @@ jendhub --help
 ```
 
 `process-compose up` keeps its data in `data/postgres` and `data/qdrant`. The
-four services are also defined there, but they are off by default, because
+five services are also defined there, but they are off by default, because
 they call BendHub and OpenRouter. Start one with `process-compose process start
-<name>`.
+<name>`. The `web` process runs the Vite dev server on port 8090, and it needs
+`npm install` in `web` first.
+
+The web app gets its API types from `web/openapi.json`, a copy of the OpenAPI
+schema of `api`. After a change to the API, write the copy again:
+
+```bash
+jendhub-service api --openapi > web/openapi.json
+```
+
+`nix flake check` fails when the copy is not current. In `web`, `npm run check`
+type-checks, `npm run lint` runs Prettier and ESLint, and `npm test` builds the
+app and tests the pages against a stub API.
 
 Run the checks. The tests start their own Postgres and Qdrant:
 
@@ -177,7 +195,9 @@ The default is `data`.
 | `jendhub bench ...` | Runs the benchmark. See [bench/README.md](bench/README.md). |
 
 `python -m jendhub.services <api|search|syncer|worker> [--host H] [--port P]`
-runs a service. In the dev shell, `jendhub-service` does the same.
+runs a service, and `--openapi` prints its OpenAPI schema. In the dev shell,
+`jendhub-service` does the same. `node web/build` runs the web app after
+`npm run build`.
 
 ### Settings
 
@@ -193,23 +213,27 @@ All settings come from the environment.
 | `JENDHUB_SYNC_INTERVAL_SECONDS` | `syncer` | 300 |
 | `JENDHUB_LIBRARY_PATH`, `JENDHUB_WORKER_CONCURRENCY` | `worker` | `library`, 2 |
 | `JENDHUB_QUERY_CACHE_SIZE`, `JENDHUB_TARGET_REFRESH_SECONDS` | `search` | 10,000, 10 |
+| `JENDHUB_STATUS_SECONDS` | `search`: the time it keeps the sizes of the generations | 30 |
+| `JENDHUB_API_URL` | `web` | required |
+| `HOST`, `PORT` | `web` | `0.0.0.0`, 3000 (8000 in the image) |
 
 ## Deployment
 
 `nix build .#image-<service>` builds one OCI image for each service. Each image
-runs as an unprivileged user and holds no shell. `deploy/compose.yaml` runs the
+runs as an unprivileged user and holds no shell. The `web` image holds Node.js
+and the built app. `deploy/compose.yaml` runs the
 whole system with Postgres 17 and Qdrant 1.18.2:
 
 ```bash
-for service in api search syncer worker; do
+for service in api search syncer worker web; do
   docker load < "$(nix build .#image-$service --no-link --print-out-paths)"
 done
 POSTGRES_PASSWORD=... OPENROUTER_API_KEY=... docker compose -f deploy/compose.yaml up -d
 ```
 
 The `migrate` container applies the migrations before the services start. Only
-`search` and `worker` get the OpenRouter key, and only `api` publishes a port
-(8080 by default, set `JENDHUB_API_PORT`).
+`search` and `worker` get the OpenRouter key. Only `api` and `web` publish a
+port: 8080 and 8090 by default, set `JENDHUB_API_PORT` and `JENDHUB_WEB_PORT`.
 
 ## Data
 

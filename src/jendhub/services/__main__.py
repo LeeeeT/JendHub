@@ -1,4 +1,6 @@
 import argparse
+import json
+import sys
 from collections.abc import Callable
 
 import uvicorn
@@ -23,7 +25,14 @@ def main() -> None:
     parser.add_argument("service", choices=sorted(SERVICES))
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--openapi", action="store_true", help="print the OpenAPI schema of the service and stop"
+    )
     arguments = parser.parse_args()
+    if arguments.openapi:
+        schema = SERVICES[arguments.service]().openapi()
+        sys.stdout.write(json.dumps(schema, indent=2, sort_keys=True) + "\n")
+        return
     configure_logging(structured=True)
     uvicorn.run(
         SERVICES[arguments.service](), host=arguments.host, port=arguments.port, log_config=None

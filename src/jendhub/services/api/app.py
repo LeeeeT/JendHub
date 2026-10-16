@@ -1,19 +1,23 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from jendhub.services.api.client import SearchClient
-from jendhub.services.api.text import render_definition, render_results
+from jendhub.services.api.text import (
+    render_definition,
+    render_package,
+    render_results,
+    render_status,
+)
 from jendhub.services.app import Running, service_app
-from jendhub.services.contracts import DefinitionPage, SearchResults
+from jendhub.services.contracts import DefinitionPage, PackagePage, SearchResults, StatusPage
+from jendhub.services.parameters import PAGE, Limit, Offset, PageLimit, QueryText
 from jendhub.settings import load_settings
 
-MAX_QUERY = 1000
-MAX_LIMIT = 50
-MAX_PAGE = 500
 TEXT = "text/plain"
 SEARCH_TIMEOUT = 30.0
 
@@ -30,12 +34,66 @@ def wants_text(request: Request) -> bool:
     return first == TEXT
 
 
+def answer[T: BaseModel](request: Request, found: T, render: Callable[[T], str]) -> Response:
+    if wants_text(request):
+        return Response(render(found), media_type=TEXT)
+    return Response(found.model_dump_json(), media_type="application/json")
+
+
+def v1_routes(running: Running[SearchClient]) -> APIRouter:
+    router = APIRouter(prefix="/v1")
+
+    @router.get("/search", response_model=SearchResults)
+    async def search(
+        request: Request,
+        q: QueryText,
+        limit: Limit = 10,
+    ) -> Response:
+        found = await running.get().search(q, limit)
+        return answer(request, found, render_results)
+
+    @router.get("/definitions/{id_:path}", response_model=DefinitionPage)
+    async def definition(
+        request: Request,
+        id_: str,
+        used_by_offset: Offset = 0,
+        used_by_limit: PageLimit = PAGE,
+    ) -> Response:
+        found = await running.get().definition(id_, used_by_offset, used_by_limit)
+        if found is None:
+            raise HTTPException(404, f"no definition {id_}")
+        return answer(request, found, render_definition)
+
+    @router.get("/packages/{name}", response_model=PackagePage)
+    async def package(
+        request: Request,
+        name: str,
+        definitions_offset: Offset = 0,
+        definitions_limit: PageLimit = PAGE,
+    ) -> Response:
+        found = await running.get().package(name, definitions_offset, definitions_limit)
+        if found is None:
+            raise HTTPException(404, f"no package {name}")
+        return answer(request, found, render_package)
+
+    @router.get("/status", response_model=StatusPage)
+    async def status(
+        request: Request,
+        invalid_releases_offset: Offset = 0,
+        invalid_releases_limit: PageLimit = PAGE,
+    ) -> Response:
+        found = await running.get().status(invalid_releases_offset, invalid_releases_limit)
+        return answer(request, found, render_status)
+
+    return router
+
+
 def create_app(transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
-    settings = load_settings(ApiSettings)
     running: Running[SearchClient] = Running()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        settings = load_settings(ApiSettings)
         async with httpx.AsyncClient(
             base_url=settings.search_url, timeout=SEARCH_TIMEOUT, transport=transport
         ) as client:
@@ -57,29 +115,5 @@ def create_app(transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
 
     app = service_app("api", lifespan, ready)
 
-    @app.get("/v1/search", response_model=SearchResults)
-    async def search(
-        request: Request,
-        q: str = Query(min_length=1, max_length=MAX_QUERY),
-        limit: int = Query(10, ge=1, le=MAX_LIMIT),
-    ) -> Response:
-        found = await running.get().search(q, limit)
-        if wants_text(request):
-            return Response(render_results(found), media_type=TEXT)
-        return Response(found.model_dump_json(), media_type="application/json")
-
-    @app.get("/v1/definitions/{id_:path}", response_model=DefinitionPage)
-    async def definition(
-        request: Request,
-        id_: str,
-        used_by_offset: int = Query(0, ge=0),
-        used_by_limit: int = Query(100, ge=1, le=MAX_PAGE),
-    ) -> Response:
-        found = await running.get().definition(id_, used_by_offset, used_by_limit)
-        if found is None:
-            raise HTTPException(404, f"no definition {id_}")
-        if wants_text(request):
-            return Response(render_definition(found), media_type=TEXT)
-        return Response(found.model_dump_json(), media_type="application/json")
-
+    app.include_router(v1_routes(running))
     return app

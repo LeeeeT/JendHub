@@ -84,6 +84,26 @@ services:
       search:
         condition: service_started
 
+  web:
+    image: jendhub-web:latest
+    restart: unless-stopped
+    environment:
+      JENDHUB_API_URL: http://api:8000
+    ports:
+      - "${JENDHUB_WEB_PORT:-8090}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8000/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      api:
+        condition: service_started
+
 volumes:
   postgres:
   qdrant:

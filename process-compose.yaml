@@ -78,3 +78,12 @@ processes:
     depends_on:
       search:
         condition: process_started
+
+  web:
+    command: npm --prefix web run dev -- --host 127.0.0.1 --port 8090
+    disabled: true
+    environment:
+      - "JENDHUB_API_URL=http://127.0.0.1:8080"
+    depends_on:
+      api:
+        condition: process_started

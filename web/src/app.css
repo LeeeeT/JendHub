@@ -1,0 +1,178 @@
+:root {
+	--background: #fbfbfa;
+	--surface: #ffffff;
+	--text: #1c1d1f;
+	--muted: #5d6066;
+	--border: #e2e3e5;
+	--accent: #2b59c3;
+	--code-background: #f3f4f6;
+	--good: #1d7a46;
+	--bad: #b42318;
+	--neutral: #6b6f76;
+	--mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+	--sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--background: #121316;
+		--surface: #191b1f;
+		--text: #e6e7e9;
+		--muted: #9a9ea6;
+		--border: #2c2f35;
+		--accent: #8ab0ff;
+		--code-background: #1f2227;
+		--good: #5fd08f;
+		--bad: #ff8a80;
+		--neutral: #9a9ea6;
+	}
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--background);
+	color: var(--text);
+	font-family: var(--sans);
+	line-height: 1.5;
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	background: var(--background);
+}
+
+a {
+	color: var(--accent);
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+h1,
+h2 {
+	line-height: 1.25;
+	overflow-wrap: anywhere;
+}
+
+h1 {
+	font-size: 1.5rem;
+	margin: 0 0 0.5rem;
+}
+
+h2 {
+	font-size: 1.125rem;
+	margin: 2rem 0 0.75rem;
+}
+
+code,
+pre {
+	font-family: var(--mono);
+	font-size: 0.875rem;
+}
+
+pre {
+	margin: 0;
+	padding: 0.75rem 1rem;
+	overflow-x: auto;
+	background: var(--code-background);
+	border-radius: 6px;
+}
+
+.id {
+	font-family: var(--mono);
+	overflow-wrap: anywhere;
+}
+
+.muted {
+	color: var(--muted);
+}
+
+.badge {
+	display: inline-block;
+	padding: 0 0.5rem;
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	white-space: nowrap;
+}
+
+.badge.good {
+	color: var(--good);
+}
+
+.badge.bad {
+	color: var(--bad);
+}
+
+.badge.neutral {
+	color: var(--neutral);
+}
+
+.list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.list > li {
+	padding: 0.75rem 0;
+	border-top: 1px solid var(--border);
+}
+
+.list > li:first-child {
+	border-top: none;
+}
+
+.list > li > pre {
+	margin-top: 0.5rem;
+}
+
+.table {
+	width: 100%;
+	overflow-x: auto;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9375rem;
+}
+
+th,
+td {
+	padding: 0.5rem 0.75rem 0.5rem 0;
+	text-align: left;
+	border-bottom: 1px solid var(--border);
+	vertical-align: top;
+}
+
+th {
+	font-weight: 600;
+	color: var(--muted);
+}
+
+td.number,
+th.number {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+details > summary {
+	cursor: pointer;
+	color: var(--muted);
+}
+
+details > pre {
+	margin-top: 0.5rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}

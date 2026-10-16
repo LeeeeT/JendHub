@@ -95,10 +95,56 @@
         };
       };
       serviceNames = [ "api" "search" "syncer" "worker" ];
+      nodejs = pkgs.nodejs_24;
+      web = pkgs.buildNpmPackage {
+        pname = "jendhub-web";
+        version = "0.1.0";
+        inherit nodejs;
+        src = pkgs.lib.fileset.toSource {
+          root = ./web;
+          fileset = pkgs.lib.fileset.difference ./web (pkgs.lib.fileset.unions [
+            (pkgs.lib.fileset.maybeMissing ./web/node_modules)
+            (pkgs.lib.fileset.maybeMissing ./web/build)
+            (pkgs.lib.fileset.maybeMissing ./web/.svelte-kit)
+            (pkgs.lib.fileset.maybeMissing ./web/src/lib/api/schema.d.ts)
+          ]);
+        };
+        npmDeps = pkgs.importNpmLock { npmRoot = ./web; };
+        npmConfigHook = pkgs.importNpmLock.npmConfigHook;
+        preBuild = "npm run prepare";
+        doCheck = true;
+        checkPhase = ''
+          runHook preCheck
+          npm run check
+          npm run lint
+          npx vitest run
+          runHook postCheck
+        '';
+        installPhase = ''
+          runHook preInstall
+          npm prune --omit=dev --offline
+          mkdir -p $out/lib/jendhub-web
+          cp -r build node_modules package.json $out/lib/jendhub-web/
+          runHook postInstall
+        '';
+      };
+      webImage = pkgs.dockerTools.buildLayeredImage {
+        name = "jendhub-web";
+        tag = "latest";
+        contents = [ nodejs pkgs.dockerTools.fakeNss ];
+        config = {
+          Entrypoint = [ "${nodejs}/bin/node" "${web}/lib/jendhub-web/build/index.js" ];
+          Env = [ "HOST=0.0.0.0" "PORT=8000" "NODE_ENV=production" ];
+          ExposedPorts."8000/tcp" = { };
+          User = "65534:65534";
+        };
+      };
     in
     {
       packages.x86_64-linux = {
         default = jendhub;
+        inherit web;
+        image-web = webImage;
       } // builtins.listToAttrs (map (service: {
         name = "image-${service}";
         value = image service;
@@ -113,11 +159,13 @@
           pkgs.pyright
           pkgs.ruff
           pkgs.process-compose
+          nodejs
         ] ++ services;
         shellHook = ''
           export PYTHONPATH="$PWD/src"
           export JENDHUB_DATABASE_URL="postgresql://jendhub@/jendhub?host=$PWD/data/postgres/socket"
           export JENDHUB_QDRANT_URL="http://localhost:6333"
+          export PC_PORT_NUM=8070
           if [ -f .env ]; then
             set -a
             source ./.env
@@ -128,13 +176,15 @@
 
       checks.x86_64-linux.indexer = indexerLints;
 
+      checks.x86_64-linux.web = web;
+
       checks.x86_64-linux.default = pkgs.runCommand "jendhub-checks" {
         nativeBuildInputs = [ devPython indexer pkgs.pyright pkgs.ruff ] ++ services;
         SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
       } ''
         cp -r ${pkgs.lib.fileset.toSource {
           root = ./.;
-          fileset = pkgs.lib.fileset.unions [ ./src ./tests ./pyproject.toml ];
+          fileset = pkgs.lib.fileset.unions [ ./src ./tests ./pyproject.toml ./web/openapi.json ];
         }} source
         chmod -R u+w source
         cd source
@@ -143,6 +193,7 @@
         ruff check
         ruff format --check
         pyright --pythonpath ${devPython}/bin/python
+        python -m jendhub.services api --openapi | diff web/openapi.json -
         touch "$out"
       '';
     };

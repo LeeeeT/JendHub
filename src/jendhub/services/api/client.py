@@ -4,7 +4,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import HTTPException
 
-from jendhub.services.contracts import DefinitionPage, SearchResults
+from jendhub.services.contracts import DefinitionPage, PackagePage, SearchResults, StatusPage
 
 
 def checked(response: httpx.Response) -> httpx.Response:
@@ -31,3 +31,19 @@ class SearchClient:
         if response.status_code == HTTPStatus.NOT_FOUND:
             return None
         return DefinitionPage.model_validate_json(checked(response).content)
+
+    async def package(self, name: str, offset: int, limit: int) -> PackagePage | None:
+        response = await self.client.get(
+            f"/packages/{quote(name, safe='')}",
+            params={"definitions_offset": offset, "definitions_limit": limit},
+        )
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            return None
+        return PackagePage.model_validate_json(checked(response).content)
+
+    async def status(self, offset: int, limit: int) -> StatusPage:
+        response = await self.client.get(
+            "/status",
+            params={"invalid_releases_offset": offset, "invalid_releases_limit": limit},
+        )
+        return StatusPage.model_validate_json(checked(response).content)

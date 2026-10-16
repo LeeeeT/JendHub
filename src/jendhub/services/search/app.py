@@ -1,29 +1,35 @@
 import asyncio
 import logging
+import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from jendhub.db.pool import Pool, open_pool
 from jendhub.embedding.embedder import Embedder
 from jendhub.embedding.memory import MemoryCachedEmbedder
 from jendhub.embedding.remote import RemoteEmbedder
+from jendhub.indexing.status import GenerationStatus, generation_statuses, invalid_releases
 from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.remote.openrouter import open_openrouter
 from jendhub.search.definitions import read_definition
 from jendhub.search.engine import SearchEngine, Target
+from jendhub.search.packages import read_package
 from jendhub.services.app import Running, service_app
 from jendhub.services.background import every
-from jendhub.services.contracts import DefinitionPage, SearchHit, SearchResults
+from jendhub.services.contracts import (
+    DefinitionPage,
+    PackagePage,
+    SearchHit,
+    SearchResults,
+    StatusPage,
+)
+from jendhub.services.parameters import PAGE, Limit, Offset, PageLimit, QueryText
 from jendhub.settings import DatabaseSettings, OpenRouterSettings, QdrantSettings, load_settings
 from jendhub.vectors.index import PRODUCTION, VectorIndex, open_vector_index
-
-MAX_QUERY = 1000
-MAX_LIMIT = 50
-MAX_PAGE = 500
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,7 @@ class SearchServiceSettings(BaseSettings):
 
     query_cache_size: int = 10_000
     target_refresh_seconds: float = 10.0
+    status_seconds: float = 30.0
 
 
 @dataclass
@@ -48,12 +55,29 @@ class LiveTarget:
         self.current = target
 
 
+@dataclass
+class Generations:
+    pool: Pool
+    lifetime: float
+    found: list[GenerationStatus] | None = None
+    read_at: float = 0.0
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    async def get(self) -> list[GenerationStatus]:
+        async with self.lock:
+            if self.found is None or time.monotonic() - self.read_at > self.lifetime:
+                self.found = await generation_statuses(self.pool, LIVE)
+                self.read_at = time.monotonic()
+            return self.found
+
+
 @dataclass(frozen=True)
 class SearchState:
     pool: Pool
     vectors: VectorIndex
     embedder: Embedder
     live: LiveTarget
+    generations: Generations
 
     def target(self) -> Target:
         if self.live.current is None:
@@ -97,7 +121,8 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
             follower = asyncio.create_task(
                 every(settings.target_refresh_seconds, stop, live.refresh)
             )
-            running.value = SearchState(pool, vectors, embedder, live)
+            generations = Generations(pool, settings.status_seconds)
+            running.value = SearchState(pool, vectors, embedder, live, generations)
             try:
                 yield
             finally:
@@ -113,8 +138,8 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
 
     @app.get("/search")
     async def search(
-        q: str = Query(min_length=1, max_length=MAX_QUERY),
-        limit: int = Query(10, ge=1, le=MAX_LIMIT),
+        q: QueryText,
+        limit: Limit = 10,
     ) -> SearchResults:
         state = running.get()
         engine = SearchEngine(state.pool, state.vectors, state.embedder, state.target())
@@ -124,8 +149,8 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
     @app.get("/definitions/{id_:path}")
     async def definition(
         id_: str,
-        used_by_offset: int = Query(0, ge=0),
-        used_by_limit: int = Query(100, ge=1, le=MAX_PAGE),
+        used_by_offset: Offset = 0,
+        used_by_limit: PageLimit = PAGE,
     ) -> DefinitionPage:
         state = running.get()
         found = await read_definition(
@@ -134,5 +159,37 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
         if found is None:
             raise HTTPException(404, f"no definition {id_}")
         return DefinitionPage(**asdict(found), used_by_offset=used_by_offset)
+
+    @app.get("/packages/{name}")
+    async def package(
+        name: str,
+        definitions_offset: Offset = 0,
+        definitions_limit: PageLimit = PAGE,
+    ) -> PackagePage:
+        state = running.get()
+        found = await read_package(
+            state.pool, state.target().generation, name, definitions_offset, definitions_limit
+        )
+        if found is None:
+            raise HTTPException(404, f"no package {name}")
+        return PackagePage(**asdict(found), definitions_offset=definitions_offset)
+
+    @app.get("/status")
+    async def status(
+        invalid_releases_offset: Offset = 0,
+        invalid_releases_limit: PageLimit = PAGE,
+    ) -> StatusPage:
+        state = running.get()
+        found, total = await invalid_releases(
+            state.pool, invalid_releases_offset, invalid_releases_limit
+        )
+        return StatusPage.model_validate(
+            {
+                "generations": [asdict(status) for status in await state.generations.get()],
+                "invalid_releases": [asdict(release) for release in found],
+                "invalid_releases_total": total,
+                "invalid_releases_offset": invalid_releases_offset,
+            }
+        )
 
     return app
