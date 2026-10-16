@@ -15,7 +15,7 @@ from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.indexing.worker import Worker
 from jendhub.search.engine import Target
 from jendhub.search.tokens import tokens
-from jendhub.vectors.index import PRODUCTION, VectorIndex
+from jendhub.vectors.index import VectorIndex
 from tests.indexing.library_fixture import BASE, TAG
 
 KIT_V1 = "0x" + "1" * 32
@@ -50,9 +50,9 @@ async def index_live(pool: Pool, vectors: VectorIndex, library: Path) -> tuple[I
     [generation] = await index.generations(LIVE)
     await worker.drain(generation.id)
     await promote_ready(index, LIVE)
-    live = await index.live_collection(LIVE, PRODUCTION)
+    live = await index.live(LIVE)
     assert live is not None
-    return index, Target(live[0], live[1], PRODUCTION)
+    return index, Target(live.id, live.collection, live.config)
 
 
 async def seed(pool: Pool) -> PackageStore:

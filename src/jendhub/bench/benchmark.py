@@ -39,7 +39,7 @@ from jendhub.settings import (
 )
 from jendhub.uses.graph import UseGraph
 from jendhub.vectors.index import PRODUCTION as PRODUCTION_VECTORS
-from jendhub.vectors.index import VectorConfig, VectorIndex, open_vector_index
+from jendhub.vectors.index import VectorIndex, open_vector_index
 
 QUERIES = Path("bench/queries.jsonl")
 JUDGE_PROMPT = Path("bench/JUDGE.md")
@@ -65,15 +65,13 @@ async def open_services() -> AsyncGenerator[Services]:
         yield Services(pool, vectors, openrouter, embedder)
 
 
-async def dev_index(
-    services: Services, library: Library, listed: DevCorpus, configs: list[VectorConfig]
-) -> int:
+async def dev_index(services: Services, library: Library, listed: DevCorpus) -> int:
     index = IndexStore(services.pool)
     packages = PackageStore(services.pool)
     corpus = corpus_name(listed.base_tag, listed.packages)
     releases: list[tuple[str, str | None]] = [(BASE_RELEASE, None)]
     releases += [(package.hash, package.release.name) for package in listed.packages]
-    spec = GenerationSpec(corpus, listed.base_tag, releases, configs)
+    spec = GenerationSpec(corpus, listed.base_tag, releases, PRODUCTION_VECTORS)
     generation = await ensure_generation(index, services.vectors, spec)
     worker = Worker(index, packages, library, services.vectors, services.embedder)
     await worker.drain(generation.id)
@@ -98,18 +96,11 @@ class Benchmark:
     def assessments(self) -> list[Assessment]:
         return assessments(self.queries, self.judgments)
 
-    async def target(self, config: VectorConfig) -> Target:
-        for collection in await IndexStore(self.services.pool).collections(self.generation):
-            if collection.config == config:
-                return Target(self.generation, collection.name, config)
-        raise BenchError(f"generation {self.generation} has no collection {config.label}")
-
-    async def engine(
-        self, config: VectorConfig = PRODUCTION_VECTORS, *, exact: bool = False
-    ) -> SearchEngine:
-        target = await self.target(config)
+    async def engine(self) -> SearchEngine:
         services = self.services
-        return SearchEngine(services.pool, services.vectors, services.embedder, target, exact=exact)
+        found = await IndexStore(services.pool).generation(self.generation)
+        target = Target(found.id, found.collection, found.config)
+        return SearchEngine(services.pool, services.vectors, services.embedder, target)
 
     async def searcher(self, name: str) -> Searcher:
         if name == PRODUCTION:
@@ -164,15 +155,13 @@ async def read_queries(
 
 
 @asynccontextmanager
-async def open_benchmark(
-    data: Path, top: int | None, configs: list[VectorConfig] | None = None
-) -> AsyncGenerator[Benchmark]:
+async def open_benchmark(data: Path, top: int | None) -> AsyncGenerator[Benchmark]:
     async with open_services() as services:
         library = Library(data / LIBRARY)
         listed = dev_corpus_list()
         selected = listed if top is None else listed.top(top)
         corpus = await open_corpus(library, PackageStore(services.pool), selected)
-        generation = await dev_index(services, library, selected, configs or [PRODUCTION_VECTORS])
+        generation = await dev_index(services, library, selected)
         definitions, edges = await IndexStore(services.pool).corpus(generation)
         graph = UseGraph.of(edges)
         windows = corpus_windows(corpus)

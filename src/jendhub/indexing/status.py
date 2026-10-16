@@ -3,6 +3,7 @@ from datetime import datetime
 
 from jendhub.db.pool import Pool
 from jendhub.indexing.store import GenerationState
+from jendhub.vectors.index import VectorConfig
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class GenerationStatus:
     corpus: str
     state: GenerationState
     base_tag: str
+    vectors: str
     indexer_version: int
     created_at: datetime
     releases: int
@@ -41,7 +43,8 @@ class InvalidRelease:
 async def generation_statuses(pool: Pool, corpus: str | None) -> list[GenerationStatus]:
     async with pool.connection() as connection:
         cursor = await connection.execute(
-            "SELECT g.id, g.corpus, g.state, g.base_tag, g.indexer_version, g.created_at,"
+            "SELECT g.id, g.corpus, g.state, g.base_tag, g.dimensions, g.quantization,"
+            " g.indexer_version, g.created_at,"
             " size.releases, size.definitions,"
             " count(j.release) FILTER (WHERE j.state = 'queued'),"
             " count(j.release) FILTER (WHERE j.state = 'running'),"
@@ -59,7 +62,33 @@ async def generation_statuses(pool: Pool, corpus: str | None) -> list[Generation
             {"corpus": corpus},
         )
         rows = await cursor.fetchall()
-    return [GenerationStatus(*row[:8], jobs=JobCounts(*row[8:])) for row in rows]
+    return [
+        GenerationStatus(
+            id_,
+            corpus_,
+            state,
+            base_tag,
+            VectorConfig(dimensions, quantization).label,
+            indexer_version,
+            created_at,
+            releases,
+            definitions,
+            JobCounts(*jobs),
+        )
+        for (
+            id_,
+            corpus_,
+            state,
+            base_tag,
+            dimensions,
+            quantization,
+            indexer_version,
+            created_at,
+            releases,
+            definitions,
+            *jobs,
+        ) in rows
+    ]
 
 
 async def invalid_releases(pool: Pool, offset: int, limit: int) -> tuple[list[InvalidRelease], int]:

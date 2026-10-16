@@ -115,15 +115,12 @@ class VectorIndex:
         )
 
     async def search(
-        self, name: str, config: VectorConfig, vector: Vectors, limit: int, *, exact: bool
+        self, name: str, config: VectorConfig, vector: Vectors, limit: int
     ) -> Neighbors:
-        params = config.search_params(limit)
-        if exact:
-            params = models.SearchParams(exact=True)
         response = await self.client.query_points(
             name,
             query=config.project(vector.reshape(1, -1))[0].tolist(),
-            search_params=params,
+            search_params=config.search_params(limit),
             limit=limit,
             with_payload=False,
         )

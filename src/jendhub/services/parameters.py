@@ -10,4 +10,5 @@ PAGE = 100
 QueryText = Annotated[str, Query(min_length=1, max_length=MAX_QUERY)]
 Limit = Annotated[int, Query(ge=1, le=MAX_LIMIT)]
 Offset = Annotated[int, Query(ge=0)]
+SearchOffset = Annotated[int, Query(ge=0, lt=MAX_LIMIT)]
 PageLimit = Annotated[int, Query(ge=1, le=MAX_PAGE)]

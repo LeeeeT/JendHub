@@ -12,7 +12,8 @@ from jendhub.indexing import schedule
 from jendhub.indexing.schedule import clean_retired, promote_ready, schedule_live
 from jendhub.indexing.store import LIVE, MAX_ATTEMPTS, IndexStore
 from jendhub.indexing.worker import IndexingError, Worker
-from jendhub.vectors.index import VectorIndex
+from jendhub.search.engine import SearchEngine, Target
+from jendhub.vectors.index import VectorConfig, VectorIndex
 from tests.indexing.library_fixture import BASE
 from tests.indexing.live import WordEmbedder, index_live, seed
 
@@ -47,6 +48,32 @@ async def test_a_new_base_builds_a_new_generation_beside_the_live_one(
     assert not await vectors.client.collection_exists(old.collection)
     with pytest.raises(KeyError):
         await index.generation(old.generation)
+
+
+async def test_a_new_vector_setting_builds_a_new_generation_beside_the_live_one(
+    pool: Pool, vectors: VectorIndex, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    packages = await seed(pool)
+    index, old = await index_live(pool, vectors, tmp_path)
+    setting = VectorConfig(1024, "int8")
+    monkeypatch.setattr(schedule, "PRODUCTION", setting)
+    await schedule_live(index, packages, vectors)
+    assert await states(index, LIVE) == ["live", "building"]
+    live = await index.live(LIVE)
+    assert live is not None
+    assert (live.id, live.config) == (old.generation, old.config)
+    [_, new] = await index.generations(LIVE)
+    assert new.config == setting
+    assert await vectors.exists(new.collection)
+    worker = Worker(index, packages, Library(tmp_path), vectors, WordEmbedder())
+    await worker.drain(new.id)
+    await promote_ready(index, LIVE)
+    live = await index.live(LIVE)
+    assert live is not None
+    assert (live.id, live.config) == (new.id, setting)
+    engine = SearchEngine(pool, vectors, WordEmbedder(), Target(live.id, live.collection, setting))
+    [hits] = await engine.search(["double a number"], 1)
+    assert [hit.id for hit in hits] == ["kit@1.0.0.0/main:double"]
 
 
 async def test_a_failed_job_waits_and_then_stops_the_drain(

@@ -70,14 +70,13 @@ class Worker:
             await self.index.finish(job, "superseded")
             JOBS.labels("superseded").inc()
             return
-        for collection in await self.index.collections(generation.id):
-            for release in written.removed:
-                await self.vectors.delete_release(collection.name, release)
-            await self.vectors.upsert(
-                collection.name, collection.config, written.points, vectors, job.release
-            )
-            if not await self.index.release_size(generation.id, job.release):
-                await self.vectors.delete_release(collection.name, job.release)
+        for release in written.removed:
+            await self.vectors.delete_release(generation.collection, release)
+        await self.vectors.upsert(
+            generation.collection, generation.config, written.points, vectors, job.release
+        )
+        if not await self.index.release_size(generation.id, job.release):
+            await self.vectors.delete_release(generation.collection, job.release)
         await self.index.refresh_external(generation.id, written.keys)
         await self.index.finish(job, "done")
         JOBS.labels("done").inc()

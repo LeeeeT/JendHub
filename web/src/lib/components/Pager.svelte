@@ -16,11 +16,11 @@
 {#if total > shown}
 	<nav class="pager" aria-label="Pages">
 		{#if links.previous !== null}
-			<a href={withOffset(page.url, parameter, links.previous)} rel="prev">Previous</a>
+			<a href={withOffset(page.url, parameter, links.previous)} rel="prev">← previous</a>
 		{/if}
 		<span class="muted">{links.first} to {links.last} of {total}</span>
 		{#if links.next !== null}
-			<a href={withOffset(page.url, parameter, links.next)} rel="next">Next</a>
+			<a href={withOffset(page.url, parameter, links.next)} rel="next">next →</a>
 		{/if}
 	</nav>
 {/if}
@@ -28,8 +28,8 @@
 <style>
 	.pager {
 		display: flex;
-		gap: 1rem;
+		gap: 2ch;
 		align-items: baseline;
-		margin-top: 1rem;
+		margin-top: 1em;
 	}
 </style>

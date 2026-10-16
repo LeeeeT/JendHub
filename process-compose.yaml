@@ -80,6 +80,7 @@ processes:
     command: jendhub-service api --port 8080
     environment:
       - "JENDHUB_SEARCH_URL=http://127.0.0.1:8003"
+      - "JENDHUB_PUBLIC_API_URL=http://127.0.0.1:8080"
     readiness_probe:
       http_get:
         host: 127.0.0.1
@@ -97,6 +98,7 @@ processes:
       exec npm --prefix web run dev -- --host 127.0.0.1 --port 8090 --strictPort
     environment:
       - "JENDHUB_API_URL=http://127.0.0.1:8080"
+      - "JENDHUB_PUBLIC_API_URL=http://127.0.0.1:8080"
     readiness_probe:
       http_get:
         host: 127.0.0.1

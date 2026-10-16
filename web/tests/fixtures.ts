@@ -1,5 +1,7 @@
 import type {
 	DefinitionPage,
+	FileList,
+	FileText,
 	PackagePage,
 	SearchResults,
 	StatusPage
@@ -18,7 +20,10 @@ export const results: SearchResults = {
 			version: '1.0.0.0',
 			module: 'main',
 			head: '# Doubles a number.\ndef double(n: Nat) -> Nat:',
-			score: 0.9
+			score: 0.9,
+			import_line: 'import kit@1.0.0.0/main.bend as Kit',
+			call_name: 'Kit.double',
+			file: 'kit@1.0.0.0/main.bend'
 		},
 		{
 			id: 'Nat.add',
@@ -28,9 +33,14 @@ export const results: SearchResults = {
 			version: null,
 			module: 'Base',
 			head: 'def Nat.add(a: Nat, b: Nat) -> Nat:',
-			score: 0.5
+			score: 0.5,
+			import_line: 'import Base',
+			call_name: 'Nat.add',
+			file: 'Base/base.bend'
 		}
-	]
+	],
+	total: 45,
+	offset: 20
 };
 
 export const definition: DefinitionPage = {
@@ -41,6 +51,10 @@ export const definition: DefinitionPage = {
 	version: '1.0.0.0',
 	module: 'main',
 	text: '# Doubles a number.\ndef double(n: Nat) -> Nat:\n  Nat.add(n, n)',
+	imports: ['import Base'],
+	import_line: 'import kit@1.0.0.0/main.bend as Kit',
+	call_name: 'Kit.double',
+	file: 'kit@1.0.0.0/main.bend',
 	first_line: 2,
 	end_line: 5,
 	uses: ['Nat', 'Nat.add'],
@@ -66,6 +80,7 @@ export const status: StatusPage = {
 			id: 3,
 			state: 'live',
 			base_tag: '0.1.2',
+			vectors: 'd2048-binary',
 			indexer_version: 2,
 			created_at: '2026-10-16T00:00:00Z',
 			releases: 107,
@@ -86,3 +101,18 @@ export const status: StatusPage = {
 	invalid_releases_total: 1,
 	invalid_releases_offset: 0
 };
+
+export const files: FileList = {
+	release: 'kit@1.0.0.0',
+	hash: '0x1',
+	paths: ['main.bend', 'deep/odd.bend']
+};
+
+export const file: FileText = {
+	release: 'kit@1.0.0.0',
+	hash: '0x1',
+	path: 'main.bend',
+	text: 'import Base\nimport kit@1.0.0.0/deep/odd.bend as Odd\n\n# Doubles a number.\ndef double(n: Nat) -> Nat:\n  Nat.add(n, n)\n'
+};
+
+export const guide = '# JendHub\n\nGET https://api.test/search?q=<query>\n';

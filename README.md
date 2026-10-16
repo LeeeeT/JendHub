@@ -55,31 +55,47 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
               people ──> web ───┘
 ```
 
-### Public API, version 1
+### Public API
 
 | Request | Answer |
 |---|---|
-| `GET /v1/search?q=<query>&limit=10` | The best definitions: ID, kind, name, package, version, module, head and score. `limit` is 1 to 50. |
-| `GET /v1/definitions/<id>?used_by_offset=0&used_by_limit=100` | The text of a definition, its lines, the definitions that it uses, and one page of the definitions that use it. |
-| `GET /v1/packages/<name>?definitions_offset=0&definitions_limit=100` | Each release of a package, newest first, with its state (`indexed`, `invalid` with the reason, or `unindexed`), and one page of the definitions of the indexed release. |
-| `GET /v1/status?invalid_releases_offset=0&invalid_releases_limit=100` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases, newest first. |
+| `GET /search?q=<query>&limit=10&offset=0` | The best definitions: ID, kind, name, package, version, module, head, score, the import line, the name to call, and the file. `limit` is 1 to 50. The ranking holds at most 50 results, and `offset` pages through it. |
+| `GET /definitions/<id>?used_by_offset=0&used_by_limit=100` | The text of a definition, its lines, the import lines that its code uses, the definitions that it uses, and one page of the definitions that use it. |
+| `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. |
+| `GET /files/<release>` | The paths of the files of a release. |
+| `GET /packages/<name>?definitions_offset=0&definitions_limit=100` | Each release of a package, newest first, with its state (`indexed`, `invalid` with the reason, or `unindexed`), and one page of the definitions of the indexed release. |
+| `GET /status?invalid_releases_offset=0&invalid_releases_limit=100` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases, newest first. |
+| `GET /llms.txt` | How an agent uses the API, and when it imports a result or copies its code. |
 
 Each answers in JSON. With `Accept: text/plain`, each answers in a compact text
-form for agents:
+form for agents, with full URLs and a link to the next page:
 
 ```
-1. List.map (Base)
-   def List.map<A, B>(xs: List(A), f: A -> B) -> List(B):
+1. Json.parse (bend-net-json@0.3.0.0/json:parse)
+   import bend-net-json@0.3.0.0/json.bend as Json
+   # One JSON text: a value with optional whitespace around it.
+   def parse(+s: String) -> Maybe<&2, Val>:
+   source: https://<api>/definitions/bend-net-json@0.3.0.0/json:parse
 ```
+
+A package definition is imported from its exact release. Its alias is the
+module name in PascalCase, or the package name for a `main` module. A Base
+definition needs only `import Base`. A file of a release gets its relative
+imports and its hash imports written as `name@version` paths.
 
 Every service also has `/healthz` (the process runs), `/readyz` (it can do its
-job) and `/metrics` (Prometheus). The services log JSON lines.
+job) and `/metrics` (Prometheus). The services log JSON lines. Each response
+has `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`,
+and a strict Content-Security-Policy. `/robots.txt` allows all of the API, and
+it keeps crawlers away from the search pages of the web app, because some LLM
+tools do not fetch a URL that `robots.txt` disallows.
 
 ### Index generations
 
-A generation is one complete index for one corpus, one Base tag and one
-indexer version. Its definitions are rows in Postgres, and its vectors are
-points in one or more Qdrant collections.
+A generation is one complete index for one corpus, one Base tag, one indexer
+version and one vector setting. Its definitions are rows in Postgres, and its
+vectors are points in one Qdrant collection. Search reads the vector setting of
+the live generation from Postgres.
 
 - **A new package release:** the syncer queues one job. The worker indexes the
   release and removes the older release of the same name in the same
@@ -89,15 +105,18 @@ points in one or more Qdrant collections.
   writes nothing for it, and records it in `invalid_releases` with the reason.
   The worker then queues the next older valid release of the same name, and
   the syncer never queues the invalid one again.
-- **A new Base release, or a new `INDEXER_VERSION`:** the syncer creates a new
-  generation and queues a job for Base and for each latest release. The old
+- **A new Base release, a new `INDEXER_VERSION`, or a new vector setting
+  (`PRODUCTION` in `vectors/index.py`):** the syncer creates a new generation
+  and queues a job for Base and for each latest release. The worker gets the
+  vectors of unchanged documents from the embedding cache, so a new vector
+  setting pays for no embedding. The old
   generation stays live until the new one has no unfinished job. Then the new
   one goes live, and the old one is deleted after 10 minutes.
 - **A failed job** waits 1, 2, 4, 8 minutes and so on, at most 1 hour. After 5
   attempts it stops, and `jendhub index retry <generation>` queues it again. A
   generation with a failed job does not go live.
-- **A new vector setting:** a projection writes a generation into a new
-  collection from the embedding cache, with no new embeddings.
+- **A lost Qdrant collection:** `jendhub index restore-vectors` writes it again
+  from the embedding cache, with no new embeddings.
 
 The job queue is a Postgres table. A worker claims a job with
 `FOR UPDATE SKIP LOCKED` and a lease of 15 minutes. If a worker stops, another
@@ -168,7 +187,7 @@ OpenRouter on their own. Start one with `process-compose process start
 
 ### The production stack on your machine
 
-`jendhub-stack` runs the production images with `deploy/compose.yaml`, as a
+`nix run .#stack` runs the production images with `deploy/compose.yaml`, as a
 deploy does. Use it to check a change before a deploy. It needs Docker, and it
 uses its own volumes and the ports 18090 (web) and 18080 (API), so it can run
 next to `process-compose up`.
@@ -189,22 +208,16 @@ purpose. When the stack runs, its syncer and worker index each new BendHub
 release, as in a deploy. Any other argument goes to `docker compose`, for
 example `nix run .#stack -- logs -f web`.
 
-The web app gets its API types from `web/openapi.json`, a copy of the OpenAPI
-schema of `api`. After a change to the API, write the copy again:
+The web app gets its API types from the OpenAPI schema of `api`. In `web`,
+`npm run generate` reads the schema from `jendhub-service api --openapi`, so it
+needs the dev shell. The nix build of `web` reads the schema from the Python
+source. Thus the types always match the API, and no copy of the schema is in
+git.
 
-```bash
-jendhub-service api --openapi > web/openapi.json
-```
-
-`nix flake check` fails when the copy is not current. In `web`, `npm run check`
+`nix flake check` runs all checks: the Python tests, which start their own
+Postgres and Qdrant, Ruff, Pyright, the Rust lints and the web checks. In `web`, `npm run check`
 type-checks, `npm run lint` runs Prettier and ESLint, and `npm test` builds the
 app and tests the pages against a stub API.
-
-Run the checks. The tests start their own Postgres and Qdrant:
-
-```bash
-nix flake check
-```
 
 ## Commands
 
@@ -220,8 +233,7 @@ The default is `data`.
 | `jendhub index status` | Shows each generation and the states of its jobs. |
 | `jendhub index schedule` | Does one cycle of the syncer without the sync: queues jobs and promotes. |
 | `jendhub index retry GENERATION` | Queues the failed jobs of a generation again. |
-| `jendhub index restore-vectors` | Writes each Qdrant collection that Postgres lists and Qdrant does not have, from the embedding cache. It pays for no embedding. |
-| `jendhub uses ID` | Shows the definitions of the live index that a definition uses, and the ones that use it. |
+| `jendhub index restore-vectors` | Writes the Qdrant collection of each generation that Qdrant does not have, from the embedding cache. It pays for no embedding. |
 | `jendhub bench ...` | Runs the benchmark. See [bench/README.md](bench/README.md). |
 
 `python -m jendhub.services <api|search|syncer|worker> [--host H] [--port P]`
@@ -245,6 +257,7 @@ All settings come from the environment.
 | `JENDHUB_QUERY_CACHE_SIZE`, `JENDHUB_TARGET_REFRESH_SECONDS` | `search` | 10,000, 10 |
 | `JENDHUB_STATUS_SECONDS` | `search`: the time it keeps the sizes of the generations | 30 |
 | `JENDHUB_API_URL` | `web` | required |
+| `JENDHUB_PUBLIC_API_URL` | `api` and `web`: the API URL that agents use, in text answers and links | required |
 | `HOST`, `PORT` | `web` | `0.0.0.0`, 3000 (8000 in the image) |
 
 ## Deployment
@@ -264,18 +277,20 @@ POSTGRES_PASSWORD=... OPENROUTER_API_KEY=... docker compose -f deploy/compose.ya
 The `migrate` container applies the migrations before the services start. Only
 `search` and `worker` get the OpenRouter key. Only `api` and `web` publish a
 port: 8080 and 8090 by default, set `JENDHUB_API_PORT` and `JENDHUB_WEB_PORT`.
+Set `JENDHUB_PUBLIC_API_URL` to the public URL of the API. The default is
+`http://127.0.0.1:<JENDHUB_API_PORT>`.
 
 ## Data
 
 | Store | Content |
 |---|---|
 | Postgres `packages`, `package_files`, `rejected_packages`, `base_releases` | The mirror of BendHub and of each Base release. |
-| Postgres `generations`, `collections`, `index_jobs` | The index generations, their Qdrant collections and the job queue. |
+| Postgres `generations`, `index_jobs` | The index generations with their vector settings, and the job queue. |
 | Postgres `invalid_releases` | The releases that never go into the index, with the reason. |
 | Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
-| Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation in one vector setting. |
+| Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
 | `data/library` | The worker's copy of the package files in the `BEND_LIB` layout, for the Rust indexer. |
 
 The sync rejects a release with an invalid name or version, or a package with
@@ -330,7 +345,7 @@ this table. The tests in `tests` have the same layout.
 | `enrich` | The enricher, its windows and its store. |
 | `vectors` | The Qdrant collections and the vector settings. |
 | `search` | The production search: tokens, signatures, documents, the engine and the definition reader. |
-| `indexing` | The artifacts of a release, the index store, the worker, the scheduler and projections. |
+| `indexing` | The artifacts of a release, the index store, the worker, the scheduler and the restore of vectors. |
 | `lab` | Experimental pipelines that run in memory: BM25, dense search, fusion and reranking. |
 | `bench` | The benchmark: queries, judgments, the judge, pooling and the measures. |
 | `services` | The HTTP services and their contracts. |

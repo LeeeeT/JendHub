@@ -35,12 +35,6 @@ class Library:
     def base_source(self, tag: str) -> Path:
         return self.root / "base" / tag / "base.bend"
 
-    def releases(self) -> dict[str, str]:
-        names = self.lib / "names"
-        if not names.is_dir():
-            return {}
-        return {entry.name: entry.read_text().strip() for entry in sorted(names.iterdir())}
-
     def read_package(self, hash_: str) -> dict[str, bytes]:
         root = self.lib / hash_
         if not root.is_dir():

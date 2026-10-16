@@ -12,14 +12,17 @@
 </script>
 
 <header>
-	<div class="bar">
-		<a class="brand" href={resolve('/')}>JendHub</a>
-		{#if !home}
-			<div class="search"><SearchForm {query} /></div>
-		{/if}
-		<nav><a href={resolve('/status')}>Status</a></nav>
-	</div>
+	<a class="brand" href={resolve('/')}>~/jendhub</a>
+	<nav>
+		<a href="{resolve('/')}#api">api</a>
+		<a href={resolve('/status')}>status</a>
+		<a href="https://bend-lang.org">bend</a>
+	</nav>
 </header>
+
+{#if !home}
+	<div class="search"><SearchForm {query} /></div>
+{/if}
 
 <main>
 	{@render children()}
@@ -27,43 +30,28 @@
 
 <style>
 	header {
-		border-bottom: 1px solid var(--border);
-		background: var(--surface);
-	}
-
-	.bar {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.75rem 1.5rem;
-		align-items: center;
-		max-width: 64rem;
-		margin: 0 auto;
-		padding: 0.75rem 1rem;
+		justify-content: space-between;
+		gap: 0 2ch;
+		padding: 1.2em 0 0;
+		font-size: 0.87em;
+	}
+
+	header a {
+		border: 0;
 	}
 
 	.brand {
 		font-weight: 700;
-		color: var(--text);
-	}
-
-	.search {
-		flex: 1 1 20rem;
-		order: 3;
 	}
 
 	nav {
-		margin-left: auto;
+		display: flex;
+		gap: 2ch;
 	}
 
-	@media (min-width: 40rem) {
-		.search {
-			order: 0;
-		}
-	}
-
-	main {
-		max-width: 64rem;
-		margin: 0 auto;
-		padding: 1.5rem 1rem 4rem;
+	.search {
+		margin: 2em 0 0;
 	}
 </style>

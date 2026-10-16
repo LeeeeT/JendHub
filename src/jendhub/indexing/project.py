@@ -4,7 +4,7 @@ import numpy as np
 
 from jendhub.embedding.cache import EmbeddingCache
 from jendhub.errors import JendHubError
-from jendhub.indexing.store import Collection, IndexStore, projections
+from jendhub.indexing.store import Generation, IndexStore, projections
 from jendhub.vectors.index import VectorIndex
 
 logger = logging.getLogger(__name__)
@@ -15,34 +15,29 @@ class ProjectionError(JendHubError):
 
 
 async def project(
-    index: IndexStore,
-    vectors: VectorIndex,
-    cache: EmbeddingCache,
-    generation_id: int,
-    collection: Collection,
+    index: IndexStore, vectors: VectorIndex, cache: EmbeddingCache, generation: Generation
 ) -> None:
-    await vectors.create(collection.name, collection.config)
-    for found in await projections(index.pool, generation_id):
+    await vectors.create(generation.collection, generation.config)
+    for found in await projections(index.pool, generation.id):
         stored = await cache.load(found.digests)
         missing = [digest for digest in found.digests if digest not in stored]
         if missing:
             raise ProjectionError(f"{len(missing)} vectors of {found.release} are not cached")
         matrix = np.stack([stored[digest] for digest in found.digests])
-        await vectors.delete_release(collection.name, found.release)
+        await vectors.delete_release(generation.collection, found.release)
         await vectors.upsert(
-            collection.name, collection.config, found.points, matrix, found.release
+            generation.collection, generation.config, found.points, matrix, found.release
         )
-    await index.add_collection(generation_id, collection)
-    logger.info("projected generation %d into %s", generation_id, collection.name)
+    logger.info("projected generation %d into %s", generation.id, generation.collection)
 
 
 async def restore_vectors(
     index: IndexStore, vectors: VectorIndex, cache: EmbeddingCache
 ) -> list[str]:
     restored: list[str] = []
-    for generation_id, collection in await index.active_collections():
-        if await vectors.exists(collection.name):
+    for generation in await index.generations(None):
+        if await vectors.exists(generation.collection):
             continue
-        await project(index, vectors, cache, generation_id, collection)
-        restored.append(collection.name)
+        await project(index, vectors, cache, generation)
+        restored.append(generation.collection)
     return restored

@@ -32,13 +32,6 @@ class Release:
     def __str__(self) -> str:
         return f"{self.name}@{self.version}"
 
-    @staticmethod
-    def parse(text: str) -> Release:
-        name, _, version = text.partition("@")
-        if not valid_release(name, version):
-            raise HubError(f"invalid release {text!r}")
-        return Release(name, version)
-
 
 @dataclass(frozen=True)
 class Listing:

@@ -11,3 +11,5 @@ export type DefinitionSummary = Schemas['DefinitionSummary'];
 export type StatusPage = Schemas['StatusPage'];
 export type GenerationSummary = Schemas['GenerationSummary'];
 export type InvalidReleaseSummary = Schemas['InvalidReleaseSummary'];
+export type FileText = Schemas['FileText'];
+export type FileList = Schemas['FileList'];

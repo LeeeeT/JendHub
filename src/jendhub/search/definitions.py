@@ -4,6 +4,7 @@ from typing import LiteralString
 from psycopg import sql
 
 from jendhub.db.pool import Pool
+from jendhub.search.sources import BASE_IMPORT, StoredRelease, package_source, used_imports
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,7 @@ class DefinitionDetail:
     version: str | None
     module: str
     text: str
+    imports: list[str]
     first_line: int
     end_line: int
     uses: list[str]
@@ -42,14 +44,20 @@ async def read_definition(
 ) -> DefinitionDetail | None:
     async with pool.connection() as connection:
         cursor = await connection.execute(
-            "SELECT point, key, kind, name, package, version, module, text, first_line, end_line"
-            " FROM definitions WHERE generation = %s AND id = %s",
+            "SELECT point, release, key, kind, name, package, version, module, text,"
+            " first_line, end_line FROM definitions WHERE generation = %s AND id = %s",
             (generation, id_),
         )
         row = await cursor.fetchone()
         if row is None:
             return None
-        point, key, kind, name, package, version, module, text, first_line, end_line = row
+        point, release, key, kind, name, package, version, module, text, first_line, end_line = row
+        if package is None:
+            imports = [BASE_IMPORT]
+        else:
+            stored = StoredRelease(f"{package}@{version}", release)
+            source = await package_source(connection, stored, f"{module}.bend")
+            imports = [] if source is None else used_imports(source, text)
         parameters = {"point": point, "generation": generation, "key": key}
         cursor = await connection.execute(
             sql.SQL("SELECT id FROM ({}) found ORDER BY id").format(sql.SQL(USES)), parameters
@@ -74,6 +82,7 @@ async def read_definition(
         version,
         module,
         text,
+        imports,
         first_line,
         end_line,
         uses,

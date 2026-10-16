@@ -130,14 +130,11 @@ class SearchEngine:
         vectors: VectorIndex,
         embedder: Embedder,
         target: Target,
-        *,
-        exact: bool = False,
     ) -> None:
         self.pool = pool
         self.vectors = vectors
         self.embedder = embedder
         self.target = target
-        self.exact = exact
 
     async def search(self, queries: list[str], limit: int) -> list[list[Hit]]:
         texts = [instructed(TASK_INSTRUCTION, query) for query in queries]
@@ -167,7 +164,6 @@ class SearchEngine:
                 self.target.config,
                 query.vector,
                 max(POOL, depth),
-                exact=self.exact,
             ),
             self.name_candidates(query.text),
         )

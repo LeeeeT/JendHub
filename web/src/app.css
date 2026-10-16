@@ -1,30 +1,20 @@
 :root {
-	--background: #fbfbfa;
-	--surface: #ffffff;
-	--text: #1c1d1f;
-	--muted: #5d6066;
-	--border: #e2e3e5;
-	--accent: #2b59c3;
-	--code-background: #f3f4f6;
-	--good: #1d7a46;
-	--bad: #b42318;
-	--neutral: #6b6f76;
-	--mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
-	--sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--background: #ffffff;
+	--surface: #f0f0f0;
+	--text: #000000;
+	--muted: #555555;
+	--line: #000000;
+	--faint: #c8c8c8;
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--background: #121316;
-		--surface: #191b1f;
-		--text: #e6e7e9;
-		--muted: #9a9ea6;
-		--border: #2c2f35;
-		--accent: #8ab0ff;
-		--code-background: #1f2227;
-		--good: #5fd08f;
-		--bad: #ff8a80;
-		--neutral: #9a9ea6;
+		--background: #000000;
+		--surface: #161616;
+		--text: #ffffff;
+		--muted: #ababab;
+		--line: #ffffff;
+		--faint: #3c3c3c;
 	}
 }
 
@@ -37,84 +27,154 @@
 html {
 	background: var(--background);
 	color: var(--text);
-	font-family: var(--sans);
-	line-height: 1.5;
+	font:
+		15px/1.6 ui-monospace,
+		Menlo,
+		'SF Mono',
+		Consolas,
+		'Liberation Mono',
+		monospace;
+	font-size: min(max(15px, 1vw), 26px);
 	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
 }
 
 body {
-	margin: 0;
+	margin: 0 auto;
+	max-width: 65ch;
+	padding: 0 2ch 4em;
 	background: var(--background);
 }
 
+::selection {
+	color: var(--background);
+	background: var(--text);
+}
+
 a {
-	color: var(--accent);
+	color: var(--text);
 	text-decoration: none;
+	border-bottom: 1px solid var(--line);
 }
 
 a:hover {
-	text-decoration: underline;
+	color: var(--background);
+	background: var(--text);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+summary:focus-visible {
+	outline: 2px solid var(--text);
+	outline-offset: 2px;
+}
+
+b,
+strong {
+	font-weight: 700;
 }
 
 h1,
-h2 {
-	line-height: 1.25;
+h2,
+h3 {
+	font-weight: 700;
 	overflow-wrap: anywhere;
 }
 
 h1 {
-	font-size: 1.5rem;
-	margin: 0 0 0.5rem;
+	font-size: 1.6em;
+	line-height: 1.2;
+	margin: 1.6em 0 0.4em;
+	letter-spacing: -0.02em;
 }
 
 h2 {
-	font-size: 1.125rem;
-	margin: 2rem 0 0.75rem;
+	font-size: 1.15em;
+	line-height: 1.3;
+	margin: 0 0 0.9em;
+}
+
+h2 span,
+h3 span {
+	color: var(--muted);
+	font-weight: 400;
+}
+
+section {
+	margin: 3em 0 0;
+	padding-top: 1.4em;
+	border-top: 1px solid var(--line);
 }
 
 code,
-pre {
-	font-family: var(--mono);
-	font-size: 0.875rem;
+pre,
+input,
+button {
+	font: inherit;
 }
 
 pre {
-	margin: 0;
-	padding: 0.75rem 1rem;
+	margin: 1em 0;
+	padding: 0.8em 1ch;
 	overflow-x: auto;
-	background: var(--code-background);
-	border-radius: 6px;
+	line-height: 1.5;
+	tab-size: 2;
+	background: var(--surface);
+	border-radius: 3px;
 }
 
 .id {
-	font-family: var(--mono);
 	overflow-wrap: anywhere;
+}
+
+.source code {
+	display: block;
+}
+
+.source .line {
+	display: block;
+	white-space: pre;
+}
+
+.source .line::before {
+	content: attr(data-line);
+	display: inline-block;
+	min-width: 4ch;
+	margin-right: 2ch;
+	text-align: right;
+	color: var(--muted);
+	user-select: none;
+}
+
+.source .line:target {
+	color: var(--background);
+	background: var(--text);
+}
+
+.source .line:target::before {
+	color: var(--background);
+}
+
+pre.import {
+	padding: 0.2em 1ch;
+	font-size: 0.87em;
+	background: var(--background);
+	border: 1px solid var(--line);
 }
 
 .muted {
 	color: var(--muted);
 }
 
-.badge {
-	display: inline-block;
-	padding: 0 0.5rem;
-	border: 1px solid currentColor;
-	border-radius: 999px;
-	font-size: 0.75rem;
-	line-height: 1.5;
-	white-space: nowrap;
+.muted a {
+	color: var(--muted);
+	border-bottom-color: var(--muted);
 }
 
-.badge.good {
-	color: var(--good);
-}
-
-.badge.bad {
-	color: var(--bad);
-}
-
-.badge.neutral {
-	color: var(--neutral);
+.muted a:hover {
+	color: var(--background);
+	background: var(--text);
 }
 
 .list {
@@ -124,16 +184,19 @@ pre {
 }
 
 .list > li {
-	padding: 0.75rem 0;
-	border-top: 1px solid var(--border);
+	padding: 1em 0;
 }
 
-.list > li:first-child {
-	border-top: none;
+.list > li + li {
+	border-top: 1px solid var(--faint);
+}
+
+.list > li:last-child {
+	padding-bottom: 0;
 }
 
 .list > li > pre {
-	margin-top: 0.5rem;
+	margin: 0.5em 0 0;
 }
 
 .table {
@@ -144,24 +207,31 @@ pre {
 table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 0.9375rem;
 }
 
 th,
 td {
-	padding: 0.5rem 0.75rem 0.5rem 0;
+	padding: 0.3em 2ch 0.3em 0;
 	text-align: left;
-	border-bottom: 1px solid var(--border);
 	vertical-align: top;
+	border-bottom: 1px solid var(--faint);
 }
 
 th {
-	font-weight: 600;
-	color: var(--muted);
+	font-weight: 700;
+	border-bottom-color: var(--line);
 }
 
-td.number,
-th.number {
+tbody tr:last-child > * {
+	border-bottom: 0;
+}
+
+th:last-child,
+td:last-child {
+	padding-right: 0;
+}
+
+.number {
 	text-align: right;
 	font-variant-numeric: tabular-nums;
 }
@@ -172,7 +242,16 @@ details > summary {
 }
 
 details > pre {
-	margin-top: 0.5rem;
+	margin: 0.5em 0 0;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
 }

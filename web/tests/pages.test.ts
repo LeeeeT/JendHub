@@ -3,7 +3,9 @@ import { existsSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { definition, DOUBLE, kit, ODD, results, status } from './fixtures.ts';
+import { definition, DOUBLE, file, files, guide, kit, ODD, results, status } from './fixtures.ts';
+
+const PUBLIC_API = 'https://api.test/';
 
 const SERVER = new URL('../build/index.js', import.meta.url).pathname;
 
@@ -24,21 +26,28 @@ function answer(request: IncomingMessage, response: ServerResponse): void {
 	const path = url.pathname;
 	if (path === '/readyz') {
 		response.end('ready\n');
-	} else if (path === '/v1/search') {
+	} else if (path === '/search') {
 		const query = url.searchParams.get('q');
 		if (query === 'down') {
 			send(response, 503, { detail: 'the search index is not ready' });
 		} else {
 			send(response, 200, query === 'nothing' ? { results: [] } : results);
 		}
-	} else if (path === `/v1/definitions/${DOUBLE}`) {
+	} else if (path === `/definitions/${DOUBLE}`) {
 		send(response, 200, definition);
-	} else if (path === '/v1/definitions/kit@1.0.0.0/deep/odd:a%3Fb') {
+	} else if (path === '/definitions/kit@1.0.0.0/deep/odd:a%3Fb') {
 		send(response, 200, { ...definition, id: ODD, used_by: [], used_by_total: 0 });
-	} else if (path === '/v1/packages/kit') {
+	} else if (path === '/packages/kit') {
 		send(response, 200, kit);
-	} else if (path === '/v1/status') {
+	} else if (path === '/status') {
 		send(response, 200, status);
+	} else if (path === '/files/kit@1.0.0.0') {
+		send(response, 200, files);
+	} else if (path === '/files/kit@1.0.0.0/main.bend') {
+		send(response, 200, file);
+	} else if (path === '/llms.txt') {
+		response.writeHead(200, { 'content-type': 'text/plain' });
+		response.end(guide);
 	} else {
 		send(response, 404, { detail: 'not found' });
 	}
@@ -87,7 +96,8 @@ beforeAll(async () => {
 			...process.env,
 			HOST: '127.0.0.1',
 			PORT: String(port),
-			JENDHUB_API_URL: `http://127.0.0.1:${String(apiPort)}`
+			JENDHUB_API_URL: `http://127.0.0.1:${String(apiPort)}`,
+			JENDHUB_PUBLIC_API_URL: PUBLIC_API
 		},
 		stdio: ['ignore', 'ignore', 'inherit']
 	});
@@ -107,7 +117,16 @@ describe('the search page', () => {
 		expect(html).toContain('packages/kit"');
 		expect(html).toContain('# Doubles a number.');
 		expect(html).toContain('Base');
-		expect(requests).toContain('/v1/search?q=double+a+number&limit=20');
+		expect(html).toContain('import kit@1.0.0.0/main.bend as Kit');
+		expect(requests).toContain('/search?q=double+a+number&limit=20&offset=0');
+	});
+
+	it('pages through the results and links to the API', async () => {
+		const { html } = await page('/search?q=double+a+number&offset=20');
+		expect(requests).toContain('/search?q=double+a+number&limit=20&offset=20');
+		expect(html).toContain('21 to 22 of 45');
+		expect(html).toContain('rel="prev"');
+		expect(html).toContain(`href="${PUBLIC_API}search?q=double+a+number"`);
 	});
 
 	it('says when nothing matches', async () => {
@@ -137,7 +156,15 @@ describe('the definition page', () => {
 		expect(html).toContain('definitions/kit@1.0.0.0/deep/odd:a%3Fb"');
 		expect(html).toContain('101 to 101 of 150');
 		expect(html).toContain('rel="prev"');
-		expect(requests).toContain(`/v1/definitions/${DOUBLE}?used_by_offset=100&used_by_limit=100`);
+		expect(requests).toContain(`/definitions/${DOUBLE}?used_by_offset=100&used_by_limit=100`);
+	});
+
+	it('tells how to import and call the definition', async () => {
+		const { html } = await page(`/definitions/${DOUBLE}`);
+		expect(html).toContain('import kit@1.0.0.0/main.bend as Kit');
+		expect(html).toContain('Kit.double');
+		expect(html).toContain('files/kit@1.0.0.0/main.bend#L3"');
+		expect(html).toContain(`href="${PUBLIC_API}definitions/${DOUBLE}"`);
 	});
 
 	it('passes an encoded ID to the API', async () => {
@@ -159,6 +186,27 @@ describe('the package page', () => {
 		expect(html).toContain('invalid');
 		expect(html).toContain('main.bend does not load');
 		expect(html).toContain(`definitions/${DOUBLE}"`);
+		expect(html).toContain('files/kit@1.0.0.0"');
+	});
+});
+
+describe('the file pages', () => {
+	it('list the files of a release', async () => {
+		const { status: code, html } = await page('/files/kit@1.0.0.0');
+		expect(code).toBe(200);
+		expect(html).toContain('files/kit@1.0.0.0/deep/odd.bend"');
+	});
+
+	it('show a file with its lines and links to its imports', async () => {
+		const { status: code, html } = await page('/files/kit@1.0.0.0/main.bend');
+		expect(code).toBe(200);
+		expect(html).toContain('id="L5"');
+		expect(html).toContain('files/kit@1.0.0.0/deep/odd.bend"');
+		expect(html).toContain('files/Base/base.bend"');
+	});
+
+	it('report an unknown file', async () => {
+		expect((await page('/files/kit@1.0.0.0/nothing.bend')).status).toBe(404);
 	});
 });
 
@@ -167,6 +215,7 @@ describe('the status page', () => {
 		const { status: code, html } = await page('/status');
 		expect(code).toBe(200);
 		expect(html).toContain('56,650');
+		expect(html).toContain('d2048-binary');
 		expect(html).toContain('main.bend does not load');
 	});
 });
@@ -183,5 +232,21 @@ describe('the service endpoints', () => {
 		const { html, response } = await page('/');
 		expect(html).not.toContain('<script');
 		expect(response.headers.get('content-security-policy')).toContain("script-src 'none'");
+		expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+		expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+		expect(response.headers.get('strict-transport-security')).toBe('max-age=31536000');
+	});
+
+	it('shows example queries and the public API on the home page', async () => {
+		const { html } = await page('/');
+		expect(html).toContain('search?q=decompress+gzip+data"');
+		expect(html).toContain(`GET ${PUBLIC_API}search?q=`);
+	});
+
+	it('serves the agent guide of the API and a robots file', async () => {
+		expect(await (await fetch(`${origin}/llms.txt`)).text()).toBe(guide);
+		expect(await (await fetch(`${origin}/robots.txt`)).text()).toBe(
+			'User-agent: *\nDisallow: /search\n'
+		);
 	});
 });

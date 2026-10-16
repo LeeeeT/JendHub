@@ -5,7 +5,7 @@ from typing import Literal, cast
 from jendhub.hub.api import Release
 
 DECLARATION = re.compile(r"(?:@unsafe )?(def|type|law) ([A-Za-z_][\w.]*)")
-IMPORT_ALIAS = re.compile(r"^import \S+ as (\w+)", re.MULTILINE)
+IMPORT = re.compile(r"^import (\S+) as ([A-Za-z_]\w*)(.*)$", re.MULTILINE)
 TRAILING_COMMENT = re.compile(r"\s+#.*$")
 
 type Kind = Literal["def", "type", "law"]
@@ -106,7 +106,7 @@ def blocks(source: str) -> list[Block]:
 
 
 def extract(file: SourceFile) -> list[Definition]:
-    aliases = tuple(f"{alias}." for alias in IMPORT_ALIAS.findall(file.source))
+    aliases = tuple(f"{found.group(2)}." for found in IMPORT.finditer(file.source))
     found = blocks(file.source)
     laws = {block.name for block in found if block.kind == "law"}
     return [

@@ -11,48 +11,56 @@
 		value={query}
 		maxlength="1000"
 		required
-		placeholder="Describe a task, or type a name"
+		placeholder="a task or a name"
 		aria-label="Search Bend definitions"
 	/>
-	<button type="submit">Search</button>
+	<button type="submit">search</button>
 </form>
 
 <style>
 	form {
 		display: flex;
-		gap: 0.5rem;
 		width: 100%;
+		border: 1px solid var(--line);
+		border-radius: 3px;
 	}
 
 	input {
 		flex: 1;
 		min-width: 0;
-		padding: 0.5rem 0.75rem;
-		font: inherit;
+		padding: 0.4em 1ch;
 		color: var(--text);
-		background: var(--surface);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		background: var(--background);
+		border: 0;
+		border-radius: 3px 0 0 3px;
 	}
 
-	input:focus {
-		outline: 2px solid var(--accent);
-		outline-offset: -1px;
+	input::placeholder {
+		color: var(--muted);
+		opacity: 1;
+	}
+
+	input:focus-visible {
+		outline-offset: -3px;
 	}
 
 	button {
-		padding: 0.5rem 1rem;
-		font: inherit;
+		padding: 0.4em 1.6ch;
+		font-weight: 700;
 		color: var(--background);
 		background: var(--text);
-		border: none;
-		border-radius: 6px;
+		border: 0;
+		border-radius: 0 1px 1px 0;
 		cursor: pointer;
+	}
+
+	button:hover {
+		text-decoration: underline;
 	}
 
 	.large input,
 	.large button {
-		padding: 0.75rem 1rem;
-		font-size: 1.0625rem;
+		padding: 0.6em 1.6ch;
+		font-size: 1.1em;
 	}
 </style>

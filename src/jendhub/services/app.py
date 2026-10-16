@@ -12,6 +12,13 @@ REQUEST_SECONDS = Histogram(
     ["service", "route", "status"],
 )
 
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Strict-Transport-Security": "max-age=31536000",
+}
+
 type Lifespan = Callable[[FastAPI], AbstractAsyncContextManager[None]]
 type Readiness = Callable[[], Awaitable[bool]]
 type Endpoint = Callable[[Request], Awaitable[Response]]
@@ -28,7 +35,7 @@ class Running[T]:
 
 
 def service_app(name: str, lifespan: Lifespan, ready: Readiness) -> FastAPI:
-    app = FastAPI(title=f"JendHub {name}", lifespan=lifespan)
+    app = FastAPI(title=f"JendHub {name}", lifespan=lifespan, docs_url=None, redoc_url=None)
 
     @app.middleware("http")
     async def measure(request: Request, call_next: Endpoint) -> Response:
@@ -39,6 +46,7 @@ def service_app(name: str, lifespan: Lifespan, ready: Readiness) -> FastAPI:
         REQUEST_SECONDS.labels(name, path, str(response.status_code)).observe(
             time.perf_counter() - start
         )
+        response.headers.update(SECURITY_HEADERS)
         return response
 
     @app.get("/metrics")

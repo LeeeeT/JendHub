@@ -95,6 +95,9 @@
         };
       };
       serviceNames = [ "api" "search" "syncer" "worker" ];
+      apiSchema = pkgs.runCommand "jendhub-api-openapi.json" { } ''
+        PYTHONPATH=${source} ${python}/bin/python -m jendhub.services api --openapi > $out
+      '';
       nodejs = pkgs.nodejs_24;
       web = pkgs.buildNpmPackage {
         pname = "jendhub-web";
@@ -111,7 +114,10 @@
         };
         npmDeps = pkgs.importNpmLock { npmRoot = ./web; };
         npmConfigHook = pkgs.importNpmLock.npmConfigHook;
-        preBuild = "npm run prepare";
+        preBuild = ''
+          npx openapi-typescript ${apiSchema} --output src/lib/api/schema.d.ts
+          npx svelte-kit sync
+        '';
         doCheck = true;
         checkPhase = ''
           runHook preCheck
@@ -198,7 +204,7 @@
             compose up --detach --wait postgres
             if [ "$(live_generations)" = 0 ] && [ "''${1:-}" != --fresh ]; then
               echo "jendhub-stack: the stack has no live index." >&2
-              echo "Run 'jendhub-stack seed' to copy the dev index, or 'jendhub-stack up --fresh'" >&2
+              echo "Run 'nix run .#stack -- seed' to copy the dev index, or 'nix run .#stack -- up --fresh'" >&2
               echo "to build one from BendHub, which pays OpenRouter for each embedding." >&2
               exit 1
             fi
@@ -210,7 +216,7 @@
             seed) seed ;;
             up) shift; up "$@" ;;
             "" | help | --help)
-              echo "usage: jendhub-stack seed | up [--fresh] | <docker compose command>"
+              echo "usage: nix run .#stack -- seed | up [--fresh] | <docker compose command>"
               ;;
             *) compose "$@" ;;
           esac
@@ -242,7 +248,6 @@
           pkgs.ruff
           pkgs.process-compose
           nodejs
-          stack
         ] ++ services;
         shellHook = ''
           export PYTHONPATH="$PWD/src"
@@ -267,7 +272,7 @@
       } ''
         cp -r ${pkgs.lib.fileset.toSource {
           root = ./.;
-          fileset = pkgs.lib.fileset.unions [ ./src ./tests ./pyproject.toml ./web/openapi.json ];
+          fileset = pkgs.lib.fileset.unions [ ./src ./tests ./pyproject.toml ];
         }} source
         chmod -R u+w source
         cd source
@@ -276,7 +281,6 @@
         ruff check
         ruff format --check
         pyright --pythonpath ${devPython}/bin/python
-        python -m jendhub.services api --openapi | diff web/openapi.json -
         touch "$out"
       '';
     };

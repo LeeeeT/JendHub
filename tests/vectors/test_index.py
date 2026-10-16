@@ -31,10 +31,9 @@ async def test_search_finds_the_nearest_point(index: VectorIndex, config: Vector
     await index.create(name, config)
     vectors = basis(4)
     await index.upsert(name, config, [10, 11, 12, 13], vectors, "release")
-    for exact in (True, False):
-        found = await index.search(name, config, vectors[2], 2, exact=exact)
-        assert found.points[0] == 12
-        assert found.scores[0] == pytest.approx(1.0, abs=0.05)
+    found = await index.search(name, config, vectors[2], 2)
+    assert found.points[0] == 12
+    assert found.scores[0] == pytest.approx(1.0, abs=0.05)
 
 
 async def test_delete_release_removes_only_its_points(index: VectorIndex) -> None:
@@ -44,7 +43,7 @@ async def test_delete_release_removes_only_its_points(index: VectorIndex) -> Non
     await index.upsert(name, config, [1, 2], basis(2), "old")
     await index.upsert(name, config, [3], basis(3)[2:], "new")
     await index.delete_release(name, "old")
-    found = await index.search(name, config, basis(1)[0], 10, exact=True)
+    found = await index.search(name, config, basis(1)[0], 10)
     assert found.points == [3]
 
 
@@ -65,4 +64,4 @@ async def test_create_twice_keeps_the_points(index: VectorIndex) -> None:
     await index.create(name, config)
     await index.upsert(name, config, [1], basis(1), "release")
     await index.create(name, config)
-    assert (await index.search(name, config, basis(1)[0], 1, exact=True)).points == [1]
+    assert (await index.search(name, config, basis(1)[0], 1)).points == [1]

@@ -10,7 +10,6 @@ from jendhub.cli.bench import DEFAULT_DEPTH, DEFAULT_K, run_bench
 from jendhub.cli.corpus import (
     budget_from,
     select_dev_corpus,
-    show_uses,
     sync_store,
     write_corpus_text,
 )
@@ -65,11 +64,6 @@ def parse_arguments() -> argparse.Namespace:
     commands.add_parser(
         "enrich", help="write search metadata for the definitions of the dev corpus"
     )
-    uses_parser = commands.add_parser(
-        "uses",
-        help="show the definitions of the live index that a definition uses, and its users",
-    )
-    uses_parser.add_argument("id", help="a definition ID")
     index_parser = commands.add_parser("index", help="manage the search index")
     index_commands = index_parser.add_subparsers(dest="subcommand", required=True)
     index_commands.add_parser("status", help="show the generations and their jobs")
@@ -78,7 +72,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     index_commands.add_parser(
         "restore-vectors",
-        help="write each Qdrant collection that Postgres lists and Qdrant lacks,"
+        help="write the Qdrant collection of each generation that Qdrant lacks,"
         " from the embedding cache",
     )
     retry_parser = index_commands.add_parser("retry", help="queue the failed jobs again")
@@ -150,7 +144,7 @@ def main() -> None:
 
 async def run(arguments: argparse.Namespace) -> None:
     match arguments.command:
-        case "migrate" | "sync" | "dev" | "uses":
+        case "migrate" | "sync" | "dev":
             async with open_pool(load_settings(DatabaseSettings)) as pool:
                 await run_store_command(pool, arguments)
         case "index":
@@ -186,8 +180,6 @@ async def run_store_command(pool: Pool, arguments: argparse.Namespace) -> None:
             await sync_store(PackageStore(pool), dry_run=arguments.dry_run)
         case "dev":
             await select_dev_corpus(PackageStore(pool), IndexStore(pool), budget_from(arguments))
-        case "uses":
-            await show_uses(pool, arguments.id)
         case command:
             raise AssertionError(command)
 

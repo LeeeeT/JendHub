@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal
 
-from psycopg import AsyncConnection
+from psycopg import AsyncConnection, sql
 from psycopg.types.json import Jsonb
 
 from jendhub.corpus.definitions import Definition, Origin
@@ -11,7 +11,7 @@ from jendhub.embedding.model import digest
 from jendhub.errors import JendHubError
 from jendhub.hub.api import Release
 from jendhub.indexing.artifacts import Artifacts
-from jendhub.vectors.index import Quantization, VectorConfig
+from jendhub.vectors.index import Quantization, VectorConfig, collection_name
 
 INDEXER_VERSION = 2
 LIVE = "live"
@@ -33,12 +33,11 @@ class Generation:
     base_tag: str
     indexer_version: int
     state: GenerationState
-
-
-@dataclass(frozen=True)
-class Collection:
-    name: str
     config: VectorConfig
+
+    @property
+    def collection(self) -> str:
+        return collection_name(self.id, self.config)
 
 
 @dataclass(frozen=True)
@@ -67,20 +66,37 @@ def source_order(definition: Definition) -> tuple[bool, str, str, int]:
     return (release is not None, str(release or ""), module, definition.start)
 
 
-def generation(row: tuple[int, str, str, int, GenerationState]) -> Generation:
-    return Generation(*row)
+GENERATION_COLUMNS = sql.SQL(", ").join(
+    map(
+        sql.Identifier,
+        ["id", "corpus", "base_tag", "indexer_version", "state", "dimensions", "quantization"],
+    )
+)
+
+type GenerationRow = tuple[int, str, str, int, GenerationState, int, Quantization]
+
+
+def generation(row: GenerationRow) -> Generation:
+    id_, corpus, base_tag, indexer_version, state, dimensions, quantization = row
+    config = VectorConfig(dimensions, quantization)
+    return Generation(id_, corpus, base_tag, indexer_version, state, config)
 
 
 class IndexStore:
     def __init__(self, pool: Pool) -> None:
         self.pool = pool
 
-    async def create_generation(self, corpus: str, base_tag: str) -> Generation:
+    async def create_generation(
+        self, corpus: str, base_tag: str, config: VectorConfig
+    ) -> Generation:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "INSERT INTO generations (corpus, base_tag, indexer_version)"
-                " VALUES (%s, %s, %s) RETURNING id, corpus, base_tag, indexer_version, state",
-                (corpus, base_tag, INDEXER_VERSION),
+                sql.SQL(
+                    "INSERT INTO generations"
+                    " (corpus, base_tag, indexer_version, dimensions, quantization)"
+                    " VALUES (%s, %s, %s, %s, %s) RETURNING {}"
+                ).format(GENERATION_COLUMNS),
+                (corpus, base_tag, INDEXER_VERSION, config.dimensions, config.quantization),
             )
             row = await cursor.fetchone()
         if row is None:
@@ -90,8 +106,7 @@ class IndexStore:
     async def generation(self, generation_id: int) -> Generation:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT id, corpus, base_tag, indexer_version, state FROM generations"
-                " WHERE id = %s",
+                sql.SQL("SELECT {} FROM generations WHERE id = %s").format(GENERATION_COLUMNS),
                 (generation_id,),
             )
             row = await cursor.fetchone()
@@ -99,64 +114,27 @@ class IndexStore:
             raise KeyError(generation_id)
         return generation(row)
 
-    async def generations(self, corpus: str) -> list[Generation]:
+    async def generations(self, corpus: str | None) -> list[Generation]:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT id, corpus, base_tag, indexer_version, state FROM generations"
-                " WHERE corpus = %s AND state <> 'retired' ORDER BY id",
-                (corpus,),
+                sql.SQL(
+                    "SELECT {} FROM generations WHERE state <> 'retired'"
+                    " AND (%(corpus)s::text IS NULL OR corpus = %(corpus)s) ORDER BY id"
+                ).format(GENERATION_COLUMNS),
+                {"corpus": corpus},
             )
             return [generation(row) for row in await cursor.fetchall()]
 
-    async def add_collection(self, generation_id: int, collection: Collection) -> None:
+    async def live(self, corpus: str) -> Generation | None:
         async with self.pool.connection() as connection:
-            await connection.execute(
-                "INSERT INTO collections (name, generation, dimensions, quantization)"
-                " VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (
-                    collection.name,
-                    generation_id,
-                    collection.config.dimensions,
-                    collection.config.quantization,
+            cursor = await connection.execute(
+                sql.SQL("SELECT {} FROM generations WHERE corpus = %s AND state = 'live'").format(
+                    GENERATION_COLUMNS
                 ),
-            )
-
-    async def collections(self, generation_id: int) -> list[Collection]:
-        async with self.pool.connection() as connection:
-            cursor = await connection.execute(
-                "SELECT name, dimensions, quantization FROM collections"
-                " WHERE generation = %s ORDER BY name",
-                (generation_id,),
-            )
-            rows: list[tuple[str, int, Quantization]] = await cursor.fetchall()
-        return [
-            Collection(name, VectorConfig(dimensions, quantization))
-            for name, dimensions, quantization in rows
-        ]
-
-    async def active_collections(self) -> list[tuple[int, Collection]]:
-        async with self.pool.connection() as connection:
-            cursor = await connection.execute(
-                "SELECT c.generation, c.name, c.dimensions, c.quantization FROM collections c"
-                " JOIN generations g ON g.id = c.generation"
-                " WHERE g.state <> 'retired' ORDER BY c.generation, c.name"
-            )
-            rows: list[tuple[int, str, int, Quantization]] = await cursor.fetchall()
-        return [
-            (generation_id, Collection(name, VectorConfig(dimensions, quantization)))
-            for generation_id, name, dimensions, quantization in rows
-        ]
-
-    async def live_collection(self, corpus: str, config: VectorConfig) -> tuple[int, str] | None:
-        async with self.pool.connection() as connection:
-            cursor = await connection.execute(
-                "SELECT g.id, c.name FROM generations g JOIN collections c ON c.generation = g.id"
-                " WHERE g.corpus = %s AND g.state = 'live'"
-                " AND c.dimensions = %s AND c.quantization = %s",
-                (corpus, config.dimensions, config.quantization),
+                (corpus,),
             )
             row = await cursor.fetchone()
-        return None if row is None else (row[0], row[1])
+        return None if row is None else generation(row)
 
     async def enqueue(self, generation_id: int, releases: list[tuple[str, str | None]]) -> None:
         async with self.pool.connection() as connection, connection.cursor() as cursor:
@@ -313,13 +291,15 @@ class IndexStore:
                 "UPDATE generations SET state = 'live' WHERE id = %s", (generation_id,)
             )
 
-    async def retired(self, grace: timedelta) -> list[int]:
+    async def retired(self, grace: timedelta) -> list[Generation]:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT id FROM generations WHERE state = 'retired' AND retired_at < now() - %s",
+                sql.SQL(
+                    "SELECT {} FROM generations WHERE state = 'retired' AND retired_at < now() - %s"
+                ).format(GENERATION_COLUMNS),
                 (grace,),
             )
-            return [id_ for (id_,) in await cursor.fetchall()]
+            return [generation(row) for row in await cursor.fetchall()]
 
     async def delete_generation(self, generation_id: int) -> None:
         async with self.pool.connection() as connection:

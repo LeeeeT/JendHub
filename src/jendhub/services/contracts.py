@@ -13,10 +13,15 @@ class SearchHit(BaseModel):
     module: str
     head: str
     score: float
+    import_line: str
+    call_name: str
+    file: str
 
 
 class SearchResults(BaseModel):
     results: list[SearchHit]
+    total: int
+    offset: int
 
 
 class DefinitionPage(BaseModel):
@@ -27,12 +32,29 @@ class DefinitionPage(BaseModel):
     version: str | None
     module: str
     text: str
+    imports: list[str]
+    import_line: str
+    call_name: str
+    file: str
     first_line: int
     end_line: int
     uses: list[str]
     used_by: list[str]
     used_by_total: int
     used_by_offset: int
+
+
+class FileText(BaseModel):
+    release: str
+    hash: str | None
+    path: str
+    text: str
+
+
+class FileList(BaseModel):
+    release: str
+    hash: str | None
+    paths: list[str]
 
 
 class ReleaseSummary(BaseModel):
@@ -71,6 +93,7 @@ class GenerationSummary(BaseModel):
     id: int
     state: Literal["building", "live", "retired"]
     base_tag: str
+    vectors: str
     indexer_version: int
     created_at: datetime
     releases: int

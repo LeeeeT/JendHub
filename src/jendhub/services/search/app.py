@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import asdict, dataclass, field
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from jendhub.db.pool import Pool, open_pool
@@ -18,18 +18,29 @@ from jendhub.remote.openrouter import open_openrouter
 from jendhub.search.definitions import read_definition
 from jendhub.search.engine import SearchEngine, Target
 from jendhub.search.packages import read_package
+from jendhub.search.sources import read_file, read_release_files, usage
 from jendhub.services.app import Running, service_app
 from jendhub.services.background import every
 from jendhub.services.contracts import (
     DefinitionPage,
+    FileList,
+    FileText,
     PackagePage,
     SearchHit,
     SearchResults,
     StatusPage,
 )
-from jendhub.services.parameters import PAGE, Limit, Offset, PageLimit, QueryText
+from jendhub.services.parameters import (
+    MAX_LIMIT,
+    PAGE,
+    Limit,
+    Offset,
+    PageLimit,
+    QueryText,
+    SearchOffset,
+)
 from jendhub.settings import DatabaseSettings, OpenRouterSettings, QdrantSettings, load_settings
-from jendhub.vectors.index import PRODUCTION, VectorIndex, open_vector_index
+from jendhub.vectors.index import VectorIndex, open_vector_index
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +59,8 @@ class LiveTarget:
     current: Target | None = None
 
     async def refresh(self) -> None:
-        found = await self.index.live_collection(LIVE, PRODUCTION)
-        target = None if found is None else Target(found[0], found[1], PRODUCTION)
+        found = await self.index.live(LIVE)
+        target = None if found is None else Target(found.id, found.collection, found.config)
         if target != self.current:
             logger.info("searching %s", target)
         self.current = target
@@ -107,6 +118,27 @@ async def open_resources() -> AsyncGenerator[SearchResources]:
         yield SearchResources(pool, vectors, embedder)
 
 
+def file_routes(running: Running[SearchState]) -> APIRouter:
+    router = APIRouter(prefix="/files")
+
+    @router.get("/{release}")
+    async def release_files(release: str) -> FileList:
+        found = await read_release_files(running.get().pool, release)
+        if found is None:
+            raise HTTPException(404, f"no release {release}")
+        return FileList(**asdict(found))
+
+    @router.get("/{release}/{path:path}")
+    async def file(release: str, path: str) -> FileText:
+        state = running.get()
+        found = await read_file(state.pool, state.target().generation, release, path)
+        if found is None:
+            raise HTTPException(404, f"no file {release}/{path}")
+        return FileText(**asdict(found))
+
+    return router
+
+
 def create_app(resources: OpenResources = open_resources) -> FastAPI:
     settings = load_settings(SearchServiceSettings)
     running: Running[SearchState] = Running()
@@ -140,11 +172,21 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
     async def search(
         q: QueryText,
         limit: Limit = 10,
+        offset: SearchOffset = 0,
     ) -> SearchResults:
         state = running.get()
         engine = SearchEngine(state.pool, state.vectors, state.embedder, state.target())
-        [hits] = await engine.search([q], limit)
-        return SearchResults(results=[SearchHit(**asdict(hit)) for hit in hits])
+        [hits] = await engine.search([q], MAX_LIMIT)
+        return SearchResults(
+            results=[
+                SearchHit(
+                    **asdict(hit), **asdict(usage(hit.name, hit.package, hit.version, hit.module))
+                )
+                for hit in hits[offset : offset + limit]
+            ],
+            total=len(hits),
+            offset=offset,
+        )
 
     @app.get("/definitions/{id_:path}")
     async def definition(
@@ -158,7 +200,11 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
         )
         if found is None:
             raise HTTPException(404, f"no definition {id_}")
-        return DefinitionPage(**asdict(found), used_by_offset=used_by_offset)
+        return DefinitionPage(
+            **asdict(found),
+            **asdict(usage(found.name, found.package, found.version, found.module)),
+            used_by_offset=used_by_offset,
+        )
 
     @app.get("/packages/{name}")
     async def package(
@@ -192,4 +238,5 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
             }
         )
 
+    app.include_router(file_routes(running))
     return app

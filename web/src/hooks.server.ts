@@ -3,10 +3,18 @@ import { log } from '#lib/server/log.ts';
 import { requestSeconds } from '#lib/server/metrics.ts';
 
 const QUIET_ROUTES = new Set(['/healthz', '/readyz', '/metrics']);
+const SECURITY_HEADERS = {
+	'x-content-type-options': 'nosniff',
+	'referrer-policy': 'no-referrer',
+	'strict-transport-security': 'max-age=31536000'
+};
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const start = performance.now();
 	const response = await resolve(event);
+	for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+		response.headers.set(name, value);
+	}
 	const seconds = (performance.now() - start) / 1000;
 	const route = event.route.id ?? 'unknown';
 	requestSeconds.labels('web', route, String(response.status)).observe(seconds);

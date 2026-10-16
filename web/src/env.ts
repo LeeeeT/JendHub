@@ -1,17 +1,27 @@
 import { defineEnvVars } from '@sveltejs/kit/env';
 import { building } from '$app/env';
 
-export const variables = defineEnvVars({
-	JENDHUB_API_URL: {
-		description: 'The base URL of the JendHub API service, for example http://api:8000.',
-		schema: (value) => {
+function requiredUrl(name: string, purpose: string) {
+	return {
+		description: `${purpose}, for example http://api:8000.`,
+		schema: (value: string | undefined) => {
 			if (value === undefined || value === '') {
 				if (building) {
 					return '';
 				}
-				throw new Error('set JENDHUB_API_URL to the base URL of the JendHub API');
+				throw new Error(`set ${name} to ${purpose.toLowerCase()}`);
 			}
-			return new URL(value).href;
+			const url = new URL(value);
+			url.pathname = url.pathname.endsWith('/') ? url.pathname : `${url.pathname}/`;
+			return url.href;
 		}
-	}
+	};
+}
+
+export const variables = defineEnvVars({
+	JENDHUB_API_URL: requiredUrl('JENDHUB_API_URL', 'The base URL of the JendHub API service'),
+	JENDHUB_PUBLIC_API_URL: requiredUrl(
+		'JENDHUB_PUBLIC_API_URL',
+		'The base URL of the JendHub API that agents use'
+	)
 });

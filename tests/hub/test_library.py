@@ -16,7 +16,7 @@ def test_store_package_uses_the_bend_lib_layout(tmp_path: Path) -> None:
     library.store_package(Package(Listing(HASH, Release("list-kit", "0.1.0.0")), files))
     assert (tmp_path / "lib" / HASH / "main.bend").read_bytes() == b"main"
     assert (tmp_path / "lib" / HASH / "proofs" / "sorted.bend").read_bytes() == b"sorted"
-    assert library.releases() == {"list-kit@0.1.0.0": HASH}
+    assert (tmp_path / "lib" / "names" / "list-kit@0.1.0.0").read_text() == f"{HASH}\n"
     assert library.read_package(HASH) == files
     assert list(library.staging.iterdir()) == []
 
@@ -25,7 +25,7 @@ def test_store_package_keeps_an_unnamed_package_without_a_name_file(tmp_path: Pa
     library = Library(tmp_path)
     library.store_package(Package(Listing(HASH, None), {"main.bend": b"main"}))
     assert library.read_package(HASH) == {"main.bend": b"main"}
-    assert library.releases() == {}
+    assert not (tmp_path / "lib" / "names").exists()
 
 
 async def test_refresh_copies_each_new_package_once(tmp_path: Path, pool: Pool) -> None:
