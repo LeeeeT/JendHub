@@ -1,4 +1,4 @@
-import { releaseFiles } from '#lib/server/api.ts';
+import { releaseFiles } from '#lib/server/search.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, fetch }) => ({

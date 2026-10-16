@@ -94,9 +94,9 @@
           WorkingDir = "/data";
         };
       };
-      serviceNames = [ "api" "search" "syncer" "worker" ];
-      apiSchema = pkgs.runCommand "jendhub-api-openapi.json" { } ''
-        PYTHONPATH=${source} ${python}/bin/python -m jendhub.services api --openapi > $out
+      serviceNames = [ "agents" "search" "syncer" "worker" ];
+      searchSchema = pkgs.runCommand "jendhub-search-openapi.json" { } ''
+        PYTHONPATH=${source} ${python}/bin/python -m jendhub.services search --openapi > $out
       '';
       nodejs = pkgs.nodejs_24;
       web = pkgs.buildNpmPackage {
@@ -109,13 +109,13 @@
             (pkgs.lib.fileset.maybeMissing ./web/node_modules)
             (pkgs.lib.fileset.maybeMissing ./web/build)
             (pkgs.lib.fileset.maybeMissing ./web/.svelte-kit)
-            (pkgs.lib.fileset.maybeMissing ./web/src/lib/api/schema.d.ts)
+            (pkgs.lib.fileset.maybeMissing ./web/src/lib/search/schema.d.ts)
           ]);
         };
         npmDeps = pkgs.importNpmLock { npmRoot = ./web; };
         npmConfigHook = pkgs.importNpmLock.npmConfigHook;
         preBuild = ''
-          npx openapi-typescript ${apiSchema} --output src/lib/api/schema.d.ts
+          npx openapi-typescript ${searchSchema} --output src/lib/search/schema.d.ts
           npx svelte-kit sync
         '';
         doCheck = true;
@@ -151,7 +151,7 @@
         runtimeInputs = [ pkgs.postgresql_17 ];
         text = ''
           export POSTGRES_PASSWORD="''${POSTGRES_PASSWORD:-jendhub-local}"
-          export JENDHUB_API_PORT="''${JENDHUB_API_PORT:-18080}"
+          export JENDHUB_AGENTS_PORT="''${JENDHUB_AGENTS_PORT:-18080}"
           export JENDHUB_WEB_PORT="''${JENDHUB_WEB_PORT:-18090}"
           if [ -z "''${OPENROUTER_API_KEY:-}" ] && [ -f .env ]; then
             set -a
@@ -187,7 +187,7 @@
               exit 1
             fi
             load_images
-            compose rm --stop --force syncer worker search api web qdrant
+            compose rm --stop --force syncer worker search agents web qdrant
             docker volume rm --force jendhub-local_qdrant > /dev/null
             compose up --detach --wait postgres qdrant
             echo "copying the dev database"
@@ -208,8 +208,8 @@
               echo "to build one from BendHub, which pays OpenRouter for each embedding." >&2
               exit 1
             fi
-            compose up --detach --wait
-            echo "web: http://127.0.0.1:$JENDHUB_WEB_PORT  api: http://127.0.0.1:$JENDHUB_API_PORT"
+            compose up --detach --wait --remove-orphans
+            echo "web: http://127.0.0.1:$JENDHUB_WEB_PORT  agents: http://127.0.0.1:$JENDHUB_AGENTS_PORT"
           }
 
           case "''${1:-}" in

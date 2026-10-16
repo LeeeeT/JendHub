@@ -7,7 +7,7 @@
 		"node": ">=24"
 	},
 	"scripts": {
-		"generate": "jendhub-service api --openapi | openapi-typescript --output src/lib/api/schema.d.ts",
+		"generate": "jendhub-service search --openapi | openapi-typescript --output src/lib/search/schema.d.ts",
 		"prepare": "npm run generate && svelte-kit sync",
 		"dev": "vite dev",
 		"build": "vite build",

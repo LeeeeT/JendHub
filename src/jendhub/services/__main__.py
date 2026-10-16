@@ -7,13 +7,13 @@ import uvicorn
 from fastapi import FastAPI
 
 from jendhub.logs import configure_logging
-from jendhub.services.api.app import create_app as create_api
+from jendhub.services.agents.app import create_app as create_agents
 from jendhub.services.search.app import create_app as create_search
 from jendhub.services.syncer.app import create_app as create_syncer
 from jendhub.services.worker.app import create_app as create_worker
 
 SERVICES: dict[str, Callable[[], FastAPI]] = {
-    "api": create_api,
+    "agents": create_agents,
     "search": create_search,
     "syncer": create_syncer,
     "worker": create_worker,

@@ -1,7 +1,7 @@
-import { definition, PAGE_SIZE } from '#lib/server/api.ts';
+import { definition, PAGE_SIZE } from '#lib/server/search.ts';
 import { offsetFrom } from '#lib/paging.ts';
 import { encodeId } from '#lib/encoding.ts';
-import { publicApiUrl } from '#lib/server/public.ts';
+import { agentsUrl } from '#lib/server/agents.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url, fetch }) => {
@@ -9,6 +9,6 @@ export const load: PageServerLoad = async ({ params, url, fetch }) => {
 	return {
 		definition: await definition(fetch, params.id, offset),
 		pageSize: PAGE_SIZE,
-		api: publicApiUrl(`definitions/${encodeId(params.id)}`)
+		agents: agentsUrl(`definitions/${encodeId(params.id)}`)
 	};
 };

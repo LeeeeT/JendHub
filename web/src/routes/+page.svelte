@@ -33,27 +33,27 @@
 	{/each}
 </p>
 
-<section id="api">
+<section id="agents">
 	<h2><span>1.</span> For agents.</h2>
 	<p>
-		Tell your agent to read <a href={resolve('/llms.txt')}>/llms.txt</a>. The API gives the same
-		data as JSON. With <code>Accept: text/plain</code>, it gives compact text with full URLs.
+		Tell your agent to read <a href="{data.agents}llms.txt">{data.agents}llms.txt</a>. The agent
+		interface answers in plain text, with full URLs to the next steps.
 	</p>
 	<pre><code
 			><span class="muted"># the best definitions for a query</span>
-GET {data.api}search?q=&lt;query&gt;&amp;limit=10
+GET {data.agents}search?q=&lt;query&gt;&amp;limit=10
 
 <span class="muted"># a definition with the imports that its code uses</span>
-GET {data.api}definitions/&lt;id&gt;
+GET {data.agents}definitions/&lt;id&gt;
 
 <span class="muted"># a file, with each import at an exact release</span>
-GET {data.api}files/&lt;name@version&gt;/&lt;path&gt;
+GET {data.agents}files/&lt;name@version&gt;/&lt;path&gt;
 
 <span class="muted"># the releases and definitions of a package</span>
-GET {data.api}packages/&lt;name&gt;
+GET {data.agents}packages/&lt;name&gt;
 
 <span class="muted"># the index generations and the invalid releases</span>
-GET {data.api}status</code
+GET {data.agents}status</code
 		></pre>
 </section>
 

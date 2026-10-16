@@ -3,7 +3,7 @@ import { building } from '$app/env';
 
 function requiredUrl(name: string, purpose: string) {
 	return {
-		description: `${purpose}, for example http://api:8000.`,
+		description: `${purpose}, for example http://search:8000.`,
 		schema: (value: string | undefined) => {
 			if (value === undefined || value === '') {
 				if (building) {
@@ -19,9 +19,12 @@ function requiredUrl(name: string, purpose: string) {
 }
 
 export const variables = defineEnvVars({
-	JENDHUB_API_URL: requiredUrl('JENDHUB_API_URL', 'The base URL of the JendHub API service'),
-	JENDHUB_PUBLIC_API_URL: requiredUrl(
-		'JENDHUB_PUBLIC_API_URL',
-		'The base URL of the JendHub API that agents use'
+	JENDHUB_SEARCH_URL: requiredUrl(
+		'JENDHUB_SEARCH_URL',
+		'The base URL of the JendHub search service'
+	),
+	JENDHUB_AGENTS_URL: requiredUrl(
+		'JENDHUB_AGENTS_URL',
+		'The public base URL of the JendHub agent interface'
 	)
 });

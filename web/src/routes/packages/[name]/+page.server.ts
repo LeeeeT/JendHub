@@ -1,4 +1,4 @@
-import { packagePage, PAGE_SIZE } from '#lib/server/api.ts';
+import { packagePage, PAGE_SIZE } from '#lib/server/search.ts';
 import { offsetFrom } from '#lib/paging.ts';
 import type { PageServerLoad } from './$types';
 

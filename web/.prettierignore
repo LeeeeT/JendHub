@@ -1,4 +1,4 @@
 package-lock.json
-/src/lib/api/schema.d.ts
+/src/lib/search/schema.d.ts
 /build
 /.svelte-kit

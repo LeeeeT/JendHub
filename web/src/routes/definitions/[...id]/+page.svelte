@@ -15,7 +15,7 @@
 		name="description"
 		content="The Bend {shown.kind} {shown.id}, what it uses and what uses it."
 	/>
-	<link rel="alternate" type="application/json" href={data.api} />
+	<link rel="alternate" type="text/plain" href={data.agents} />
 </svelte:head>
 
 <h1 class="id">{shown.id}</h1>

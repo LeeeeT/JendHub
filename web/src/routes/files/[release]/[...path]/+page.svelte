@@ -12,7 +12,7 @@
 <svelte:head>
 	<title>{shown.release}/{shown.path} · JendHub</title>
 	<meta name="description" content="The Bend file {shown.path} of {shown.release}." />
-	<link rel="alternate" type="application/json" href={data.api} />
+	<link rel="alternate" type="text/plain" href={data.agents} />
 </svelte:head>
 
 <h1 class="id">{shown.path}</h1>

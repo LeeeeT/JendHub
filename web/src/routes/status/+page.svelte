@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Pager from '#lib/components/Pager.svelte';
 	import { packageHref } from '#lib/paths.ts';
-	import type { GenerationSummary } from '#lib/api/types.ts';
+	import type { GenerationSummary } from '#lib/search/types.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();

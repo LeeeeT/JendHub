@@ -10,7 +10,7 @@ def llms_text(origin: str) -> str:
 > A search engine for Bend definitions: Base and the latest valid release of
 > every package on BendHub ({HUB}).
 
-Send `Accept: text/plain` to get compact text. Without it, each answer is JSON.
+Each answer is plain text. Links in an answer are full URLs.
 
 ## Search
 

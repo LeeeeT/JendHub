@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { JENDHUB_API_URL } from '$app/env/private';
+import { JENDHUB_SEARCH_URL } from '$app/env/private';
 import type {
 	DefinitionPage,
 	FileList,
@@ -7,11 +7,11 @@ import type {
 	PackagePage,
 	SearchResults,
 	StatusPage
-} from '#lib/api/types.ts';
+} from '#lib/search/types.ts';
 import { encodeId, encodeSegment } from '#lib/encoding.ts';
 
 const TIMEOUT_MS = 30_000;
-const FAILED = [502, 'The JendHub API failed.'] as const;
+const FAILED = [502, 'The JendHub search service failed.'] as const;
 const FAILURES = new Map<number, readonly [number, string]>([
 	[404, [404, 'Not found.']],
 	[422, [400, 'The request is not valid.']],
@@ -21,32 +21,22 @@ const FAILURES = new Map<number, readonly [number, string]>([
 type Fetch = typeof fetch;
 type Parameters = Record<string, string | number>;
 
-async function request(
-	fetcher: Fetch,
-	path: string,
-	parameters: Parameters,
-	accept: string
-): Promise<Response> {
-	const url = new URL(path, JENDHUB_API_URL);
+async function get<T>(fetcher: Fetch, path: string, parameters: Parameters): Promise<T> {
+	const url = new URL(path, JENDHUB_SEARCH_URL);
 	for (const [name, value] of Object.entries(parameters)) {
 		url.searchParams.set(name, String(value));
 	}
 	let response: Response;
 	try {
-		response = await fetcher(url, { headers: { accept }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+		response = await fetcher(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
 	} catch {
-		error(502, 'The JendHub API does not answer.');
+		error(502, 'The JendHub search service does not answer.');
 	}
 	if (response.ok) {
-		return response;
+		return (await response.json()) as T;
 	}
 	const [status, message] = FAILURES.get(response.status) ?? FAILED;
 	error(status, message);
-}
-
-async function get<T>(fetcher: Fetch, path: string, parameters: Parameters): Promise<T> {
-	const response = await request(fetcher, path, parameters, 'application/json');
-	return (await response.json()) as T;
 }
 
 export const SEARCH_LIMIT = 20;
@@ -85,13 +75,9 @@ export function fileText(fetcher: Fetch, release: string, path: string): Promise
 	return get(fetcher, `files/${encodeSegment(release)}/${encodeId(path)}`, {});
 }
 
-export async function agentGuide(fetcher: Fetch): Promise<string> {
-	return (await request(fetcher, 'llms.txt', {}, 'text/plain')).text();
-}
-
-export async function apiReady(fetcher: Fetch): Promise<boolean> {
+export async function searchReady(fetcher: Fetch): Promise<boolean> {
 	try {
-		const response = await fetcher(new URL('readyz', JENDHUB_API_URL), {
+		const response = await fetcher(new URL('readyz', JENDHUB_SEARCH_URL), {
 			signal: AbortSignal.timeout(2_000)
 		});
 		return response.ok;

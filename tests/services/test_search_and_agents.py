@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from jendhub.db.pool import Pool, open_pool
 from jendhub.hub.api import Release
-from jendhub.services.api.app import create_app as create_api
+from jendhub.services.agents.app import create_app as create_agents
 from jendhub.services.search.app import SearchResources
 from jendhub.services.search.app import create_app as create_search
 from jendhub.settings import DatabaseSettings, QdrantSettings
@@ -16,7 +16,7 @@ from jendhub.vectors.index import VectorIndex, open_vector_index
 from tests.indexing.live import APP, KIT_V2, WordEmbedder, index_live, seed, store_package
 
 SEARCH_URL = "http://search.test"
-PUBLIC_URL = "https://jendhub.test"
+AGENTS_URL = "https://agents.test"
 DOUBLE = "kit@1.0.0.0/main:double"
 QUADRUPLE = "app@1.0.0.0/main:quadruple"
 BROKEN_SOURCE = "import Base\nimport ./missing.bend as M\n\ndef broken(n: Nat) -> Nat:\n  n\n"
@@ -58,14 +58,14 @@ async def search(search_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient]:
 
 
 @pytest.fixture
-async def api(
+async def agents(
     search_app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncGenerator[httpx.AsyncClient]:
     monkeypatch.setenv("JENDHUB_SEARCH_URL", SEARCH_URL)
-    monkeypatch.setenv("JENDHUB_PUBLIC_API_URL", PUBLIC_URL)
+    monkeypatch.setenv("JENDHUB_AGENTS_URL", AGENTS_URL)
     async with (
         search_app.router.lifespan_context(search_app),
-        running(create_api(httpx.ASGITransport(search_app)), "http://api.test") as client,
+        running(create_agents(httpx.ASGITransport(search_app)), "http://agents.test") as client,
     ):
         yield client
 
@@ -164,68 +164,71 @@ async def test_the_search_service_is_ready_with_a_live_index(search: httpx.Async
     assert "jendhub_http_request_seconds" in (await search.get("/metrics")).text
 
 
-async def test_the_api_answers_in_json(api: httpx.AsyncClient) -> None:
-    response = await api.get("/search", params={"q": "double a number"})
-    assert response.headers["content-type"] == "application/json"
-    assert response.json()["results"][0]["id"] == DOUBLE
-
-
-async def test_the_api_answers_in_text(api: httpx.AsyncClient) -> None:
-    headers = {"accept": "text/plain"}
+async def test_the_agent_interface_answers_in_text_for_any_accept_header(
+    agents: httpx.AsyncClient,
+) -> None:
     params = {"q": "double a number", "limit": 1}
-    response = await api.get("/search", params=params, headers=headers)
+    headers = {"accept": "application/json"}
+    response = await agents.get("/search", params=params, headers=headers)
+    assert response.headers["content-type"].startswith("text/plain")
     assert response.text.startswith(
         f"1. Kit.double ({DOUBLE})\n   import kit@1.0.0.0/main.bend as Kit\n"
         "   # Doubles a number.\n"
     )
-    assert f"   source: {PUBLIC_URL}/definitions/{DOUBLE}\n" in response.text
-    assert response.text.endswith(f"More: {PUBLIC_URL}/search?q=double+a+number&limit=1&offset=1\n")
-    page = await api.get(f"/definitions/{QUADRUPLE}", headers=headers)
+    assert f"   source: {AGENTS_URL}/definitions/{DOUBLE}\n" in response.text
+    assert response.text.endswith(f"More: {AGENTS_URL}/search?q=double+a+number&limit=1&offset=1\n")
+    page = await agents.get(f"/definitions/{QUADRUPLE}")
     assert page.text.startswith(
         f"App.quadruple ({QUADRUPLE}) (def, app@1.0.0.0, lines 4-5)\n"
         "Use: import app@1.0.0.0/main.bend as App, then call App.quadruple.\n"
-        f"File: {PUBLIC_URL}/files/app@1.0.0.0/main.bend\n\n"
+        f"File: {AGENTS_URL}/files/app@1.0.0.0/main.bend\n\n"
         "import Base\nimport kit@1.0.0.0/main.bend as K\n\ndef quadruple(n: Nat) -> Nat:\n"
     )
 
 
-async def test_the_api_gives_a_file_as_plain_text(api: httpx.AsyncClient) -> None:
-    headers = {"accept": "text/plain"}
-    response = await api.get("/files/kit@2.0.0.0/main.bend", headers=headers)
+async def test_the_agent_interface_gives_a_file_as_plain_text(agents: httpx.AsyncClient) -> None:
+    response = await agents.get("/files/kit@2.0.0.0/main.bend")
     assert response.text == BROKEN_SOURCE.replace("./missing.bend", "kit@2.0.0.0/missing.bend")
-    listing = await api.get("/files/kit@1.0.0.0", headers=headers)
-    assert listing.text == f"kit@1.0.0.0\n\n  {PUBLIC_URL}/files/kit@1.0.0.0/main.bend\n"
-    assert (await api.get("/files/kit@9.0.0.0")).status_code == httpx.codes.NOT_FOUND
+    listing = await agents.get("/files/kit@1.0.0.0")
+    assert listing.text == f"kit@1.0.0.0\n\n  {AGENTS_URL}/files/kit@1.0.0.0/main.bend\n"
+    assert (await agents.get("/files/kit@9.0.0.0")).status_code == httpx.codes.NOT_FOUND
 
 
-async def test_the_api_tells_agents_how_to_use_it(api: httpx.AsyncClient) -> None:
-    guide = await api.get("/llms.txt")
+async def test_the_agent_interface_tells_agents_how_to_use_it(agents: httpx.AsyncClient) -> None:
+    guide = await agents.get("/llms.txt")
     assert guide.headers["content-type"].startswith("text/plain")
-    assert f"GET {PUBLIC_URL}/search?q=<query>" in guide.text
-    assert (await api.get("/robots.txt")).text == "User-agent: *\nAllow: /\n"
+    assert f"GET {AGENTS_URL}/search?q=<query>" in guide.text
+    assert (await agents.get("/robots.txt")).text == "User-agent: *\nAllow: /\n"
 
 
-async def test_the_api_sends_security_headers(api: httpx.AsyncClient) -> None:
-    headers = (await api.get("/healthz")).headers
+async def test_the_agent_interface_sends_security_headers(agents: httpx.AsyncClient) -> None:
+    headers = (await agents.get("/healthz")).headers
     assert headers["x-content-type-options"] == "nosniff"
     assert headers["referrer-policy"] == "no-referrer"
     assert headers["strict-transport-security"] == "max-age=31536000"
     assert headers["content-security-policy"] == "default-src 'none'; frame-ancestors 'none'"
 
 
-async def test_the_api_reports_an_unknown_definition(api: httpx.AsyncClient) -> None:
-    assert (await api.get("/definitions/nothing")).status_code == httpx.codes.NOT_FOUND
+async def test_the_agent_interface_reports_an_unknown_definition_in_text(
+    agents: httpx.AsyncClient,
+) -> None:
+    response = await agents.get("/definitions/nothing")
+    assert response.status_code == httpx.codes.NOT_FOUND
+    assert response.text == "no definition nothing\n"
+    assert (await agents.get("/nothing")).text == "Not Found\n"
 
 
 @pytest.mark.parametrize("params", [{"q": ""}, {"q": "map", "limit": 0}, {"q": "x" * 1001}])
-async def test_the_api_refuses_an_invalid_query(
-    api: httpx.AsyncClient, params: dict[str, str | int]
+async def test_the_agent_interface_refuses_an_invalid_query_in_text(
+    agents: httpx.AsyncClient, params: dict[str, str | int]
 ) -> None:
-    response = await api.get("/search", params=params)
-    assert response.status_code == httpx.codes.UNPROCESSABLE_ENTITY
+    response = await agents.get("/search", params=params)
+    assert response.status_code == httpx.codes.BAD_REQUEST
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.text.startswith("Invalid parameter ")
 
 
-async def test_the_api_reports_a_search_index_that_is_not_ready(
+async def test_the_agent_interface_reports_a_search_index_that_is_not_ready(
     database: DatabaseSettings, qdrant_settings: QdrantSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     @asynccontextmanager
@@ -235,14 +238,14 @@ async def test_the_api_reports_a_search_index_that_is_not_ready(
 
     empty = create_search(resources)
     monkeypatch.setenv("JENDHUB_SEARCH_URL", SEARCH_URL)
-    monkeypatch.setenv("JENDHUB_PUBLIC_API_URL", PUBLIC_URL)
+    monkeypatch.setenv("JENDHUB_AGENTS_URL", AGENTS_URL)
     async with (
         empty.router.lifespan_context(empty),
-        running(create_api(httpx.ASGITransport(empty)), "http://api.test") as api,
+        running(create_agents(httpx.ASGITransport(empty)), "http://agents.test") as agents,
     ):
-        response = await api.get("/search", params={"q": "double"})
+        response = await agents.get("/search", params={"q": "double"})
         assert response.status_code == httpx.codes.SERVICE_UNAVAILABLE
-        assert (await api.get("/readyz")).status_code == httpx.codes.SERVICE_UNAVAILABLE
+        assert (await agents.get("/readyz")).status_code == httpx.codes.SERVICE_UNAVAILABLE
 
 
 async def test_a_package_shows_its_releases_and_definitions(search: httpx.AsyncClient) -> None:
@@ -276,19 +279,20 @@ async def test_the_status_shows_the_live_generation_and_invalid_releases(
     assert page["invalid_releases_total"] == 1
 
 
-async def test_the_api_shows_packages_and_status_in_text(api: httpx.AsyncClient) -> None:
-    headers = {"accept": "text/plain"}
-    package = await api.get("/packages/kit", headers=headers)
+async def test_the_agent_interface_shows_packages_and_status_in_text(
+    agents: httpx.AsyncClient,
+) -> None:
+    package = await agents.get("/packages/kit")
     assert package.text.startswith("kit\n\nReleases (2):\n  2.0.0.0  ")
-    assert f"indexed  {PUBLIC_URL}/files/kit@1.0.0.0\n" in package.text
+    assert f"indexed  {AGENTS_URL}/files/kit@1.0.0.0\n" in package.text
     assert f"Definitions (1):\n  {DOUBLE}\n   # Doubles a number.\n" in package.text
-    status = await api.get("/status", headers=headers)
+    status = await agents.get("/status")
     assert status.text.startswith("Generation ")
     assert f"Invalid releases (1):\n  kit@2.0.0.0 ({KIT_V2})" in status.text
 
 
-async def test_the_api_reports_an_unknown_package(api: httpx.AsyncClient) -> None:
-    assert (await api.get("/packages/nothing")).status_code == httpx.codes.NOT_FOUND
+async def test_the_agent_interface_reports_an_unknown_package(agents: httpx.AsyncClient) -> None:
+    assert (await agents.get("/packages/nothing")).status_code == httpx.codes.NOT_FOUND
 
 
 async def test_the_status_needs_no_live_index(

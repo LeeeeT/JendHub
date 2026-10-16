@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ReleaseSummary } from '#lib/api/types.ts';
+	import type { ReleaseSummary } from '#lib/search/types.ts';
 
 	let { state }: { state: ReleaseSummary['state'] } = $props();
 </script>

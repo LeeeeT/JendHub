@@ -3,13 +3,13 @@ import { existsSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { definition, DOUBLE, file, files, guide, kit, ODD, results, status } from './fixtures.ts';
+import { definition, DOUBLE, file, files, kit, ODD, results, status } from './fixtures.ts';
 
-const PUBLIC_API = 'https://api.test/';
+const AGENTS = 'https://agents.test/';
 
 const SERVER = new URL('../build/index.js', import.meta.url).pathname;
 
-let api: Server;
+let search: Server;
 let web: ChildProcess;
 let origin: string;
 const requests: string[] = [];
@@ -22,7 +22,7 @@ function send(response: ServerResponse, code: number, body: unknown): void {
 function answer(request: IncomingMessage, response: ServerResponse): void {
 	const target = request.url ?? '/';
 	requests.push(target);
-	const url = new URL(target, 'http://api.test');
+	const url = new URL(target, 'http://search.test');
 	const path = url.pathname;
 	if (path === '/readyz') {
 		response.end('ready\n');
@@ -45,9 +45,6 @@ function answer(request: IncomingMessage, response: ServerResponse): void {
 		send(response, 200, files);
 	} else if (path === '/files/kit@1.0.0.0/main.bend') {
 		send(response, 200, file);
-	} else if (path === '/llms.txt') {
-		response.writeHead(200, { 'content-type': 'text/plain' });
-		response.end(guide);
 	} else {
 		send(response, 404, { detail: 'not found' });
 	}
@@ -87,8 +84,8 @@ beforeAll(async () => {
 	if (!existsSync(SERVER)) {
 		throw new Error('build the app with `npm run build` before the tests');
 	}
-	api = createServer(answer);
-	const apiPort = await listen(api);
+	search = createServer(answer);
+	const searchPort = await listen(search);
 	const port = await freePort();
 	origin = `http://127.0.0.1:${String(port)}`;
 	web = spawn(process.execPath, [SERVER], {
@@ -96,8 +93,8 @@ beforeAll(async () => {
 			...process.env,
 			HOST: '127.0.0.1',
 			PORT: String(port),
-			JENDHUB_API_URL: `http://127.0.0.1:${String(apiPort)}`,
-			JENDHUB_PUBLIC_API_URL: PUBLIC_API
+			JENDHUB_SEARCH_URL: `http://127.0.0.1:${String(searchPort)}`,
+			JENDHUB_AGENTS_URL: AGENTS
 		},
 		stdio: ['ignore', 'ignore', 'inherit']
 	});
@@ -106,7 +103,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	web.kill();
-	await new Promise((resolve) => api.close(resolve));
+	await new Promise((resolve) => search.close(resolve));
 });
 
 describe('the search page', () => {
@@ -121,12 +118,12 @@ describe('the search page', () => {
 		expect(requests).toContain('/search?q=double+a+number&limit=20&offset=0');
 	});
 
-	it('pages through the results and links to the API', async () => {
+	it('pages through the results and links to the agent interface', async () => {
 		const { html } = await page('/search?q=double+a+number&offset=20');
 		expect(requests).toContain('/search?q=double+a+number&limit=20&offset=20');
 		expect(html).toContain('21 to 22 of 45');
 		expect(html).toContain('rel="prev"');
-		expect(html).toContain(`href="${PUBLIC_API}search?q=double+a+number"`);
+		expect(html).toContain(`href="${AGENTS}search?q=double+a+number"`);
 	});
 
 	it('says when nothing matches', async () => {
@@ -164,10 +161,10 @@ describe('the definition page', () => {
 		expect(html).toContain('import kit@1.0.0.0/main.bend as Kit');
 		expect(html).toContain('Kit.double');
 		expect(html).toContain('files/kit@1.0.0.0/main.bend#L3"');
-		expect(html).toContain(`href="${PUBLIC_API}definitions/${DOUBLE}"`);
+		expect(html).toContain(`href="${AGENTS}definitions/${DOUBLE}"`);
 	});
 
-	it('passes an encoded ID to the API', async () => {
+	it('passes an encoded ID to the search service', async () => {
 		const { status: code, html } = await page('/definitions/kit@1.0.0.0/deep/odd:a%3Fb');
 		expect(code).toBe(200);
 		expect(html).toContain('kit@1.0.0.0/deep/odd:a?b');
@@ -237,14 +234,14 @@ describe('the service endpoints', () => {
 		expect(response.headers.get('strict-transport-security')).toBe('max-age=31536000');
 	});
 
-	it('shows example queries and the public API on the home page', async () => {
+	it('shows example queries and the agent interface on the home page', async () => {
 		const { html } = await page('/');
 		expect(html).toContain('search?q=decompress+gzip+data"');
-		expect(html).toContain(`GET ${PUBLIC_API}search?q=`);
+		expect(html).toContain(`GET ${AGENTS}search?q=`);
 	});
 
-	it('serves the agent guide of the API and a robots file', async () => {
-		expect(await (await fetch(`${origin}/llms.txt`)).text()).toBe(guide);
+	it('links to the agent guide and serves a robots file', async () => {
+		expect((await page('/')).html).toContain(`href="${AGENTS}llms.txt"`);
 		expect(await (await fetch(`${origin}/robots.txt`)).text()).toBe(
 			'User-agent: *\nDisallow: /search\n'
 		);

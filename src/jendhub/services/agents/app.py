@@ -3,13 +3,15 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import httpx
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import PlainTextResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from jendhub.services.api.client import SearchClient
-from jendhub.services.api.guide import ROBOTS, llms_text
-from jendhub.services.api.text import (
+from jendhub.services.agents.client import SearchClient
+from jendhub.services.agents.guide import ROBOTS, llms_text
+from jendhub.services.agents.text import (
     Links,
     render_definition,
     render_files,
@@ -18,14 +20,6 @@ from jendhub.services.api.text import (
     render_status,
 )
 from jendhub.services.app import Running, service_app
-from jendhub.services.contracts import (
-    DefinitionPage,
-    FileList,
-    FileText,
-    PackagePage,
-    SearchResults,
-    StatusPage,
-)
 from jendhub.services.parameters import (
     PAGE,
     Limit,
@@ -36,125 +30,123 @@ from jendhub.services.parameters import (
 )
 from jendhub.settings import load_settings
 
-TEXT = "text/plain"
 SEARCH_TIMEOUT = 30.0
 
 
-class ApiSettings(BaseSettings):
+class AgentsSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="JENDHUB_")
 
     search_url: str
-    public_api_url: str
+    agents_url: str
 
 
 @dataclass(frozen=True)
-class ApiState:
+class AgentsState:
     client: SearchClient
     origin: str
 
-
-def wants_text(request: Request) -> bool:
-    accepted = request.headers.get("accept", "")
-    first = accepted.split(",", 1)[0].split(";", 1)[0].strip()
-    return first == TEXT
+    def text[T](self, request: Request, found: T, render: Callable[[T, Links], str]) -> str:
+        return render(found, Links(self.origin, request.url.path, dict(request.query_params)))
 
 
-def answer[T: BaseModel](
-    request: Request, origin: str, found: T, render: Callable[[T, Links], str]
-) -> Response:
-    if wants_text(request):
-        links = Links(origin, request.url.path, dict(request.query_params))
-        return Response(render(found, links), media_type=TEXT)
-    return Response(found.model_dump_json(), media_type="application/json")
+def file_routes(running: Running[AgentsState]) -> APIRouter:
+    router = APIRouter(prefix="/files", default_response_class=PlainTextResponse)
 
-
-def file_routes(running: Running[ApiState]) -> APIRouter:
-    router = APIRouter(prefix="/files")
-
-    @router.get("/{release}", response_model=FileList)
-    async def release_files(request: Request, release: str) -> Response:
+    @router.get("/{release}")
+    async def release_files(request: Request, release: str) -> str:
         state = running.get()
         found = await state.client.release_files(release)
         if found is None:
             raise HTTPException(404, f"no release {release}")
-        return answer(request, state.origin, found, render_files)
+        return state.text(request, found, render_files)
 
-    @router.get("/{release}/{path:path}", response_model=FileText)
-    async def file(request: Request, release: str, path: str) -> Response:
+    @router.get("/{release}/{path:path}")
+    async def file(release: str, path: str) -> str:
         found = await running.get().client.file(release, path)
         if found is None:
             raise HTTPException(404, f"no file {release}/{path}")
-        if wants_text(request):
-            return Response(found.text, media_type=TEXT)
-        return Response(found.model_dump_json(), media_type="application/json")
+        return found.text
 
     return router
 
 
-def routes(running: Running[ApiState]) -> APIRouter:
-    router = APIRouter()
+def routes(running: Running[AgentsState]) -> APIRouter:
+    router = APIRouter(default_response_class=PlainTextResponse)
 
-    @router.get("/search", response_model=SearchResults)
+    @router.get("/search")
     async def search(
         request: Request,
         q: QueryText,
         limit: Limit = 10,
         offset: SearchOffset = 0,
-    ) -> Response:
+    ) -> str:
         state = running.get()
         found = await state.client.search(q, limit, offset)
-        return answer(request, state.origin, found, render_results)
+        return state.text(request, found, render_results)
 
-    @router.get("/definitions/{id_:path}", response_model=DefinitionPage)
+    @router.get("/definitions/{id_:path}")
     async def definition(
         request: Request,
         id_: str,
         used_by_offset: Offset = 0,
         used_by_limit: PageLimit = PAGE,
-    ) -> Response:
+    ) -> str:
         state = running.get()
         found = await state.client.definition(id_, used_by_offset, used_by_limit)
         if found is None:
             raise HTTPException(404, f"no definition {id_}")
-        return answer(request, state.origin, found, render_definition)
+        return state.text(request, found, render_definition)
 
-    @router.get("/packages/{name}", response_model=PackagePage)
+    @router.get("/packages/{name}")
     async def package(
         request: Request,
         name: str,
         definitions_offset: Offset = 0,
         definitions_limit: PageLimit = PAGE,
-    ) -> Response:
+    ) -> str:
         state = running.get()
         found = await state.client.package(name, definitions_offset, definitions_limit)
         if found is None:
             raise HTTPException(404, f"no package {name}")
-        return answer(request, state.origin, found, render_package)
+        return state.text(request, found, render_package)
 
-    @router.get("/status", response_model=StatusPage)
+    @router.get("/status")
     async def status(
         request: Request,
         invalid_releases_offset: Offset = 0,
         invalid_releases_limit: PageLimit = PAGE,
-    ) -> Response:
+    ) -> str:
         state = running.get()
         found = await state.client.status(invalid_releases_offset, invalid_releases_limit)
-        return answer(request, state.origin, found, render_status)
+        return state.text(request, found, render_status)
+
+    @router.get("/llms.txt")
+    async def llms() -> str:
+        return llms_text(running.get().origin)
+
+    @router.get("/robots.txt")
+    async def robots() -> str:
+        return ROBOTS
 
     router.include_router(file_routes(running))
     return router
 
 
+def refused(error: RequestValidationError) -> str:
+    problems = [f"{problem['loc'][-1]}: {problem['msg']}" for problem in error.errors()]
+    return f"Invalid parameter {'; '.join(problems)}.\n"
+
+
 def create_app(transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
-    running: Running[ApiState] = Running()
+    running: Running[AgentsState] = Running()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        settings = load_settings(ApiSettings)
+        settings = load_settings(AgentsSettings)
         async with httpx.AsyncClient(
             base_url=settings.search_url, timeout=SEARCH_TIMEOUT, transport=transport
         ) as client:
-            running.value = ApiState(SearchClient(client), settings.public_api_url.rstrip("/"))
+            running.value = AgentsState(SearchClient(client), settings.agents_url.rstrip("/"))
             try:
                 yield
             finally:
@@ -170,15 +162,15 @@ def create_app(transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
             return False
         return response.is_success
 
-    app = service_app("api", lifespan, ready)
+    app = service_app("agents", lifespan, ready)
 
-    @app.get("/llms.txt")
-    async def llms() -> Response:
-        return Response(llms_text(running.get().origin), media_type=TEXT)
+    @app.exception_handler(StarletteHTTPException)
+    async def failed(_: Request, error: StarletteHTTPException) -> PlainTextResponse:
+        return PlainTextResponse(f"{error.detail}\n", status_code=error.status_code)
 
-    @app.get("/robots.txt")
-    async def robots() -> Response:
-        return Response(ROBOTS, media_type=TEXT)
+    @app.exception_handler(RequestValidationError)
+    async def invalid(_: Request, error: RequestValidationError) -> PlainTextResponse:
+        return PlainTextResponse(refused(error), status_code=400)
 
     app.include_router(routes(running))
     return app

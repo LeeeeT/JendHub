@@ -76,11 +76,11 @@ processes:
       qdrant:
         condition: process_healthy
 
-  api:
-    command: jendhub-service api --port 8080
+  agents:
+    command: jendhub-service agents --port 8080
     environment:
       - "JENDHUB_SEARCH_URL=http://127.0.0.1:8003"
-      - "JENDHUB_PUBLIC_API_URL=http://127.0.0.1:8080"
+      - "JENDHUB_AGENTS_URL=http://127.0.0.1:8080"
     readiness_probe:
       http_get:
         host: 127.0.0.1
@@ -97,8 +97,8 @@ processes:
       npm --prefix web install --no-audit --no-fund
       exec npm --prefix web run dev -- --host 127.0.0.1 --port 8090 --strictPort
     environment:
-      - "JENDHUB_API_URL=http://127.0.0.1:8080"
-      - "JENDHUB_PUBLIC_API_URL=http://127.0.0.1:8080"
+      - "JENDHUB_SEARCH_URL=http://127.0.0.1:8003"
+      - "JENDHUB_AGENTS_URL=http://127.0.0.1:8080"
     readiness_probe:
       http_get:
         host: 127.0.0.1
@@ -107,5 +107,5 @@ processes:
       period_seconds: 1
       failure_threshold: 120
     depends_on:
-      api:
+      search:
         condition: process_healthy

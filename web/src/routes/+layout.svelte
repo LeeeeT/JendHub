@@ -14,7 +14,7 @@
 <header>
 	<a class="brand" href={resolve('/')}>~/jendhub</a>
 	<nav>
-		<a href="{resolve('/')}#api">api</a>
+		<a href="{resolve('/')}#agents">agents</a>
 		<a href={resolve('/status')}>status</a>
 		<a href="https://bend-lang.org">bend</a>
 	</nav>

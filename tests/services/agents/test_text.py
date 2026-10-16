@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from jendhub.services.api.text import (
+from jendhub.services.agents.text import (
     Links,
     render_definition,
     render_files,

@@ -5,7 +5,7 @@ import type {
 	PackagePage,
 	SearchResults,
 	StatusPage
-} from '../src/lib/api/types.ts';
+} from '../src/lib/search/types.ts';
 
 export const DOUBLE = 'kit@1.0.0.0/main:double';
 export const ODD = 'kit@1.0.0.0/deep/odd:a?b';
@@ -114,5 +114,3 @@ export const file: FileText = {
 	path: 'main.bend',
 	text: 'import Base\nimport kit@1.0.0.0/deep/odd.bend as Odd\n\n# Doubles a number.\ndef double(n: Nat) -> Nat:\n  Nat.add(n, n)\n'
 };
-
-export const guide = '# JendHub\n\nGET https://api.test/search?q=<query>\n';

@@ -1,8 +1,8 @@
 import { error, redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { offsetFrom } from '#lib/paging.ts';
-import { search, SEARCH_LIMIT } from '#lib/server/api.ts';
-import { publicApiUrl } from '#lib/server/public.ts';
+import { search, SEARCH_LIMIT } from '#lib/server/search.ts';
+import { agentsUrl } from '#lib/server/agents.ts';
 import type { PageServerLoad } from './$types';
 
 const MAX_QUERY = 1000;
@@ -20,6 +20,6 @@ export const load: PageServerLoad = async ({ url, fetch }) => {
 		query,
 		found,
 		pageSize: SEARCH_LIMIT,
-		api: publicApiUrl('search', { q: query })
+		agents: agentsUrl('search', { q: query })
 	};
 };

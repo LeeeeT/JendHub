@@ -11,7 +11,7 @@
 <svelte:head>
 	<title>{data.query} · JendHub</title>
 	<meta name="robots" content="noindex" />
-	<link rel="alternate" type="application/json" href={data.api} />
+	<link rel="alternate" type="text/plain" href={data.agents} />
 </svelte:head>
 
 <h1 class="sr-only">Results for “{data.query}”</h1>

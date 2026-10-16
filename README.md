@@ -2,13 +2,15 @@
 
 JendHub is a search engine for Bend definitions. The corpus is every package
 on [BendHub](https://hub.bend-lang.com) and the latest released `base.bend`.
-AI agents are the main users. They search through a JSON or text HTTP API.
-People can see the same data in a web app.
+AI agents are the main users. They read plain text from the agent interface.
+People see the same data in a web app.
 
 ## Design decisions
 
-- **Users:** AI agents first. A result is a definition ID with its head. The
-  web app is a view of the API for people, and it has no data of its own.
+- **Users:** AI agents first. The agent interface answers in plain text with
+  full URLs, because agents read text more easily than JSON, and most fetch
+  tools cannot ask for a format. The web app shows the same data to people, and
+  it has no data of its own.
 - **Corpus:** the store keeps every version of every package, because packages
   import each other by hash. Search uses only the latest valid version of each
   named package, as if other versions do not exist.
@@ -40,8 +42,8 @@ People can see the same data in a web app.
 | `syncer` | Stores the new packages of BendHub and each new Base release. Queues an index job for each new latest release. Promotes a finished generation and deletes retired ones. | none |
 | `worker` | Runs the index jobs: extracts the definitions of a release, resolves its uses with the Rust indexer, computes the rerank features, embeds the documents and writes Postgres and Qdrant. Scale it out with more replicas. | a local copy of the package files |
 | `search` | The search engine. Embeds the query, gets candidates from Qdrant and from an exact-name index, and reranks them. Internal. | none |
-| `api` | The public API for agents. Validates requests, calls `search`, and answers in JSON or text. | none |
-| `web` | The web app for people. A SvelteKit server that renders each page from `api`. It sends no JavaScript to the browser. | none |
+| `agents` | The agent interface. Validates requests, calls `search`, and answers in plain text. | none |
+| `web` | The web app for people. A SvelteKit server that renders each page from the JSON of `search`. It sends no JavaScript to the browser. | none |
 
 Postgres and Qdrant are the only stores.
 
@@ -49,13 +51,12 @@ Postgres and Qdrant are the only stores.
 BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
                           ▲                      ▲
                           └────── search ────────┘
-                                    ▲
-                     agents ──> api ┘
-                                ▲
-              people ──> web ───┘
+                                  ▲   ▲
+            AI agents ──> agents ─┘   │
+               people ──> web ────────┘
 ```
 
-### Public API
+### The agent interface
 
 | Request | Answer |
 |---|---|
@@ -65,17 +66,17 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 | `GET /files/<release>` | The paths of the files of a release. |
 | `GET /packages/<name>?definitions_offset=0&definitions_limit=100` | Each release of a package, newest first, with its state (`indexed`, `invalid` with the reason, or `unindexed`), and one page of the definitions of the indexed release. |
 | `GET /status?invalid_releases_offset=0&invalid_releases_limit=100` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases, newest first. |
-| `GET /llms.txt` | How an agent uses the API, and when it imports a result or copies its code. |
+| `GET /llms.txt` | How an agent uses the interface, and when it imports a result or copies its code. |
 
-Each answers in JSON. With `Accept: text/plain`, each answers in a compact text
-form for agents, with full URLs and a link to the next page:
+Each answers in plain text, also an error. The links are full URLs, and a
+paged answer ends with the URL of the next page:
 
 ```
 1. Json.parse (bend-net-json@0.3.0.0/json:parse)
    import bend-net-json@0.3.0.0/json.bend as Json
    # One JSON text: a value with optional whitespace around it.
    def parse(+s: String) -> Maybe<&2, Val>:
-   source: https://<api>/definitions/bend-net-json@0.3.0.0/json:parse
+   source: https://<agents>/definitions/bend-net-json@0.3.0.0/json:parse
 ```
 
 A package definition is imported from its exact release. Its alias is the
@@ -86,8 +87,8 @@ imports and its hash imports written as `name@version` paths.
 Every service also has `/healthz` (the process runs), `/readyz` (it can do its
 job) and `/metrics` (Prometheus). The services log JSON lines. Each response
 has `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`,
-and a strict Content-Security-Policy. `/robots.txt` allows all of the API, and
-it keeps crawlers away from the search pages of the web app, because some LLM
+and a strict Content-Security-Policy. `/robots.txt` allows all of the agent interface,
+and it keeps crawlers away from the search pages of the web app, because some LLM
 tools do not fetch a URL that `robots.txt` disallows.
 
 ### Index generations
@@ -171,8 +172,8 @@ git clone --recurse-submodules <url>
 nix develop -c process-compose up
 ```
 
-This starts Postgres, Qdrant, the migrations, `search`, `api` and `web`, in
-this order. Then open http://127.0.0.1:8090. The API is at
+This starts Postgres, Qdrant, the migrations, `search`, `agents` and `web`, in
+this order. Then open http://127.0.0.1:8090. The agent interface is at
 http://127.0.0.1:8080. The `web` process runs `npm install` in `web` before it
 starts the Vite dev server, so the first start takes longer.
 
@@ -189,7 +190,7 @@ OpenRouter on their own. Start one with `process-compose process start
 
 `nix run .#stack` runs the production images with `deploy/compose.yaml`, as a
 deploy does. Use it to check a change before a deploy. It needs Docker, and it
-uses its own volumes and the ports 18090 (web) and 18080 (API), so it can run
+uses its own volumes and the ports 18090 (web) and 18080 (agents), so it can run
 next to `process-compose up`.
 
 ```bash
@@ -208,16 +209,16 @@ purpose. When the stack runs, its syncer and worker index each new BendHub
 release, as in a deploy. Any other argument goes to `docker compose`, for
 example `nix run .#stack -- logs -f web`.
 
-The web app gets its API types from the OpenAPI schema of `api`. In `web`,
-`npm run generate` reads the schema from `jendhub-service api --openapi`, so it
-needs the dev shell. The nix build of `web` reads the schema from the Python
-source. Thus the types always match the API, and no copy of the schema is in
+The web app gets its types from the OpenAPI schema of `search`. In `web`,
+`npm run generate` reads the schema from `jendhub-service search --openapi`, so
+it needs the dev shell. The nix build of `web` reads the schema from the Python
+source. Thus the types always match `search`, and no copy of the schema is in
 git.
 
 `nix flake check` runs all checks: the Python tests, which start their own
 Postgres and Qdrant, Ruff, Pyright, the Rust lints and the web checks. In `web`, `npm run check`
 type-checks, `npm run lint` runs Prettier and ESLint, and `npm test` builds the
-app and tests the pages against a stub API.
+app and tests the pages against a stub of `search`.
 
 ## Commands
 
@@ -236,7 +237,7 @@ The default is `data`.
 | `jendhub index restore-vectors` | Writes the Qdrant collection of each generation that Qdrant does not have, from the embedding cache. It pays for no embedding. |
 | `jendhub bench ...` | Runs the benchmark. See [bench/README.md](bench/README.md). |
 
-`python -m jendhub.services <api|search|syncer|worker> [--host H] [--port P]`
+`python -m jendhub.services <agents|search|syncer|worker> [--host H] [--port P]`
 runs a service, and `--openapi` prints its OpenAPI schema. In the dev shell,
 `jendhub-service` does the same. `node web/build` runs the web app after
 `npm run build`.
@@ -247,17 +248,16 @@ All settings come from the environment.
 
 | Variable | Used by | Default |
 |---|---|---|
-| `JENDHUB_DATABASE_URL` | all but `api` | required |
-| `JENDHUB_DATABASE_POOL_SIZE` | all but `api` | 10 |
-| `JENDHUB_QDRANT_URL`, `JENDHUB_QDRANT_API_KEY` | all but `api` | required, none |
+| `JENDHUB_DATABASE_URL` | `search`, `syncer`, `worker` | required |
+| `JENDHUB_DATABASE_POOL_SIZE` | `search`, `syncer`, `worker` | 10 |
+| `JENDHUB_QDRANT_URL`, `JENDHUB_QDRANT_API_KEY` | `search`, `syncer`, `worker` | required, none |
 | `OPENROUTER_API_KEY` | `search`, `worker`, the benchmark | required |
-| `JENDHUB_SEARCH_URL` | `api` | required |
+| `JENDHUB_SEARCH_URL` | `agents`, `web` | required |
 | `JENDHUB_SYNC_INTERVAL_SECONDS` | `syncer` | 300 |
 | `JENDHUB_LIBRARY_PATH`, `JENDHUB_WORKER_CONCURRENCY` | `worker` | `library`, 2 |
 | `JENDHUB_QUERY_CACHE_SIZE`, `JENDHUB_TARGET_REFRESH_SECONDS` | `search` | 10,000, 10 |
 | `JENDHUB_STATUS_SECONDS` | `search`: the time it keeps the sizes of the generations | 30 |
-| `JENDHUB_API_URL` | `web` | required |
-| `JENDHUB_PUBLIC_API_URL` | `api` and `web`: the API URL that agents use, in text answers and links | required |
+| `JENDHUB_AGENTS_URL` | `agents` and `web`: the public URL of the agent interface, for the links in its answers and on the web pages | required |
 | `HOST`, `PORT` | `web` | `0.0.0.0`, 3000 (8000 in the image) |
 
 ## Deployment
@@ -268,17 +268,17 @@ and the built app. `deploy/compose.yaml` runs the
 whole system with Postgres 17 and Qdrant 1.18.2:
 
 ```bash
-for service in api search syncer worker web; do
+for service in agents search syncer worker web; do
   docker load < "$(nix build .#image-$service --no-link --print-out-paths)"
 done
 POSTGRES_PASSWORD=... OPENROUTER_API_KEY=... docker compose -f deploy/compose.yaml up -d
 ```
 
 The `migrate` container applies the migrations before the services start. Only
-`search` and `worker` get the OpenRouter key. Only `api` and `web` publish a
-port: 8080 and 8090 by default, set `JENDHUB_API_PORT` and `JENDHUB_WEB_PORT`.
-Set `JENDHUB_PUBLIC_API_URL` to the public URL of the API. The default is
-`http://127.0.0.1:<JENDHUB_API_PORT>`.
+`search` and `worker` get the OpenRouter key. Only `agents` and `web` publish a
+port: 8080 and 8090 by default, set `JENDHUB_AGENTS_PORT` and `JENDHUB_WEB_PORT`.
+Set `JENDHUB_AGENTS_URL` to the public URL of the agent interface. The default
+is `http://127.0.0.1:<JENDHUB_AGENTS_PORT>`.
 
 ## Data
 
