@@ -13,6 +13,7 @@ let search: Server;
 let web: ChildProcess;
 let origin: string;
 const requests: string[] = [];
+const searchHeaders: IncomingMessage['headers'][] = [];
 
 function send(response: ServerResponse, code: number, body: unknown): void {
 	response.writeHead(code, { 'content-type': 'application/json' });
@@ -24,6 +25,9 @@ function answer(request: IncomingMessage, response: ServerResponse): void {
 	requests.push(target);
 	const url = new URL(target, 'http://search.test');
 	const path = url.pathname;
+	if (path === '/search') {
+		searchHeaders.push(request.headers);
+	}
 	if (path === '/readyz') {
 		response.end('ready\n');
 	} else if (path === '/search') {
@@ -36,7 +40,7 @@ function answer(request: IncomingMessage, response: ServerResponse): void {
 	} else if (path === `/definitions/${DOUBLE}`) {
 		send(response, 200, definition);
 	} else if (path === '/definitions/kit@1.0.0.0/deep/odd:a%3Fb') {
-		send(response, 200, { ...definition, id: ODD, used_by: [], used_by_total: 0 });
+		send(response, 200, { ...definition, id: ODD, uses: [] });
 	} else if (path === '/packages/kit') {
 		send(response, 200, kit);
 	} else if (path === '/status') {
@@ -118,6 +122,13 @@ describe('the search page', () => {
 		expect(requests).toContain('/search?q=double+a+number&limit=20&offset=0');
 	});
 
+	it('names the web as the client and passes the user agent of the reader', async () => {
+		await fetch(`${origin}/search?q=user+agent`, { headers: { 'user-agent': 'reader/1.0' } });
+		const headers = searchHeaders.at(-1);
+		expect(headers?.['x-jendhub-client']).toBe('web');
+		expect(headers?.['x-jendhub-user-agent']).toBe('reader/1.0');
+	});
+
 	it('pages through the results and links to the agent interface', async () => {
 		const { html } = await page('/search?q=double+a+number&offset=20');
 		expect(requests).toContain('/search?q=double+a+number&limit=20&offset=20');
@@ -145,15 +156,14 @@ describe('the search page', () => {
 });
 
 describe('the definition page', () => {
-	it('shows the source with its line numbers, its uses and a page of its users', async () => {
-		const { status: code, html } = await page(`/definitions/${DOUBLE}?used_by_offset=100`);
+	it('shows the source with its line numbers and its uses', async () => {
+		const { status: code, html } = await page(`/definitions/${DOUBLE}`);
 		expect(code).toBe(200);
 		expect(html).toContain('data-line="3"');
 		expect(html).toContain('definitions/Nat.add"');
 		expect(html).toContain('definitions/kit@1.0.0.0/deep/odd:a%3Fb"');
-		expect(html).toContain('101 to 101 of 150');
-		expect(html).toContain('rel="prev"');
-		expect(requests).toContain(`/definitions/${DOUBLE}?used_by_offset=100&used_by_limit=100`);
+		expect(html).not.toContain('Used by');
+		expect(requests).toContain(`/definitions/${DOUBLE}`);
 	});
 
 	it('tells how to import and call the definition', async () => {

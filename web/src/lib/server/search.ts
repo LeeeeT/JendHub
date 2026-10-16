@@ -21,14 +21,19 @@ const FAILURES = new Map<number, readonly [number, string]>([
 type Fetch = typeof fetch;
 type Parameters = Record<string, string | number>;
 
-async function get<T>(fetcher: Fetch, path: string, parameters: Parameters): Promise<T> {
+async function get<T>(
+	fetcher: Fetch,
+	path: string,
+	parameters: Parameters,
+	headers: Record<string, string> = {}
+): Promise<T> {
 	const url = new URL(path, JENDHUB_SEARCH_URL);
 	for (const [name, value] of Object.entries(parameters)) {
 		url.searchParams.set(name, String(value));
 	}
 	let response: Response;
 	try {
-		response = await fetcher(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+		response = await fetcher(url, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
 	} catch {
 		error(502, 'The JendHub search service does not answer.');
 	}
@@ -42,15 +47,21 @@ async function get<T>(fetcher: Fetch, path: string, parameters: Parameters): Pro
 export const SEARCH_LIMIT = 20;
 export const PAGE_SIZE = 100;
 
-export function search(fetcher: Fetch, query: string, offset: number): Promise<SearchResults> {
-	return get(fetcher, 'search', { q: query, limit: SEARCH_LIMIT, offset });
+export function search(
+	fetcher: Fetch,
+	query: string,
+	offset: number,
+	userAgent: string | null
+): Promise<SearchResults> {
+	const headers: Record<string, string> = { 'x-jendhub-client': 'web' };
+	if (userAgent !== null) {
+		headers['x-jendhub-user-agent'] = userAgent;
+	}
+	return get(fetcher, 'search', { q: query, limit: SEARCH_LIMIT, offset }, headers);
 }
 
-export function definition(fetcher: Fetch, id: string, offset: number): Promise<DefinitionPage> {
-	return get(fetcher, `definitions/${encodeId(id)}`, {
-		used_by_offset: offset,
-		used_by_limit: PAGE_SIZE
-	});
+export function definition(fetcher: Fetch, id: string): Promise<DefinitionPage> {
+	return get(fetcher, `definitions/${encodeId(id)}`, {});
 }
 
 export function packagePage(fetcher: Fetch, name: string, offset: number): Promise<PackagePage> {

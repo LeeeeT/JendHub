@@ -61,7 +61,7 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 | Request | Answer |
 |---|---|
 | `GET /search?q=<query>&limit=10&offset=0` | The best definitions: ID, kind, name, package, version, module, head, score, the import line, the name to call, and the file. `limit` is 1 to 50. The ranking holds at most 50 results, and `offset` pages through it. |
-| `GET /definitions/<id>?used_by_offset=0&used_by_limit=100` | The text of a definition, its lines, the import lines that its code uses, the definitions that it uses, and one page of the definitions that use it. |
+| `GET /definitions/<id>` | The text of a definition, its lines, the import lines that its code uses, and the definitions that it uses. |
 | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. |
 | `GET /files/<release>` | The paths of the files of a release. |
 | `GET /packages/<name>?definitions_offset=0&definitions_limit=100` | Each release of a package, newest first, with its state (`indexed`, `invalid` with the reason, or `unindexed`), and one page of the definitions of the indexed release. |
@@ -72,11 +72,10 @@ Each answers in plain text, also an error. The links are full URLs, and a
 paged answer ends with the URL of the next page:
 
 ```
-1. Json.parse (bend-net-json@0.3.0.0/json:parse)
+1. Json.parse (https://<agents>/definitions/bend-net-json@0.3.0.0/json:parse)
    import bend-net-json@0.3.0.0/json.bend as Json
    # One JSON text: a value with optional whitespace around it.
    def parse(+s: String) -> Maybe<&2, Val>:
-   source: https://<agents>/definitions/bend-net-json@0.3.0.0/json:parse
 ```
 
 A package definition is imported from its exact release. Its alias is the
@@ -155,6 +154,12 @@ A use of an older release of a package counts for the same module and name in
 the latest release. On the dev benchmark, nDCG@10 is 0.816 with each result
 judged, against 0.819 before the scale changes. See
 [bench/README.md](bench/README.md) for the measurements behind each choice.
+
+The search service stores every search that `agents` and `web` send in the
+`searches` table, to improve the search with real queries later. It writes the
+row after the answer, so the log adds no latency, and a failed write does not
+fail the search. The row holds the whole ranking, not only the page, and no
+IP address.
 
 The first live index holds 56,650 definitions: Base and the latest valid
 release of 106 packages. A query answers in 20 to 70 ms when its embedding is
@@ -290,6 +295,7 @@ is `http://127.0.0.1:<JENDHUB_AGENTS_PORT>`.
 | Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
+| Postgres `searches` | Every real search: time, client (`agents` or `web`), the caller's User-Agent, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
 | Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
 | `data/library` | The worker's copy of the package files in the `BEND_LIB` layout, for the Rust indexer. |
 

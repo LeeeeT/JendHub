@@ -47,10 +47,10 @@ def test_results_show_how_to_use_each_definition() -> None:
         results=[hit("List.map", None), hit("kit@1.0.0.0/main:map", "kit")], total=2, offset=0
     )
     assert render_results(found, LINKS) == (
-        "1. List.map (Base)\n   import Base\n   # Maps.\n   def map(xs):\n"
-        f"   source: {ORIGIN}/definitions/List.map\n\n"
-        "2. Kit.map (kit@1.0.0.0/main:map)\n   import kit@1.0.0.0/main.bend as Kit\n"
-        f"   # Maps.\n   def map(xs):\n   source: {ORIGIN}/definitions/kit@1.0.0.0/main:map\n"
+        f"1. List.map ({ORIGIN}/definitions/List.map)\n"
+        "   import Base\n   # Maps.\n   def map(xs):\n\n"
+        f"2. Kit.map ({ORIGIN}/definitions/kit@1.0.0.0/main:map)\n"
+        "   import kit@1.0.0.0/main.bend as Kit\n   # Maps.\n   def map(xs):\n"
     )
 
 
@@ -58,7 +58,7 @@ def test_results_link_to_the_next_results() -> None:
     found = SearchResults(results=[hit("List.map", None)], total=5, offset=2)
     links = Links(ORIGIN, "/search", {"q": "map", "limit": "1", "offset": "2"})
     text = render_results(found, links)
-    assert text.startswith("3. List.map (Base)\n")
+    assert text.startswith(f"3. List.map ({ORIGIN}/definitions/List.map)\n")
     assert text.endswith(f"\nMore: {ORIGIN}/search?q=map&limit=1&offset=3\n")
 
 
@@ -66,7 +66,7 @@ def test_no_results_say_so() -> None:
     assert render_results(SearchResults(results=[], total=0, offset=0), LINKS) == "No results.\n"
 
 
-def test_a_definition_shows_where_it_is_and_a_page_of_users() -> None:
+def test_a_definition_shows_how_to_use_it_and_its_uses() -> None:
     page = DefinitionPage(
         id="kit@1.0.0.0/main:map",
         kind="def",
@@ -82,19 +82,13 @@ def test_a_definition_shows_where_it_is_and_a_page_of_users() -> None:
         first_line=4,
         end_line=6,
         uses=["List"],
-        used_by=["b", "c"],
-        used_by_total=5,
-        used_by_offset=1,
     )
-    links = Links(ORIGIN, "/definitions/kit@1.0.0.0/main:map", {"used_by_offset": "1"})
-    assert render_definition(page, links) == (
+    assert render_definition(page, LINKS) == (
         "Kit.map (kit@1.0.0.0/main:map) (def, kit@1.0.0.0, lines 5-6)\n"
         "Use: import kit@1.0.0.0/main.bend as Kit, then call Kit.map.\n"
         f"File: {ORIGIN}/files/kit@1.0.0.0/main.bend\n\n"
         "import Base\n\ndef map(xs):\n  xs\n\n"
         "Uses (1):\n  List\n\n"
-        "Used by (5, 2 to 3 shown):\n  b\n  c\n"
-        f"More: {ORIGIN}/definitions/kit@1.0.0.0/main:map?used_by_offset=3\n\n"
         f"Each ID is at {ORIGIN}/definitions/<id>\n"
     )
 

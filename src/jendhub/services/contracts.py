@@ -39,9 +39,6 @@ class DefinitionPage(BaseModel):
     first_line: int
     end_line: int
     uses: list[str]
-    used_by: list[str]
-    used_by_total: int
-    used_by_offset: int
 
 
 class FileText(BaseModel):

@@ -38,17 +38,13 @@ class Links:
         return f"More: {self.origin}{self.path}?{query}\n"
 
 
-def label(hit: SearchHit) -> str:
-    return f"{hit.call_name} (Base)" if hit.package is None else f"{hit.call_name} ({hit.id})"
-
-
 def indented(text: str) -> str:
     return "".join(f"{INDENT}{line}\n" for line in text.splitlines())
 
 
 def render_hit(rank: int, hit: SearchHit, links: Links) -> str:
-    return f"{rank}. {label(hit)}\n" + indented(
-        f"{hit.import_line}\n{hit.head}\nsource: {links.definition(hit.id)}"
+    return f"{rank}. {hit.call_name} ({links.definition(hit.id)})\n" + indented(
+        f"{hit.import_line}\n{hit.head}"
     )
 
 
@@ -152,9 +148,6 @@ def render_definition(page: DefinitionPage, links: Links) -> str:
         f"File: {links.file(page.file)}\n\n"
         f"{code}\n\n"
         + id_list("Uses", page.uses, len(page.uses), 0)
-        + "\n"
-        + id_list("Used by", page.used_by, page.used_by_total, page.used_by_offset)
-        + links.next("used_by_offset", page.used_by_offset, len(page.used_by), page.used_by_total)
         + "\n"
         + links.every_definition()
     )

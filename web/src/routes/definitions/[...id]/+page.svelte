@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Pager from '#lib/components/Pager.svelte';
 	import { definitionHref, fileHref, packageHref } from '#lib/paths.ts';
 	import type { PageProps } from './$types';
 
@@ -11,10 +10,7 @@
 
 <svelte:head>
 	<title>{shown.id} · JendHub</title>
-	<meta
-		name="description"
-		content="The Bend {shown.kind} {shown.id}, what it uses and what uses it."
-	/>
+	<meta name="description" content="The Bend {shown.kind} {shown.id}, its code and what it uses." />
 	<link rel="alternate" type="text/plain" href={data.agents} />
 </svelte:head>
 
@@ -56,26 +52,6 @@
 				<li><a class="id" href={definitionHref(id)}>{id}</a></li>
 			{/each}
 		</ul>
-	{/if}
-</section>
-
-<section>
-	<h2>Used by <span>({shown.used_by_total})</span></h2>
-	{#if shown.used_by_total === 0}
-		<p class="muted">No indexed definition uses this definition.</p>
-	{:else}
-		<ul class="ids">
-			{#each shown.used_by as id (id)}
-				<li><a class="id" href={definitionHref(id)}>{id}</a></li>
-			{/each}
-		</ul>
-		<Pager
-			parameter="used_by_offset"
-			offset={shown.used_by_offset}
-			shown={shown.used_by.length}
-			total={shown.used_by_total}
-			size={data.pageSize}
-		/>
 	{/if}
 </section>
 

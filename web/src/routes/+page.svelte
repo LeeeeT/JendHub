@@ -6,7 +6,7 @@
 
 	let { data }: PageProps = $props();
 
-	const examples = ['decompress gzip data', 'String -> Bytes', 'read a file', 'parse JSON text'];
+	const examples = ['decompress gzip data', 'base64 encode', 'sha256 hash of bytes', 'parse json'];
 </script>
 
 <svelte:head>

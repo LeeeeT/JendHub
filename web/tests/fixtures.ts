@@ -57,10 +57,7 @@ export const definition: DefinitionPage = {
 	file: 'kit@1.0.0.0/main.bend',
 	first_line: 2,
 	end_line: 5,
-	uses: ['Nat', 'Nat.add'],
-	used_by: [ODD],
-	used_by_total: 150,
-	used_by_offset: 100
+	uses: ['Nat', 'Nat.add', ODD]
 };
 
 export const kit: PackagePage = {

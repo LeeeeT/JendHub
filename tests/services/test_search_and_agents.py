@@ -81,6 +81,52 @@ async def test_search_finds_a_definition(search: httpx.AsyncClient) -> None:
     assert first["file"] == "kit@1.0.0.0/main.bend"
 
 
+type StoredSearch = tuple[str | None, str | None, str, int, int, list[str]]
+
+
+async def stored_searches(pool: Pool) -> list[StoredSearch]:
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT client, user_agent, query, page_offset, page_limit, results"
+            " FROM searches ORDER BY id"
+        )
+        return await cursor.fetchall()
+
+
+async def test_the_search_service_stores_each_search_with_its_whole_ranking(
+    search: httpx.AsyncClient, pool: Pool
+) -> None:
+    headers = {"x-jendhub-client": "web", "x-jendhub-user-agent": "reader/1.0"}
+    params = {"q": "double a number", "limit": 1, "offset": 1}
+    page = (await search.get("/search", params=params, headers=headers)).json()
+    [(client, user_agent, query, offset, limit, results)] = await stored_searches(pool)
+    assert (client, user_agent, query, offset, limit) == (
+        "web",
+        "reader/1.0",
+        "double a number",
+        1,
+        1,
+    )
+    assert len(results) == page["total"]
+    assert results[0] == DOUBLE
+
+
+async def test_a_search_from_an_unknown_client_stores_no_client(
+    search: httpx.AsyncClient, pool: Pool
+) -> None:
+    await search.get("/search", params={"q": "double"}, headers={"x-jendhub-client": "other"})
+    [(client, user_agent, *_)] = await stored_searches(pool)
+    assert (client, user_agent) == (None, None)
+
+
+async def test_the_agent_interface_passes_on_the_user_agent(
+    agents: httpx.AsyncClient, pool: Pool
+) -> None:
+    await agents.get("/search", params={"q": "double"}, headers={"user-agent": "codex/1.0"})
+    [(client, user_agent, query, *_)] = await stored_searches(pool)
+    assert (client, user_agent, query) == ("agents", "codex/1.0", "double")
+
+
 async def test_search_pages_through_one_fixed_ranking(search: httpx.AsyncClient) -> None:
     query = {"q": "double a number"}
     every = (await search.get("/search", params=query | {"limit": 50})).json()
@@ -96,14 +142,13 @@ async def test_search_refuses_an_offset_past_the_ranking(search: httpx.AsyncClie
     assert response.status_code == httpx.codes.UNPROCESSABLE_ENTITY
 
 
-async def test_a_definition_shows_its_uses_and_users(search: httpx.AsyncClient) -> None:
+async def test_a_definition_shows_its_uses(search: httpx.AsyncClient) -> None:
     response = await search.get(f"/definitions/{DOUBLE}")
     assert response.status_code == httpx.codes.OK
     page = response.json()
     assert page["uses"] == ["Nat", "Nat.add"]
-    assert page["used_by"] == [QUADRUPLE]
-    assert page["used_by_total"] == 1
     assert page["imports"] == ["import Base"]
+    assert "used_by" not in page
 
 
 async def test_a_definition_gives_the_import_lines_that_its_code_uses(
@@ -151,12 +196,6 @@ async def test_an_unknown_file_is_not_found(search: httpx.AsyncClient, path: str
     assert (await search.get(path)).status_code == httpx.codes.NOT_FOUND
 
 
-async def test_used_by_is_paged(search: httpx.AsyncClient) -> None:
-    page = (await search.get("/definitions/Nat", params={"used_by_limit": 1})).json()
-    assert page["used_by_total"] == 3
-    assert len(page["used_by"]) == 1
-
-
 async def test_the_search_service_is_ready_with_a_live_index(search: httpx.AsyncClient) -> None:
     assert (await search.get("/readyz")).status_code == httpx.codes.OK
     assert (await search.get("/healthz")).json() == {"status": "ok"}
@@ -172,10 +211,9 @@ async def test_the_agent_interface_answers_in_text_for_any_accept_header(
     response = await agents.get("/search", params=params, headers=headers)
     assert response.headers["content-type"].startswith("text/plain")
     assert response.text.startswith(
-        f"1. Kit.double ({DOUBLE})\n   import kit@1.0.0.0/main.bend as Kit\n"
-        "   # Doubles a number.\n"
+        f"1. Kit.double ({AGENTS_URL}/definitions/{DOUBLE})\n"
+        "   import kit@1.0.0.0/main.bend as Kit\n   # Doubles a number.\n"
     )
-    assert f"   source: {AGENTS_URL}/definitions/{DOUBLE}\n" in response.text
     assert response.text.endswith(f"More: {AGENTS_URL}/search?q=double+a+number&limit=1&offset=1\n")
     page = await agents.get(f"/definitions/{QUADRUPLE}")
     assert page.text.startswith(

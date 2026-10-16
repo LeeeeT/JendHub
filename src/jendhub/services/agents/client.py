@@ -4,6 +4,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import HTTPException
 
+from jendhub.search.searches import CLIENT_HEADER, USER_AGENT_HEADER
 from jendhub.services.contracts import (
     DefinitionPage,
     FileList,
@@ -26,17 +27,19 @@ class SearchClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self.client = client
 
-    async def search(self, query: str, limit: int, offset: int) -> SearchResults:
+    async def search(
+        self, query: str, limit: int, offset: int, user_agent: str | None
+    ) -> SearchResults:
+        headers = {CLIENT_HEADER: "agents"}
+        if user_agent is not None:
+            headers[USER_AGENT_HEADER] = user_agent
         response = await self.client.get(
-            "/search", params={"q": query, "limit": limit, "offset": offset}
+            "/search", params={"q": query, "limit": limit, "offset": offset}, headers=headers
         )
         return SearchResults.model_validate_json(checked(response).content)
 
-    async def definition(self, id_: str, offset: int, limit: int) -> DefinitionPage | None:
-        response = await self.client.get(
-            f"/definitions/{quote(id_, safe='/@:')}",
-            params={"used_by_offset": offset, "used_by_limit": limit},
-        )
+    async def definition(self, id_: str) -> DefinitionPage | None:
+        response = await self.client.get(f"/definitions/{quote(id_, safe='/@:')}")
         if response.status_code == HTTPStatus.NOT_FOUND:
             return None
         return DefinitionPage.model_validate_json(checked(response).content)

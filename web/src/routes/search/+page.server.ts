@@ -7,7 +7,7 @@ import type { PageServerLoad } from './$types';
 
 const MAX_QUERY = 1000;
 
-export const load: PageServerLoad = async ({ url, fetch }) => {
+export const load: PageServerLoad = async ({ url, fetch, request }) => {
 	const query = (url.searchParams.get('q') ?? '').trim();
 	if (query === '') {
 		redirect(303, resolve('/'));
@@ -15,7 +15,8 @@ export const load: PageServerLoad = async ({ url, fetch }) => {
 	if (query.length > MAX_QUERY) {
 		error(400, `A query has at most ${String(MAX_QUERY)} characters.`);
 	}
-	const found = await search(fetch, query, offsetFrom(url, 'offset'));
+	const userAgent = request.headers.get('user-agent');
+	const found = await search(fetch, query, offsetFrom(url, 'offset'), userAgent);
 	return {
 		query,
 		found,

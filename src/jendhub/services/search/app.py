@@ -4,8 +4,10 @@ import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import asdict, dataclass, field
+from typing import Annotated
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, BackgroundTasks, FastAPI, Header, HTTPException
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from jendhub.db.pool import Pool, open_pool
@@ -18,6 +20,7 @@ from jendhub.remote.openrouter import open_openrouter
 from jendhub.search.definitions import read_definition
 from jendhub.search.engine import SearchEngine, Target
 from jendhub.search.packages import read_package
+from jendhub.search.searches import Search, client_of, record_search
 from jendhub.search.sources import read_file, read_release_files, usage
 from jendhub.services.app import Running, service_app
 from jendhub.services.background import every
@@ -118,6 +121,21 @@ async def open_resources() -> AsyncGenerator[SearchResources]:
         yield SearchResources(pool, vectors, embedder)
 
 
+class Caller(BaseModel):
+    x_jendhub_client: str | None = None
+    x_jendhub_user_agent: str | None = None
+
+
+NO_CALLER = Caller()
+
+
+async def keep(pool: Pool, search: Search) -> None:
+    try:
+        await record_search(pool, search)
+    except Exception:
+        logger.exception("the search log did not store a search")
+
+
 def file_routes(running: Running[SearchState]) -> APIRouter:
     router = APIRouter(prefix="/files")
 
@@ -171,12 +189,27 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
     @app.get("/search")
     async def search(
         q: QueryText,
+        background: BackgroundTasks,
         limit: Limit = 10,
         offset: SearchOffset = 0,
+        caller: Annotated[Caller, Header()] = NO_CALLER,
     ) -> SearchResults:
         state = running.get()
-        engine = SearchEngine(state.pool, state.vectors, state.embedder, state.target())
+        target = state.target()
+        engine = SearchEngine(state.pool, state.vectors, state.embedder, target)
+        start = time.perf_counter()
         [hits] = await engine.search([q], MAX_LIMIT)
+        searched = Search(
+            client_of(caller.x_jendhub_client),
+            caller.x_jendhub_user_agent,
+            q,
+            offset,
+            limit,
+            target.generation,
+            [hit.id for hit in hits],
+            time.perf_counter() - start,
+        )
+        background.add_task(keep, state.pool, searched)
         return SearchResults(
             results=[
                 SearchHit(
@@ -189,21 +222,14 @@ def create_app(resources: OpenResources = open_resources) -> FastAPI:
         )
 
     @app.get("/definitions/{id_:path}")
-    async def definition(
-        id_: str,
-        used_by_offset: Offset = 0,
-        used_by_limit: PageLimit = PAGE,
-    ) -> DefinitionPage:
+    async def definition(id_: str) -> DefinitionPage:
         state = running.get()
-        found = await read_definition(
-            state.pool, state.target().generation, id_, used_by_offset, used_by_limit
-        )
+        found = await read_definition(state.pool, state.target().generation, id_)
         if found is None:
             raise HTTPException(404, f"no definition {id_}")
         return DefinitionPage(
             **asdict(found),
             **asdict(usage(found.name, found.package, found.version, found.module)),
-            used_by_offset=used_by_offset,
         )
 
     @app.get("/packages/{name}")

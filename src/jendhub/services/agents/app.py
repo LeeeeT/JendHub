@@ -1,9 +1,10 @@
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import PlainTextResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -79,20 +80,16 @@ def routes(running: Running[AgentsState]) -> APIRouter:
         q: QueryText,
         limit: Limit = 10,
         offset: SearchOffset = 0,
+        user_agent: Annotated[str | None, Header()] = None,
     ) -> str:
         state = running.get()
-        found = await state.client.search(q, limit, offset)
+        found = await state.client.search(q, limit, offset, user_agent)
         return state.text(request, found, render_results)
 
     @router.get("/definitions/{id_:path}")
-    async def definition(
-        request: Request,
-        id_: str,
-        used_by_offset: Offset = 0,
-        used_by_limit: PageLimit = PAGE,
-    ) -> str:
+    async def definition(request: Request, id_: str) -> str:
         state = running.get()
-        found = await state.client.definition(id_, used_by_offset, used_by_limit)
+        found = await state.client.definition(id_)
         if found is None:
             raise HTTPException(404, f"no definition {id_}")
         return state.text(request, found, render_definition)
