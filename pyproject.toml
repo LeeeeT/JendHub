@@ -6,6 +6,7 @@ dependencies = [
     "fastapi",
     "httpx",
     "jinja2",
+    "lightgbm",
     "numpy",
     "prometheus-client",
     "psycopg[binary,pool]",

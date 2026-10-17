@@ -163,8 +163,10 @@ A use of an older release of a package counts for the same module and name in
 the latest release. On the first 300 queries of the dev benchmark and its
 first 36 packages, nDCG@10 is 0.816 with each result judged, against 0.819
 before the scale changes. On the extended benchmark, 500 queries and 44
-packages, nDCG@10 is 0.834 with each result judged. See
-[bench/README.md](bench/README.md) for the measurements behind each choice.
+packages, the search scores 0.823 at 10, 0.784 at 5 and 0.765 at 3, with each
+result judged. The learned lab ranker `dense-origin+name+lambdamart` scores
+0.848, 0.817 and 0.812. See [bench/README.md](bench/README.md) for the
+measurements behind each choice.
 
 The site stores every search of agents and people in the `searches` table, to improve the search with real queries later. It writes the
 row after the answer, so the log adds no latency, and a failed write does not
@@ -226,7 +228,8 @@ example `nix run .#stack -- logs -f site`, or
 stage compiles the Rust indexer. Its second stage installs the Python
 dependencies with `uv sync --frozen`, from `pyproject.toml` and `uv.lock`. The
 last stage is `python:3.14-slim` with the dependencies, the indexer and
-`src/jendhub`. The compose file gives each service its command.
+`src/jendhub`. It also installs `libgomp1`, because LightGBM needs OpenMP. The
+compose file gives each service its command.
 
 The dev shell does not read `uv.lock`. When you add a dependency, add it to
 `flake.nix` and to `pyproject.toml`, then run `uv lock`.
@@ -382,7 +385,7 @@ this table. The tests in `tests` have the same layout.
 | `vectors` | The Qdrant collections and the vector settings. |
 | `search` | The production search: tokens, signatures, documents, the engine and the definition reader. |
 | `indexing` | The artifacts of a release, the index store, the worker, the scheduler and the restore of vectors. |
-| `lab` | Experimental pipelines that run in memory: BM25, dense search, fusion and reranking. |
+| `lab` | Experimental pipelines that run in memory: BM25, dense search, fusion, reranking and the learned ranker. |
 | `bench` | The benchmark: queries, judgments, the judge, pooling and the measures. |
 | `services` | The HTTP services: `site` with its pages, text answers and rate limit, `syncer` and `worker`. |
 | `cli` | The admin commands. |

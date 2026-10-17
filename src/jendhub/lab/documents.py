@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from jendhub.corpus.definitions import Definition, Origin
 from jendhub.enrich.enricher import Enrichment
+from jendhub.search.documents import origin_line
 
 
 def origin_words(origin: Origin) -> str:
@@ -21,6 +22,10 @@ def head_package_documents(definitions: list[Definition]) -> list[tuple[str, str
 
 def name_documents(definitions: list[Definition]) -> list[tuple[str, str]]:
     return [(definition.id, definition.name) for definition in definitions]
+
+
+def origin_name_document(definition: Definition) -> str:
+    return f"{origin_line(definition.origin)}\n{definition.name}"
 
 
 def metadata(enrichment: Enrichment) -> str:

@@ -1,8 +1,9 @@
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 from jendhub.corpus.definitions import Definition
 from jendhub.embedding.embedder import Embedder
+from jendhub.embedding.model import instructed, normalized
 from jendhub.enrich.enricher import Enrichment
 from jendhub.lab.bm25 import Bm25
 from jendhub.lab.dense import Dense
@@ -11,14 +12,21 @@ from jendhub.lab.documents import (
     head_package_documents,
     metadata_documents,
     name_documents,
+    origin_name_document,
     text_documents,
     text_summary_documents,
 )
+from jendhub.lab.facts import Facts
+from jendhub.lab.features import Features
 from jendhub.lab.fusion import ReciprocalRankFusion
+from jendhub.lab.learned import GradedQuery, LearnedRank, train
 from jendhub.lab.names import NameMatch
 from jendhub.lab.pipeline import Pipeline, Scorer
 from jendhub.lab.rerank import LinearRerank, MaxNormalized
 from jendhub.lab.roles import ApiRole
+from jendhub.search.documents import origin_document
+from jendhub.search.engine import TASK_INSTRUCTION
+from jendhub.vectors.index import PRODUCTION
 
 NAME_WEIGHT = 1.0
 DENSE_NAME_WEIGHT = 0.1
@@ -35,6 +43,8 @@ class Resources:
     definitions: list[Definition]
     embedder: Embedder
     enrichments: dict[str, Enrichment]
+    facts: dict[str, Facts]
+    graded: Sequence[GradedQuery]
 
     async def dense(self, documents: list[tuple[str, str]]) -> Dense:
         return await Dense.build(self.embedder, documents, INSTRUCTION)
@@ -118,6 +128,21 @@ async def dense_text_metadata_name_rerank(resources: Resources) -> Pipeline:
     return LinearRerank(text, features)
 
 
+async def dense_origin_name_lambdamart(resources: Resources) -> Pipeline:
+    definitions = resources.definitions
+    embed = resources.embedder.embed
+    features = Features(
+        definitions,
+        resources.facts,
+        await embed([origin_document(definition) for definition in definitions]),
+        await embed([origin_name_document(definition) for definition in definitions]),
+        PRODUCTION,
+    )
+    texts = [instructed(TASK_INSTRUCTION, query.text) for query in resources.graded]
+    models = train(features, resources.graded, normalized(await embed(texts)))
+    return LearnedRank(features, models, TASK_INSTRUCTION)
+
+
 PIPELINES: dict[str, PipelineBuilder] = {
     "bm25": bm25,
     "bm25-head-package": bm25_head_package,
@@ -130,4 +155,5 @@ PIPELINES: dict[str, PipelineBuilder] = {
     "dense-enriched+name-rerank": dense_enriched_name_rerank,
     "dense-text+metadata+name-rerank": dense_text_metadata_name_rerank,
     "dense-enriched+text+bm25-enriched+role+name-rerank": dense_enriched_hybrid_rerank,
+    "dense-origin+name+lambdamart": dense_origin_name_lambdamart,
 }

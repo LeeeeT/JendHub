@@ -16,6 +16,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --compile-bytecode
 
 FROM python:3.14.8-slim-trixie
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=dependencies /opt/venv /opt/venv
 COPY --from=indexer /usr/local/bin/jendhub-index /usr/local/bin/jendhub-index
 COPY src/jendhub /opt/jendhub/jendhub

@@ -180,6 +180,7 @@ These pipelines are pooled at depth 10:
 - `dense-text+metadata+name-rerank`
 - `dense-enriched+text+bm25-enriched+role+name-rerank`
 - `dense-origin+graph+signature+name-rerank`
+- `dense-origin+name+lambdamart`
 
 Pooling costs about $0.15 for 1,000 pairs.
 
@@ -417,13 +418,118 @@ queries. The answer is in the corpus each time:
 | Undo the last action by keeping a history of actions in a last-in first-out structure. | `stack:Stack` of `bend-collections` |
 | I need a map that keeps its keys sorted so I can get all entries between two keys. | `balanced_search_tree:sub_map`, at rank 15 |
 
+## The learned ranker
+
+`dense-origin+name+lambdamart` is a lab pipeline without enrichment. Its goal
+is to put the best answer at the top. Thus the work measured nDCG@10, nDCG@5
+and nDCG@3, and it optimized the mean of the three.
+
+The order of the candidates limits the production search, not their recall.
+The production search has an answer with the best grade of the query in its
+top 20 for 99.4% of the queries, but at rank 1 for only 76%. A perfect order of
+its top 20 scores 0.955 at 10.
+
+The pipeline has three steps:
+
+1. The candidates are the 50 nearest definitions by the code embedding of the
+   production search: 2,048 dimensions and the production instruction.
+2. The pipeline computes 37 features for each candidate.
+3. A LambdaMART model (LightGBM, objective `lambdarank`) sorts the candidates.
+
+| Group | Features |
+|---|---|
+| Embeddings | The cosine of the code embedding. The cosine of a second embedding of the origin line and the name only, for example `bend-time-lib date` and `Date.add_days`. |
+| Words | The name overlap of production. The share of the words of the last name part that are in the query. The share of the content words of the query that are in the name. |
+| Signature | The signature match of production. |
+| Index | The reached gain, the users, the use by another release, the doc comment and the helper flag of production. |
+| Shape | Type, law, Base, the length of the last name part, the number of dots in the name, the length of the code. |
+| Neighbors | Among the 1,000 nearest definitions: the best similarity in the same module and in the same package, minus its own. The number of candidates of the same module. The similarity of the parent (`Date` for `Date.add_days`) and the best similarity of the children, minus its own. The number of children. |
+| Query | The number of words. The best similarity of the query. |
+
+For the two embeddings, the word features and the signature match, the
+pipeline also adds two relative values: the value minus the best value of the
+query, and the z-score in the 50 candidates.
+
+The model learns from the grades of the benchmark. A definition with no grade
+counts as grade 0. To keep the scores honest, the pipeline puts each query into
+one of 5 folds by the SHA-256 of its text. It trains one model on 4 folds and
+ranks the queries of the fifth fold with that model. Thus no model ranks a
+query that it learned from. The build, with its 5 models, takes about 40
+seconds.
+
+At query time, the pipeline needs one query embedding, as production does. The
+name embedding adds one vector to each definition. The name documents are
+short: their embeddings for the dev corpus cost $0.0015.
+
+### Results
+
+Pooling judged the 428 new pairs in the top 10 of the pipeline for $0.08. The
+pipeline then learns from the new grades too, so its top 10 changes a little:
+judged@10 is 0.973, and judged@5 is 1.000. The new grades lower the production
+scores, because they find relevant definitions that production ranks low. With
+all current grades:
+
+| Queries | nDCG@10 | nDCG@5 | nDCG@3 |
+|---|---|---|---|
+| all 500 | 0.823 → 0.848 | 0.784 → 0.817 | 0.765 → 0.812 |
+| keywords, phrase and description (381) | 0.823 → 0.855 | 0.777 → 0.823 | 0.753 → 0.814 |
+| keywords (146) | 0.855 → 0.888 | 0.817 → 0.863 | 0.795 → 0.846 |
+| phrase (130) | 0.837 → 0.875 | 0.796 → 0.852 | 0.775 → 0.853 |
+| description (105) | 0.760 → 0.785 | 0.699 → 0.731 | 0.669 → 0.721 |
+| question (35) | 0.748 → 0.754 | 0.719 → 0.699 | 0.725 → 0.717 |
+| signature (30) | 0.841 → 0.838 | 0.834 → 0.823 | 0.818 → 0.815 |
+| name (24) | 0.834 → 0.834 | 0.807 → 0.805 | 0.833 → 0.832 |
+| exact-name (15) | 0.873 → 0.888 | 0.870 → 0.885 | 0.854 → 0.880 |
+| exact-signature (15) | 0.889 → 0.890 | 0.866 → 0.879 | 0.864 → 0.867 |
+
+The first value is the production search, the second the learned ranker. On
+all queries, the change is +0.025 at 10 (interval [+0.017, +0.033]), +0.033 at
+5 ([+0.023, +0.044]) and +0.046 at 3 ([+0.032, +0.061]). Keywords, phrase and
+description gain significantly at each cutoff. The change of each other kind
+is not significant. The gain is largest at 3, as the goal requires.
+
+### Findings
+
+The research compared the variants on the mean of nDCG@10, @5 and @3, before
+pooling, with unknown grades as 0. Each variant was cross-validated with 5
+folds and 3 seeds.
+
+- The nonlinear model matters. With the same features, a linear LambdaRank
+  gains +0.012 and LambdaMART +0.023. LambdaMART with only the production
+  features does not beat production (-0.001).
+- The origin-and-name embedding gives most of the gain of the extra
+  embeddings: +0.015 without it, +0.022 with it, and +0.024 with embeddings of
+  the name alone, of the head and of the doc comment too. Each embedding adds
+  one vector to each definition, so the pipeline keeps only the
+  origin-and-name embedding.
+- The relative values add about +0.003.
+- These features had no effect: other query instructions, the best similarity
+  of the direct users and of the direct uses, the number of uses of the package
+  by other releases, and the rank of the candidate.
+- The LightGBM parameters form a flat plateau. A learning rate of 0.02 with
+  300 rounds is too slow (-0.006).
+- A local cross-encoder, `Qwen/Qwen3-Reranker-0.6B`, made the order much
+  worse. On 50 queries, it reranked the top 20 of production and lost 0.25.
+  With only the judged results, it scored 0.64 against 0.81 for production.
+  It puts laws, spec copies and helpers first, because it does not know the
+  role of a Bend definition. It took 4.2 s for each query on a GTX 1050 Ti. A
+  larger reranker costs too much for a public search with high throughput.
+
 ## Limits
 
 - There is no held-out query set. The weights of the rerankers were tuned on
   the first 300 queries, so their gains are a little too high. The best
   weights form a flat plateau, and cross-validation shows a smaller but real
-  gain, which limits this risk. The 200 new queries played no part in the
+  gain, which limits this risk. The 200 new queries played no part in that
   tuning.
+- The learned ranker is cross-validated, but its features and parameters were
+  chosen on all 500 queries. Its gain is thus a little too high too. The
+  research tried about 40 variants, and the differences between the good ones
+  are smaller than the noise.
+- The learned ranker learns from the grades that pooling found. A definition
+  that no pooled pipeline ranked high has no grade and counts as 0. Thus the
+  model can learn to prefer what earlier pipelines ranked high. Pooling found
+  few unjudged definitions in its top 10, so this effect is small.
 - An LLM wrote the queries, and an LLM writes the enrichment queries. They can
   be more similar to each other than real agent queries are. The third run
   read the production search results while it looked for answers. It added

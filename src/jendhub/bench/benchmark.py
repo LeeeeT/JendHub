@@ -28,6 +28,7 @@ from jendhub.indexing.schedule import (
 )
 from jendhub.indexing.store import IndexStore
 from jendhub.indexing.worker import Worker
+from jendhub.lab.facts import load_facts
 from jendhub.lab.pipelines import PIPELINES, Resources
 from jendhub.remote.openrouter import OpenRouter, open_openrouter
 from jendhub.search.engine import PRODUCTION, SearchEngine, Target
@@ -166,12 +167,19 @@ async def open_benchmark(data: Path, top: int | None) -> AsyncGenerator[Benchmar
         graph = UseGraph.of(edges)
         windows = corpus_windows(corpus)
         enrichments = (await EnrichmentStore(services.pool).load(windows)).enrichments
-        resources = Resources(definitions, services.embedder, enrichments)
         ids = {definition.id for definition in definitions}
         queries = await read_queries(services, library, listed, ids, top)
         judge = Judge(await asyncio.to_thread(JUDGE_PROMPT.read_text, encoding="utf-8"))
         store = JudgmentStore(services.pool)
         judgments, stale = current_judgments(await store.load(), queries, definitions, judge, graph)
+        resources = Resources(
+            definitions,
+            services.embedder,
+            enrichments,
+            await load_facts(services.pool, generation),
+            assessments(queries, judgments),
+        )
+
         yield Benchmark(
             services,
             corpus,

@@ -11,6 +11,7 @@
         ps.fastapi
         ps.httpx
         ps.jinja2
+        ps.lightgbm
         ps.numpy
         ps.prometheus-client
         ps.psycopg
