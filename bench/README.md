@@ -30,9 +30,9 @@ jendhub bench check
 
 | File | Content |
 |---|---|
-| `dev.json` | The frozen dev corpus: the Base tag and 36 packages. |
-| `PROMPT.md` | The prompt that made the last 100 queries. |
-| `queries.jsonl` | 300 queries with graded answers. |
+| `dev.json` | The frozen dev corpus: the Base tag and 44 packages. |
+| `PROMPT.md` | The prompt that made queries 201 to 300. |
+| `queries.jsonl` | 500 queries with graded answers. |
 | `JUDGE.md` | The prompt of the LLM judge. |
 
 ## Queries
@@ -42,15 +42,55 @@ imitate an AI agent that searches before it knows the name of the definition.
 Thus most queries are short and vague. The targets are API definitions, not
 helpers, tests or examples.
 
-Two runs wrote the queries. In each run, one agent read the whole dev corpus
-and wrote the queries with their answers.
+Three runs wrote the queries.
 
-1. The first run wrote 200 queries of 8 kinds for the corpus of 20 packages. It
-   used an earlier version of `PROMPT.md`.
+1. The first run wrote 200 queries of 8 kinds for the corpus of 20 packages.
+   One agent read the whole dev corpus and wrote the queries with their
+   answers. It used an earlier version of `PROMPT.md`.
 2. The second run wrote 100 keywords, phrase and description queries for the
-   corpus of 37 packages. It used the current `PROMPT.md`. Agents will mostly
-   search with a few words, like a person who searches with Google. These
-   three kinds are the main goal of JendHub.
+   corpus of 37 packages, in the same way. It used the current `PROMPT.md`.
+   Agents will mostly search with a few words, like a person who searches with
+   Google. These three kinds are the main goal of JendHub.
+3. The third run wrote 200 keywords, phrase and description queries for common
+   library tasks, after the corpus grew to 44 packages (see below). The agent
+   wrote each query first. Then it found the answers in the source: it read
+   the API of each package that can answer, searched the definitions by name
+   and text, and read the top 10 results of the production search. A query
+   went in when the corpus holds a grade-3 answer, also when the search misses
+   it. Thus the run does not prefer queries that the search already answers
+   well.
+
+### The extension of the corpus
+
+The first 36 packages hold few general library definitions. On the full
+corpus, searches for common tasks showed three kinds of difficulty that the
+dev corpus did not have:
+
+- Proof packages fill the results for basic tasks. For "list filter", the
+  laws of `bend-mathlib` about `filter` take ranks 2 to 8.
+- Several packages answer the same task: four JSON libraries, two time
+  libraries, two container libraries.
+- Some packages copy code of others. The `spec` and `proofs` modules of
+  `bend-collections` repeat its `src` functions.
+
+The third run added 8 packages, chosen for the most useful queries and
+distractors for each added definition:
+
+| Package | Definitions | Why |
+|---|---|---|
+| `bend-collections` | 4,483 | Containers, cryptography and math, with spec and proof copies of its own code |
+| `bend-mathlib` | 952 | Laws about lists, strings and naturals, which compete with Base for basic tasks |
+| `bend-time-lib` | 423 | Dates, durations and ISO 8601, beside `bend-kit-time` |
+| `emerging-ezjson` | 332 | A second JSON library, beside `bend-kit-json` |
+| `bend-kit-regex` | 316 | Regular expressions |
+| `bend-kit-bignum` | 136 | Big integers, decimals and rationals |
+| `bend-kit-fmt` | 59 | String formatting and float printing |
+| `bend-kit-csv` | 34 | CSV |
+
+The dev corpus now has 12,208 definitions. Packages that copy whole other
+packages (`bend-collections-laws-crypto`, `bend-collections-laws-math`, 14,407
+definitions) and generated tables (`bend-kit-unicode`, 13,301 definitions)
+stayed out, because they would more than double the corpus.
 
 When the corpus grew, 7 packages got a new version. The answers of the first
 run now point to the same names in the new versions. In 4 of these answers the
@@ -59,9 +99,9 @@ of the 26 changed definitions were deleted and judged again by pooling.
 
 | Kind | Queries |
 |---|---|
-| phrase | 67 |
-| keywords | 60 |
-| description | 54 |
+| keywords | 146 |
+| phrase | 130 |
+| description | 105 |
 | question | 35 |
 | signature | 30 |
 | name | 24 |
@@ -70,7 +110,9 @@ of the 26 changed definitions were deleted and judged again by pooling.
 
 Grades: `3` is exactly what the query asks for, `2` is a good answer, `1` is
 related and useful. Each query has at least one grade-3 answer. The queries
-hold 1,427 answers: 478 with grade 3, 525 with grade 2 and 424 with grade 1.
+hold 2,172 answers: 761 with grade 3, 727 with grade 2 and 684 with grade 1.
+The third run gave grade 1 to a spec copy of the function a query asks for,
+and no grade to proofs, laws and internal steps.
 
 ## Metric
 
@@ -168,9 +210,11 @@ about ±0.11 for a kind with 30 queries.
 
 ## Results
 
-nDCG@10 and judged@10 with the current judgments. The short column is the mean
-of the 181 keywords, phrase and description queries, weighted by the number of
-queries of each kind.
+This table and the sections after it, up to "The extended benchmark", measure
+the first 300 queries on the corpus of 36 packages. nDCG@10 and judged@10 use
+the judgments of that time. The short column is the mean of the 181 keywords,
+phrase and description queries, weighted by the number of queries of each
+kind.
 
 | Pipeline | nDCG@10 | short | judged@10 |
 |---|---|---|---|
@@ -326,15 +370,58 @@ with Base v2.0.37 and is therefore invalid. Its only file imports other
 packages and declares no definition, so the definitions, queries and scores
 did not change.
 
+## The extended benchmark
+
+The 500 queries on the corpus of 44 packages are not pooled yet. The new
+packages put unjudged definitions into the top 10 of the old queries too. The
+production pipeline gives these scores. nDCG@10 counts each unjudged result
+as grade 0, so it is too low. The condensed score drops the unjudged results
+from the ranking, so it is too high. The true score lies between them.
+
+| Queries | nDCG@10 | condensed | judged@10 |
+|---|---|---|---|
+| all 500 | 0.769 | 0.852 | 0.613 |
+| the first 300 | 0.738 | 0.809 | 0.824 |
+| the 200 new ones | 0.814 | 0.917 | 0.296 |
+| new keywords (86) | 0.848 | 0.938 | 0.310 |
+| new phrase (63) | 0.834 | 0.922 | 0.276 |
+| new description (51) | 0.731 | 0.873 | 0.296 |
+
+On the corpus of 36 packages, the first 300 queries scored 0.816 with each
+result judged. Their condensed score on the larger corpus, 0.809, shows that
+the new distractors push some graded answers out of the top 10.
+
+The top 10 hold 1,937 pairs without a grade. Pooling them costs about $0.30.
+Pool before you compare pipelines on the extended benchmark.
+
+The new packages have no enrichments, so the enriched lab pipelines see only
+part of the corpus enriched until `jendhub enrich` runs. The production
+pipeline needs no enrichment.
+
+The production search finds no grade-3 answer in the top 10 for five new
+queries. The answer is in the corpus each time:
+
+| Query | Grade-3 answer |
+|---|---|
+| Remember which items I have already seen so that I do not process them twice. | `Set`, `Set.add`, `Set.has` |
+| Undo the last action by keeping a history of actions in a last-in first-out structure. | `stack:Stack` of `bend-collections` |
+| I need a map that keeps its keys sorted so I can get all entries between two keys. | `balanced_search_tree:sub_map` |
+| Pull the year, month and day out of a date string with one pattern. | `regex:find` |
+| Prove that a message came from me with a public key signature. | `sign:sign` (rank 9) |
+
 ## Limits
 
 - There is no held-out query set. The weights of the rerankers were tuned on
-  all 300 queries, so their gains are a little too high. The best weights form
-  a flat plateau, and cross-validation shows a smaller but real gain, which
-  limits this risk.
+  the first 300 queries, so their gains are a little too high. The best
+  weights form a flat plateau, and cross-validation shows a smaller but real
+  gain, which limits this risk. The 200 new queries played no part in the
+  tuning.
 - An LLM wrote the queries, and an LLM writes the enrichment queries. They can
-  be more similar to each other than real agent queries are.
-- The dev corpus has 5,473 definitions. The search corpus is much larger, with
-  more distractors: the latest named releases and Base hold 73,883
-  definitions today, before the invalid releases are dropped. The dev corpus cannot show the recall of the HNSW index
-  or of binary quantization at that size.
+  be more similar to each other than real agent queries are. The third run
+  read the production search results while it looked for answers. It added
+  every query that the corpus answers, but it graded the definitions that it
+  found, and the search found many of them.
+- The dev corpus has 12,208 definitions. The search corpus is much larger, with
+  more distractors: the live index holds 57,169 definitions of 113 releases.
+  The dev corpus cannot show the recall of the HNSW index or of binary
+  quantization at that size.

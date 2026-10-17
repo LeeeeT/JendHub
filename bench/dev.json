@@ -180,6 +180,46 @@
       "hash": "0x7205ddcee53cfdb6b62686553b824b13",
       "name": "bend-math-lib",
       "version": "0.0.0.1"
+    },
+    {
+      "hash": "0xd9a2fae439ac7ff9e21e0853948f94fe",
+      "name": "bend-collections",
+      "version": "1.0.0.0"
+    },
+    {
+      "hash": "0xf8a2f05bbfb67041ce3d1eaece892a1a",
+      "name": "bend-mathlib",
+      "version": "0.7.3.0"
+    },
+    {
+      "hash": "0x5d092e40b48ee431bc4b160e8797f9d5",
+      "name": "bend-time-lib",
+      "version": "0.4.0.1"
+    },
+    {
+      "hash": "0x81c67699424929b5c44cd8577e18117f",
+      "name": "emerging-ezjson",
+      "version": "1.1.0.0"
+    },
+    {
+      "hash": "0xf73292a4762e6d899c1536ca091a9818",
+      "name": "bend-kit-regex",
+      "version": "0.7.0.0"
+    },
+    {
+      "hash": "0xea2956cd4e05ac318643319cb7fb3c29",
+      "name": "bend-kit-fmt",
+      "version": "0.1.0.0"
+    },
+    {
+      "hash": "0xbf5d8bf07d7411858acb5142889fc4d7",
+      "name": "bend-kit-bignum",
+      "version": "0.1.0.0"
+    },
+    {
+      "hash": "0x3979161cdac065f4d7fc0e807196e138",
+      "name": "bend-kit-csv",
+      "version": "0.2.0.0"
     }
   ]
 }

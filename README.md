@@ -160,8 +160,10 @@ named releases, all of them generated proofs.
 | -0.04 | 1 if a definition of its module reaches it, and that name followed by `.` starts its name, as `Map.put.go` under `Map.put` |
 
 A use of an older release of a package counts for the same module and name in
-the latest release. On the dev benchmark, nDCG@10 is 0.816 with each result
-judged, against 0.819 before the scale changes. See
+the latest release. On the first 300 queries of the dev benchmark and its
+first 36 packages, nDCG@10 is 0.816 with each result judged, against 0.819
+before the scale changes. The extended benchmark (500 queries, 44 packages) is
+not pooled yet: its score lies between 0.769 and 0.852. See
 [bench/README.md](bench/README.md) for the measurements behind each choice.
 
 The site stores every search of agents and people in the `searches` table, to improve the search with real queries later. It writes the
