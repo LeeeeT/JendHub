@@ -9,3 +9,7 @@ def origin_line(origin: Origin) -> str:
 
 def origin_document(definition: Definition) -> str:
     return f"{origin_line(definition.origin)}\n{definition.text}"[:DOCUMENT_LIMIT]
+
+
+def name_document(definition: Definition) -> str:
+    return f"{origin_line(definition.origin)}\n{definition.name}"

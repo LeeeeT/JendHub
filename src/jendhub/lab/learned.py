@@ -1,13 +1,14 @@
 import hashlib
 from collections.abc import Sequence
-from typing import Protocol, cast
+from typing import Protocol
 
 import lightgbm as lgb
 import numpy as np
 
 from jendhub.embedding.model import Vectors
-from jendhub.lab.features import Features, Matrix
+from jendhub.lab.features import Features
 from jendhub.lab.pipeline import QueryBatch
+from jendhub.search.ranking import Matrix, Model
 
 FOLDS = 5
 ROUNDS = 300
@@ -35,45 +36,45 @@ class GradedQuery(Protocol):
     def grades(self) -> dict[str, int]: ...
 
 
-class Model(Protocol):
-    def predict(self, data: Matrix) -> Matrix: ...
-
-
-class Trees:
-    def __init__(self, booster: lgb.Booster) -> None:
-        self.booster = booster
-
-    def predict(self, data: Matrix) -> Matrix:
-        scores = self.booster.predict(data)  # pyright: ignore[reportUnknownMemberType]
-        return np.asarray(cast("Matrix", scores), dtype=np.float64)
+type Example = tuple[list[str], Matrix, dict[str, int]]
 
 
 def fold(text: str) -> int:
     return int.from_bytes(hashlib.sha256(text.encode()).digest()[:4]) % FOLDS
 
 
-def fit(data: lgb.Dataset) -> Trees:
+def examples(features: Features, queries: Sequence[GradedQuery], vectors: Vectors) -> list[Example]:
+    return [
+        (*features.matrix(query.text, vector), query.grades)
+        for query, vector in zip(queries, vectors, strict=True)
+    ]
+
+
+def fit(found: list[Example]) -> lgb.Booster:
+    data = lgb.Dataset(
+        np.vstack([matrix for _, matrix, _ in found]),
+        [grades.get(id_, 0) for ids, _, grades in found for id_ in ids],
+        group=[len(ids) for ids, _, _ in found],
+    )
     booster = lgb.Booster(PARAMETERS, data)
     for _ in range(ROUNDS):
         booster.update()
-    return Trees(booster)
+    return booster
 
 
-def train(features: Features, queries: Sequence[GradedQuery], vectors: Vectors) -> list[Model]:
-    examples = [
-        (fold(query.text), *features.matrix(query.text, vector), query.grades)
-        for query, vector in zip(queries, vectors, strict=True)
+def train_folds(
+    features: Features, queries: Sequence[GradedQuery], vectors: Vectors
+) -> list[lgb.Booster]:
+    found = examples(features, queries, vectors)
+    folds = [fold(query.text) for query in queries]
+    return [
+        fit([example for example, own in zip(found, folds, strict=True) if own != held_out])
+        for held_out in range(FOLDS)
     ]
-    models: list[Model] = []
-    for held_out in range(FOLDS):
-        kept = [example for example in examples if example[0] != held_out]
-        data = lgb.Dataset(
-            np.vstack([matrix for _, _, matrix, _ in kept]),
-            [grades.get(id_, 0) for _, ids, _, grades in kept for id_ in ids],
-            group=[len(ids) for _, ids, _, _ in kept],
-        )
-        models.append(fit(data))
-    return models
+
+
+def train_all(features: Features, queries: Sequence[GradedQuery], vectors: Vectors) -> lgb.Booster:
+    return fit(examples(features, queries, vectors))
 
 
 class LearnedRank:

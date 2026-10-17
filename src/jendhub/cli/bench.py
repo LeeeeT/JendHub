@@ -14,6 +14,8 @@ from jendhub.bench.pooling import (
     random_negatives,
 )
 from jendhub.bench.queries import summary
+from jendhub.lab.learned import train_all
+from jendhub.search.ranking import MODEL
 
 DEFAULT_DEPTH = 10
 DEFAULT_K = 10
@@ -67,6 +69,13 @@ async def pool_pipelines(benchmark: Benchmark, names: list[str], depth: int) -> 
     sys.stdout.write(f"the pool holds {len(pairs)} pairs without an original answer\n")
 
 
+async def train_model(benchmark: Benchmark) -> None:
+    resources = benchmark.resources
+    vectors = await resources.graded_vectors()
+    train_all(await resources.features(), resources.graded, vectors).save_model(MODEL)
+    sys.stdout.write(f"wrote {MODEL} from {len(resources.graded)} queries\n")
+
+
 async def check_agreement(benchmark: Benchmark) -> None:
     ids = [definition.id for definition in benchmark.definitions]
     negatives = random_negatives(benchmark.queries, ids)
@@ -87,6 +96,9 @@ async def run_bench(benchmark: Benchmark, subcommand: str, arguments: argparse.N
             await compare_pipelines(benchmark, arguments.baseline, arguments.candidate, arguments.k)
         case "pool":
             await pool_pipelines(benchmark, arguments.pipelines, arguments.depth)
+        case "train":
+            benchmark.require_current()
+            await train_model(benchmark)
         case "agreement":
             await check_agreement(benchmark)
         case "judge" if arguments.dry_run:

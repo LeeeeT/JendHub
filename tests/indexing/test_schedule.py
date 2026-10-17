@@ -13,6 +13,7 @@ from jendhub.indexing.schedule import clean_retired, promote_ready, schedule_liv
 from jendhub.indexing.store import LIVE, MAX_ATTEMPTS, IndexStore
 from jendhub.indexing.worker import IndexingError, Worker
 from jendhub.search.engine import SearchEngine, Target
+from jendhub.search.ranking import load_model
 from jendhub.vectors.index import VectorConfig, VectorIndex
 from tests.indexing.library_fixture import BASE
 from tests.indexing.live import WordEmbedder, index_live, seed
@@ -71,9 +72,11 @@ async def test_a_new_vector_setting_builds_a_new_generation_beside_the_live_one(
     live = await index.live(LIVE)
     assert live is not None
     assert (live.id, live.config) == (new.id, setting)
-    engine = SearchEngine(pool, vectors, WordEmbedder(), Target(live.id, live.collection, setting))
-    [hits] = await engine.search(["double a number"], 1)
-    assert [hit.id for hit in hits] == ["kit@1.0.0.0/main:double"]
+    engine = SearchEngine(
+        pool, vectors, WordEmbedder(), load_model(), Target(live.id, live.collection, setting)
+    )
+    [hits] = await engine.search(["double a number"], 10)
+    assert "kit@1.0.0.0/main:double" in [hit.id for hit in hits]
 
 
 async def test_a_failed_job_waits_and_then_stops_the_drain(

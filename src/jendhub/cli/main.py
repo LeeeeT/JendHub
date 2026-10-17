@@ -112,6 +112,10 @@ def parse_arguments() -> argparse.Namespace:
         help="the number of top results of each pipeline (default: %(default)s)",
     )
     bench_commands.add_parser(
+        "train",
+        help="train the ranking model of the search engine on all queries and write it",
+    )
+    bench_commands.add_parser(
         "agreement",
         help="judge the original answers and random definitions, and compare the grades",
     )

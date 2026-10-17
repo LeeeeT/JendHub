@@ -32,6 +32,7 @@ from jendhub.lab.facts import load_facts
 from jendhub.lab.pipelines import PIPELINES, Resources
 from jendhub.remote.openrouter import OpenRouter, open_openrouter
 from jendhub.search.engine import PRODUCTION, SearchEngine, Target
+from jendhub.search.ranking import load_model
 from jendhub.settings import (
     DatabaseSettings,
     OpenRouterSettings,
@@ -101,7 +102,9 @@ class Benchmark:
         services = self.services
         found = await IndexStore(services.pool).generation(self.generation)
         target = Target(found.id, found.collection, found.config)
-        return SearchEngine(services.pool, services.vectors, services.embedder, target)
+        return SearchEngine(
+            services.pool, services.vectors, services.embedder, load_model(), target
+        )
 
     async def searcher(self, name: str) -> Searcher:
         if name == PRODUCTION:

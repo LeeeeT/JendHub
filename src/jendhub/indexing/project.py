@@ -3,9 +3,10 @@ import logging
 import numpy as np
 
 from jendhub.embedding.cache import EmbeddingCache
+from jendhub.embedding.model import Vectors
 from jendhub.errors import JendHubError
 from jendhub.indexing.store import Generation, IndexStore, Projection, projections
-from jendhub.vectors.index import VectorIndex
+from jendhub.vectors.index import Projected, VectorIndex
 
 CHUNK = 512
 
@@ -38,16 +39,19 @@ async def project_release(
 ) -> None:
     await vectors.delete_release(generation.collection, release.release)
     for start in range(0, len(release.points), CHUNK):
-        digests = release.digests[start : start + CHUNK]
-        stored = await cache.load(digests)
-        missing = [digest for digest in digests if digest not in stored]
-        if missing:
-            raise ProjectionError(f"{len(missing)} vectors of {release.release} are not cached")
-        matrix = np.stack([stored[digest] for digest in digests])
-        points = release.points[start : start + CHUNK]
-        await vectors.upsert(
-            generation.collection, generation.config, points, matrix, release.release
-        )
+        chunk = slice(start, start + CHUNK)
+        code = await cached(cache, release.release, release.digests[chunk])
+        names = await cached(cache, release.release, release.name_digests[chunk])
+        found = Projected(release.points[chunk], code, names, release.modules[chunk])
+        await vectors.upsert(generation.collection, generation.config, found, release.release)
+
+
+async def cached(cache: EmbeddingCache, release: str, digests: list[bytes]) -> Vectors:
+    stored = await cache.load(digests)
+    missing = [digest for digest in digests if digest not in stored]
+    if missing:
+        raise ProjectionError(f"{len(missing)} vectors of {release} are not cached")
+    return np.stack([stored[digest] for digest in digests])
 
 
 async def restore_vectors(

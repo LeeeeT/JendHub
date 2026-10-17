@@ -22,6 +22,7 @@ from jendhub.remote.openrouter import open_openrouter
 from jendhub.search.definitions import DefinitionDetail, read_definition
 from jendhub.search.engine import Hit, SearchEngine, Target
 from jendhub.search.packages import PackageDetail, read_package
+from jendhub.search.ranking import Model, load_model
 from jendhub.search.searches import Client, Search, record_search
 from jendhub.search.sources import (
     ReleaseFiles,
@@ -72,6 +73,7 @@ class Resources:
     pool: Pool
     vectors: VectorIndex
     embedder: Embedder
+    model: Model
 
 
 type OpenResources = Callable[[], AbstractAsyncContextManager[Resources]]
@@ -85,7 +87,7 @@ async def open_resources(query_cache_size: int) -> AsyncGenerator[Resources]:
         open_openrouter(load_settings(OpenRouterSettings)) as openrouter,
     ):
         embedder = MemoryCachedEmbedder(RemoteEmbedder(openrouter), query_cache_size)
-        yield Resources(pool, vectors, embedder)
+        yield Resources(pool, vectors, embedder, load_model())
 
 
 @dataclass(frozen=True)
@@ -143,7 +145,9 @@ class Site:
     ) -> tuple[Results, Search]:
         target = self.target()
         resources = self.resources
-        engine = SearchEngine(resources.pool, resources.vectors, resources.embedder, target)
+        engine = SearchEngine(
+            resources.pool, resources.vectors, resources.embedder, resources.model, target
+        )
         start = time.perf_counter()
         [hits] = await engine.search([query], MAX_LIMIT)
         searched = Search(

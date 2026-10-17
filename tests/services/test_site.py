@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from jendhub.db.pool import Pool, open_pool
 from jendhub.hub.api import Release
+from jendhub.search.ranking import load_model
 from jendhub.services.site.app import create_app
 from jendhub.services.site.views import Resources
 from jendhub.settings import DatabaseSettings, QdrantSettings
@@ -28,7 +29,7 @@ def opener(database: DatabaseSettings, qdrant: QdrantSettings) -> Opener:
     @asynccontextmanager
     async def resources() -> AsyncGenerator[Resources]:
         async with open_pool(database) as own, open_vector_index(qdrant) as index:
-            yield Resources(own, index, WordEmbedder())
+            yield Resources(own, index, WordEmbedder(), load_model())
 
     return resources
 

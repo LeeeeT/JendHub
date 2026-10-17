@@ -7,7 +7,7 @@ from pathlib import Path
 from jendhub.corpus.definitions import BASE, Definition, Origin, SourceFile, extract
 from jendhub.hub.api import Release
 from jendhub.hub.library import Library
-from jendhub.search.documents import origin_document
+from jendhub.search.documents import name_document, origin_document
 from jendhub.search.signatures import Signature, head_signature
 from jendhub.uses.graph import UseGraph, reached
 from jendhub.uses.resolve import Declaration, resolve
@@ -22,6 +22,8 @@ class IndexedDefinition:
     definition: Definition
     key: str
     document: str
+    name_document: str
+    parent: str | None
     signature: Signature | None
     documented: bool
     helper: bool
@@ -89,6 +91,17 @@ class Targets:
         return f"{package.name}/{module}:{target.name}"
 
 
+def parents(definitions: list[Definition]) -> dict[str, str]:
+    named = {(definition.origin, definition.name): definition.id for definition in definitions}
+    return {
+        definition.id: parent
+        for definition in definitions
+        if "." in definition.name
+        and (parent := named.get((definition.origin, definition.name.rsplit(".", 1)[0])))
+        is not None
+    }
+
+
 def package_hash(library: Path, file: Path) -> str | None:
     return file.relative_to(library).parts[0] if file.is_relative_to(library) else None
 
@@ -127,11 +140,14 @@ async def build(
             ):
                 external[user].add(key)
     graph = UseGraph.of(edges)
+    found_parents = parents(definitions)
     indexed = [
         IndexedDefinition(
             definition,
             definition_key(definition.origin, definition.name),
             origin_document(definition),
+            name_document(definition),
+            found_parents.get(definition.id),
             head_signature(definition.head) if definition.kind == "def" else None,
             definition.text.startswith("#"),
             is_helper(definition, graph, by_id),

@@ -13,7 +13,7 @@ from jendhub.hub.api import Release
 from jendhub.indexing.artifacts import Artifacts
 from jendhub.vectors.index import Quantization, VectorConfig, collection_name
 
-INDEXER_VERSION = 2
+INDEXER_VERSION = 3
 LIVE = "live"
 MAX_ATTEMPTS = 5
 RETRY_BASE = timedelta(minutes=1)
@@ -401,6 +401,10 @@ async def insert(
         indexed.definition.id: point
         for indexed, point in zip(artifacts.definitions, points, strict=True)
     }
+    children: dict[str, list[int]] = {}
+    for indexed in artifacts.definitions:
+        if indexed.parent is not None:
+            children.setdefault(indexed.parent, []).append(by_id[indexed.definition.id])
     rows = [
         (
             point,
@@ -418,22 +422,25 @@ async def insert(
             indexed.definition.start,
             indexed.definition.end,
             digest(indexed.document),
+            digest(indexed.name_document),
             None if indexed.signature is None else Jsonb(indexed.signature.parameters_json()),
             None if indexed.signature is None else Jsonb(indexed.signature.result_json()),
             indexed.documented,
             indexed.helper,
             indexed.users,
             sorted(by_id[id_] for id_ in indexed.reached),
+            None if indexed.parent is None else by_id[indexed.parent],
+            sorted(children.get(indexed.definition.id, [])),
         )
         for indexed, point in zip(artifacts.definitions, points, strict=True)
     ]
     async with connection.cursor() as many:
         await many.executemany(
             "INSERT INTO definitions (point, generation, release, id, key, kind, name, package,"
-            " version, module, text, head, first_line, end_line, document_digest, parameters,"
-            " result, documented, helper, users, reached)"
+            " version, module, text, head, first_line, end_line, document_digest, name_digest,"
+            " parameters, result, documented, helper, users, reached, parent, children)"
             " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
-            " %s, %s, %s)",
+            " %s, %s, %s, %s, %s, %s)",
             rows,
         )
         await many.executemany(
@@ -456,15 +463,21 @@ class Projection:
     release: str
     points: list[int]
     digests: list[bytes]
+    name_digests: list[bytes]
+    modules: list[str]
 
 
 async def projections(pool: Pool, generation_id: int) -> list[Projection]:
     async with pool.connection() as connection:
         cursor = await connection.execute(
             "SELECT release, array_agg(point ORDER BY point),"
-            " array_agg(document_digest ORDER BY point)"
+            " array_agg(document_digest ORDER BY point), array_agg(name_digest ORDER BY point),"
+            " array_agg(module ORDER BY point)"
             " FROM definitions WHERE generation = %s GROUP BY release ORDER BY release",
             (generation_id,),
         )
         rows = await cursor.fetchall()
-    return [Projection(release, list(points), list(digests)) for release, points, digests in rows]
+    return [
+        Projection(release, list(points), list(digests), list(name_digests), list(modules))
+        for release, points, digests, name_digests, modules in rows
+    ]

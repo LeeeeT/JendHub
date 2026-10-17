@@ -23,6 +23,7 @@ jendhub bench check
 | `jendhub bench run <pipeline> [--k N ...]` | Prints nDCG@k and judged@k for all queries and for each kind. |
 | `jendhub bench compare <A> <B> [--k N]` | Compares two pipelines query by query. |
 | `jendhub bench pool --pipelines <name> ... [--depth N]` | Judges the top results of the named pipelines. |
+| `jendhub bench train` | Trains the ranking model of the search engine on all queries, and writes `src/jendhub/search/ranker.txt`. |
 | `jendhub bench agreement` | Judges the original answers and random definitions, and prints the agreement. |
 | `jendhub bench judge [--dry-run]` | Judges each pair with a stale grade again. `--dry-run` prints the number of pairs and the size of the messages, and sends nothing. |
 
@@ -179,7 +180,8 @@ These pipelines are pooled at depth 10:
 - `dense-enriched+name-rerank`
 - `dense-text+metadata+name-rerank`
 - `dense-enriched+text+bm25-enriched+role+name-rerank`
-- `dense-origin+graph+signature+name-rerank`
+- `dense-origin+graph+signature+name-rerank`, the weighted-sum search engine
+  before the learned ranker replaced it
 - `dense-origin+name+lambdamart`
 
 Pooling costs about $0.15 for 1,000 pairs.
@@ -482,7 +484,8 @@ all current grades:
 | exact-name (15) | 0.873 → 0.888 | 0.870 → 0.885 | 0.854 → 0.880 |
 | exact-signature (15) | 0.889 → 0.890 | 0.866 → 0.879 | 0.864 → 0.867 |
 
-The first value is the production search, the second the learned ranker. On
+The first value is the weighted-sum production search of that time, the second
+the learned ranker. On
 all queries, the change is +0.025 at 10 (interval [+0.017, +0.033]), +0.033 at
 5 ([+0.023, +0.044]) and +0.046 at 3 ([+0.032, +0.061]). Keywords, phrase and
 description gain significantly at each cutoff. The change of each other kind
@@ -514,6 +517,29 @@ folds and 3 seeds.
   It puts laws, spec copies and helpers first, because it does not know the
   role of a Bend definition. It took 4.2 s for each query on a GTX 1050 Ti. A
   larger reranker costs too much for a public search with high throughput.
+
+### In production
+
+The search engine now uses the learned ranker. The sections before "The
+learned ranker" describe the weighted-sum engine that it replaced. The lab
+pipeline and the engine compute the features with the same code,
+`search/ranking.py`. The lab reads the definitions from memory, and the engine
+reads them from Postgres and Qdrant. `jendhub bench train` trains one model on
+all 500 queries, with the same parameters, and writes `search/ranker.txt`.
+
+With the same model, the engine and the lab code give the same top 10 for each
+of the 500 queries. The benchmark runs the engine as `production`. Its scores
+are too high, because its model learned from the same queries: 0.907 at 10,
+0.897 at 5 and 0.900 at 3, with judged@10 0.984. The cross-validated scores of
+the lab pipeline, 0.848, 0.817 and 0.812, are the estimate for new queries.
+
+On the dev corpus in WSL, a search without the query embedding takes 80 ms
+(median), against 38 ms before. A Qdrant request costs about 11 ms there even
+when it does nearly nothing, and the engine now sends two or three requests:
+the 1,000 nearest definitions with their modules, the name scores of the 50
+candidates, and the code scores of parents and children outside the 1,000. The
+features and the model take about 6 ms. Qdrant computes the name scores, so no
+vector goes over the network.
 
 ## Limits
 

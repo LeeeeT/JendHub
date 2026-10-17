@@ -7,6 +7,7 @@ from jendhub.embedding.cache import EmbeddingCache
 from jendhub.indexing import project, worker
 from jendhub.indexing.project import restore_vectors
 from jendhub.search.engine import SearchEngine
+from jendhub.search.ranking import load_model
 from jendhub.vectors.index import VectorIndex
 from tests.indexing.live import KIT_V1, WordEmbedder, index_live, seed
 
@@ -16,7 +17,7 @@ async def test_restore_writes_a_lost_collection_from_the_cache(
 ) -> None:
     await seed(pool)
     index, target = await index_live(pool, vectors, tmp_path)
-    engine = SearchEngine(pool, vectors, WordEmbedder(), target)
+    engine = SearchEngine(pool, vectors, WordEmbedder(), load_model(), target)
     [before] = await engine.search(["double a number"], 3)
     await vectors.drop(target.collection)
     assert await restore_vectors(index, vectors, EmbeddingCache(pool)) == [target.collection]
@@ -37,7 +38,7 @@ async def test_restore_completes_a_partial_collection(
 ) -> None:
     await seed(pool)
     index, target = await index_live(pool, vectors, tmp_path)
-    engine = SearchEngine(pool, vectors, WordEmbedder(), target)
+    engine = SearchEngine(pool, vectors, WordEmbedder(), load_model(), target)
     [before] = await engine.search(["double a number"], 3)
     described = await vectors.client.get_collection(target.collection)
     threshold = described.config.optimizer_config.indexing_threshold
@@ -56,7 +57,7 @@ async def test_indexing_and_restore_work_in_chunks(
     monkeypatch.setattr(project, "CHUNK", 1)
     await seed(pool)
     index, target = await index_live(pool, vectors, tmp_path)
-    engine = SearchEngine(pool, vectors, WordEmbedder(), target)
+    engine = SearchEngine(pool, vectors, WordEmbedder(), load_model(), target)
     [before] = await engine.search(["double a number"], 3)
     assert before[0].id == "kit@1.0.0.0/main:double"
     await vectors.drop(target.collection)

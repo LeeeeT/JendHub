@@ -6,7 +6,8 @@ import pytest
 from jendhub.corpus.definitions import BASE, Definition, Origin
 from jendhub.hub.api import Release
 from jendhub.lab.facts import Facts
-from jendhub.lab.features import FEATURES, Features, singular
+from jendhub.lab.features import Features
+from jendhub.search.ranking import FEATURES
 from jendhub.vectors.index import VectorConfig
 
 CONFIG = VectorConfig(3, "none")
@@ -38,15 +39,6 @@ def features() -> Features:
 
 def column(matrix: np.ndarray, name: str) -> list[float]:
     return matrix[:, FEATURES.index(name)].tolist()
-
-
-def test_singular_removes_plural_endings_of_long_words() -> None:
-    assert [singular(word) for word in ("entries", "matches", "lists", "bus")] == [
-        "entry",
-        "match",
-        "list",
-        "bus",
-    ]
 
 
 def test_matrix_ranks_candidates_by_code_similarity() -> None:

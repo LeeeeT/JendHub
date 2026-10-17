@@ -3,15 +3,18 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Literal
 
-import numpy as np
 from qdrant_client import AsyncQdrantClient, models
 
 from jendhub.embedding.model import Vectors, normalized
 from jendhub.settings import QdrantSettings
 
 type Quantization = Literal["none", "int8", "binary"]
+type VectorName = Literal["code", "name"]
 
+CODE: VectorName = "code"
+NAME: VectorName = "name"
 RELEASE = "release"
+MODULE = "module"
 HNSW_M = 16
 HNSW_EF_CONSTRUCT = 128
 OVERSAMPLING = 2.0
@@ -61,9 +64,19 @@ def collection_name(generation: int, config: VectorConfig) -> str:
 
 
 @dataclass(frozen=True)
-class Neighbors:
+class Neighbor:
+    point: int
+    score: float
+    release: str
+    module: str
+
+
+@dataclass(frozen=True)
+class Projected:
     points: list[int]
-    scores: list[float]
+    code: Vectors
+    names: Vectors
+    modules: list[str]
 
 
 class VectorIndex:
@@ -99,11 +112,21 @@ class VectorIndex:
             return
         await self.client.create_collection(
             name,
-            vectors_config=models.VectorParams(
-                size=config.dimensions, distance=models.Distance.COSINE, on_disk=True
-            ),
-            hnsw_config=models.HnswConfigDiff(m=HNSW_M, ef_construct=HNSW_EF_CONSTRUCT),
-            quantization_config=config.quantization_config(),
+            vectors_config={
+                CODE: models.VectorParams(
+                    size=config.dimensions,
+                    distance=models.Distance.COSINE,
+                    on_disk=True,
+                    hnsw_config=models.HnswConfigDiff(m=HNSW_M, ef_construct=HNSW_EF_CONSTRUCT),
+                    quantization_config=config.quantization_config(),
+                ),
+                NAME: models.VectorParams(
+                    size=config.dimensions,
+                    distance=models.Distance.COSINE,
+                    on_disk=True,
+                    hnsw_config=models.HnswConfigDiff(m=0),
+                ),
+            },
         )
         await self.client.create_payload_index(
             name, RELEASE, field_schema=models.PayloadSchemaType.KEYWORD
@@ -112,18 +135,19 @@ class VectorIndex:
     async def drop(self, name: str) -> None:
         await self.client.delete_collection(name)
 
-    async def upsert(
-        self, name: str, config: VectorConfig, points: list[int], vectors: Vectors, release: str
-    ) -> None:
-        projected = config.project(vectors)
-        for start in range(0, len(points), UPSERT_BATCH):
+    async def upsert(self, name: str, config: VectorConfig, found: Projected, release: str) -> None:
+        code = config.project(found.code)
+        names = config.project(found.names)
+        for start in range(0, len(found.points), UPSERT_BATCH):
             batch = slice(start, start + UPSERT_BATCH)
             await self.client.upsert(
                 name,
                 points=models.Batch(
-                    ids=list[models.ExtendedPointId](points[batch]),
-                    vectors=projected[batch].tolist(),
-                    payloads=[{RELEASE: release}] * len(points[batch]),
+                    ids=list[models.ExtendedPointId](found.points[batch]),
+                    vectors={CODE: code[batch].tolist(), NAME: names[batch].tolist()},
+                    payloads=[
+                        {RELEASE: release, MODULE: module} for module in found.modules[batch]
+                    ],
                 ),
                 wait=True,
             )
@@ -138,30 +162,50 @@ class VectorIndex:
 
     async def search(
         self, name: str, config: VectorConfig, vector: Vectors, limit: int
-    ) -> Neighbors:
+    ) -> list[Neighbor]:
         response = await self.client.query_points(
             name,
             query=config.project(vector.reshape(1, -1))[0].tolist(),
+            using=CODE,
             search_params=config.search_params(limit),
             limit=limit,
-            with_payload=False,
+            with_payload=[RELEASE, MODULE],
         )
-        return Neighbors(
-            [int(point.id) for point in response.points],
-            [point.score for point in response.points],
-        )
+        return [
+            Neighbor(
+                int(point.id),
+                point.score,
+                str(payload.get(RELEASE)),
+                str(payload.get(MODULE)),
+            )
+            for point in response.points
+            if (payload := point.payload) is not None
+        ]
 
-    async def vectors(self, name: str, points: list[int]) -> dict[int, Vectors]:
+    async def scores(
+        self,
+        name: str,
+        config: VectorConfig,
+        vector: Vectors,
+        points: list[int],
+        using: VectorName,
+    ) -> dict[int, float]:
         if not points:
             return {}
-        records = await self.client.retrieve(
-            name, list[models.ExtendedPointId](points), with_vectors=True
+        response = await self.client.query_points(
+            name,
+            query=config.project(vector.reshape(1, -1))[0].tolist(),
+            using=using,
+            query_filter=models.Filter(
+                must=[models.HasIdCondition(has_id=list[models.ExtendedPointId](points))]
+            ),
+            search_params=models.SearchParams(
+                exact=True, quantization=models.QuantizationSearchParams(ignore=True)
+            ),
+            limit=len(points),
+            with_payload=False,
         )
-        return {
-            int(record.id): np.array(record.vector, dtype=np.float32)
-            for record in records
-            if isinstance(record.vector, list)
-        }
+        return {int(point.id): point.score for point in response.points}
 
 
 @asynccontextmanager

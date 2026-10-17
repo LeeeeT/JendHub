@@ -12,7 +12,7 @@ from jendhub.hub.library import Library, ensure_base, refresh
 from jendhub.hub.store import PackageStore
 from jendhub.indexing.artifacts import BASE_RELEASE, build
 from jendhub.indexing.store import LIVE, Generation, IndexStore, Job, Superseded
-from jendhub.vectors.index import VectorIndex
+from jendhub.vectors.index import Projected, VectorIndex
 
 LEASE = timedelta(minutes=15)
 IDLE_SECONDS = 5.0
@@ -65,8 +65,11 @@ class Worker:
                 sorted(mismatch.only_declared),
             )
         documents = [definition.document for definition in artifacts.definitions]
+        names = [definition.name_document for definition in artifacts.definitions]
+        modules = [definition.definition.origin.module for definition in artifacts.definitions]
         for start in range(0, len(documents), CHUNK):
             await self.embedder.embed(documents[start : start + CHUNK])
+            await self.embedder.embed(names[start : start + CHUNK])
         written = await self.index.write(generation.id, artifacts)
         if isinstance(written, Superseded):
             logger.info("%s is superseded by %s", job.release, written.by)
@@ -76,11 +79,14 @@ class Worker:
         for release in written.removed:
             await self.vectors.delete_release(generation.collection, release)
         for start in range(0, len(documents), CHUNK):
-            vectors = await self.embedder.embed(documents[start : start + CHUNK])
-            points = written.points[start : start + CHUNK]
-            await self.vectors.upsert(
-                generation.collection, generation.config, points, vectors, job.release
+            chunk = slice(start, start + CHUNK)
+            found = Projected(
+                written.points[chunk],
+                await self.embedder.embed(documents[chunk]),
+                await self.embedder.embed(names[chunk]),
+                modules[chunk],
             )
+            await self.vectors.upsert(generation.collection, generation.config, found, job.release)
         if not await self.index.release_size(generation.id, job.release):
             await self.vectors.delete_release(generation.collection, job.release)
         await self.index.refresh_external(generation.id, written.keys)

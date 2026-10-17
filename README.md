@@ -30,8 +30,9 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   the index in memory. Postgres is the source of truth. Qdrant holds the
   vectors as a projection that can be built again from Postgres.
 - **Models:** all models run through [OpenRouter](https://openrouter.ai). The
-  only paid cost for each search request is the query embedding. JendHub uses
-  no reranker model. The reranker is a weighted sum of cheap features.
+  only paid cost for each search request is the query embedding. The reranker
+  is a small LightGBM model of cheap features. It runs in the site and calls no
+  model API.
 - **Services:** each job with its own life cycle is a service with an HTTP
   contract. A new service is a new package under `services/`.
 - **Environments:** development and production are decoupled. Development
@@ -103,7 +104,8 @@ fetch a URL that `robots.txt` disallows.
 
 A generation is one complete index for one corpus, one Base tag, one indexer
 version and one vector setting. Its definitions are rows in Postgres, and its
-vectors are points in one Qdrant collection. Search reads the vector setting of
+vectors are points in one Qdrant collection, with a code vector and a name
+vector for each definition. Search reads the vector setting of
 the live generation from Postgres.
 
 - **A new package release:** the syncer queues one job. The worker indexes the
@@ -140,33 +142,40 @@ then the code, cut at 32,000 characters. The cut stays far below the 40,960
 tokens of the embedding model, and it changes 15 of 146,033 definitions of all
 named releases, all of them generated proofs.
 
-1. Qdrant returns the 1,000 nearest definitions. The vectors have 2,048
-   dimensions with binary quantization in RAM. Qdrant rescores the candidates
-   with the full vectors on disk.
-2. Definitions whose name or ID is the query become candidates too.
-3. The engine reads the features of the top 50 and the name candidates from
-   Postgres, and sorts them by this weighted sum:
+Each definition has a second vector, the name vector: the embedding of the
+package name and the module path, then the name, for example
+`bend-time-lib date` and `Date.add_days`. It tells apart the functions of one
+module, which share most of their code vocabulary.
 
-| Weight | Feature |
+1. Qdrant returns the 1,000 nearest definitions by the code vector, with the
+   release and the module of each. The code vectors have 2,048 dimensions with
+   binary quantization in RAM. Qdrant rescores the candidates with the full
+   vectors on disk. The name vectors stay on disk with no HNSW graph, because
+   the engine only reads them.
+2. The engine reads the top 50 from Postgres, their name vectors from Qdrant,
+   and the code vectors of their parents and children outside the 1,000.
+3. It computes 37 features for each of the 50 and sorts them with a LambdaMART
+   model (LightGBM). `search/ranking.py` defines the features. The model is
+   `search/ranker.txt`.
+
+| Group | Features |
 |---|---|
-| 1.0 | Cosine similarity |
-| 0.15 | Name overlap |
-| 0.2 | Signature match: the share of the parameter and result types that the query and the head have in common |
-| 0.15 | The best similarity among the definitions that the definition reaches, minus its own. A reached definition outside the 1,000 counts as the lowest similarity of the 1,000. |
-| 0.075 | 1 if no definition of its release uses it |
-| 0.02 | ln(1 + the number of its users in its release) |
-| 0.02 | 1 if a definition of another release uses it |
-| 0.015 | 1 if it has a doc comment |
-| -0.04 | 1 if a definition of its module reaches it, and that name followed by `.` starts its name, as `Map.put.go` under `Map.put` |
+| Embeddings | The cosine of the code vector and of the name vector. |
+| Words | The share of the words that the query and the name have in common, in three forms. |
+| Signature | The share of the parameter and result types that the query and the head have in common. |
+| Uses | The best similarity among the definitions that the definition reaches, minus its own; the users in its release; the use by another release; the doc comment; the helper flag. A helper is a definition that a definition of its module reaches, when that name followed by `.` starts its name, as `Map.put.go` under `Map.put`. |
+| Shape | Type, law, Base, the length of the name and of the code. |
+| Neighbors | The best similarity in the same module and in the same package among the 1,000, the similarity of the parent (`Date` for `Date.add_days`) and of the children, each minus its own. |
+| Query | The number of words and the best similarity. |
+
+The embeddings, the words and the signature also give two values relative to
+the 50 candidates: the value minus the best value, and the z-score.
 
 A use of an older release of a package counts for the same module and name in
-the latest release. On the first 300 queries of the dev benchmark and its
-first 36 packages, nDCG@10 is 0.816 with each result judged, against 0.819
-before the scale changes. On the extended benchmark, 500 queries and 44
-packages, the search scores 0.823 at 10, 0.784 at 5 and 0.765 at 3, with each
-result judged. The learned lab ranker `dense-origin+name+lambdamart` scores
-0.848, 0.817 and 0.812. See [bench/README.md](bench/README.md) for the
-measurements behind each choice.
+the latest release. `jendhub bench train` trains the model on all queries of
+the benchmark and writes `search/ranker.txt`. Train it again after a change of
+the features, the queries or the judgments. See
+[bench/README.md](bench/README.md) for the measurements behind each choice.
 
 The site stores every search of agents and people in the `searches` table, to improve the search with real queries later. It writes the
 row after the answer, so the log adds no latency, and a failed write does not
@@ -174,9 +183,12 @@ fail the search. The row holds the whole ranking, not only the page, and no
 IP address.
 
 The first live index holds 56,650 definitions: Base and the latest valid
-release of 106 packages. A query answers in 20 to 70 ms when its embedding is
-in the cache of the site. A new query waits 0.8 to 4 s for the
-embedding from OpenRouter, which is the largest part of the latency.
+release of 106 packages. With the weighted sum that the learned ranker
+replaced, a query answered in 20 to 70 ms when its embedding was in the cache
+of the site. The learned ranker adds one Qdrant request for the name scores,
+a second one when a parent or a child is outside the 1,000, and about 10 ms of
+CPU. A new query waits 0.8 to 4 s for the embedding from OpenRouter, which is
+the largest part of the latency.
 
 ## Development
 

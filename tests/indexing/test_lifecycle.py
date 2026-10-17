@@ -9,6 +9,7 @@ from jendhub.indexing.schedule import schedule_live
 from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.indexing.worker import Worker
 from jendhub.search.engine import SearchEngine
+from jendhub.search.ranking import load_model
 from jendhub.vectors.index import VectorIndex
 from tests.indexing.library_fixture import BASE, BOX, TAG
 from tests.indexing.live import (
@@ -65,7 +66,7 @@ async def test_a_new_release_replaces_the_old_one(
     assert {"kit@2.0.0.0/main:double", "kit@2.0.0.0/main:open"} <= found
     assert await external(pool, "kit@2.0.0.0/main:double")
 
-    engine = SearchEngine(pool, vectors, WordEmbedder(), target)
+    engine = SearchEngine(pool, vectors, WordEmbedder(), load_model(), target)
     [hits] = await engine.search(["double a number"], 3)
     assert hits[0].id == "kit@2.0.0.0/main:double"
     assert hits[0].package == "kit"
