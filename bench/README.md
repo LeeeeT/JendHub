@@ -375,23 +375,26 @@ did not change.
 The 500 queries run on the corpus of 44 packages. The new packages put new
 definitions into the top 10 of the old queries too. Pooling at depth 10 judged
 the 1,937 new pairs of the production pipeline, for about $0.30. The production
-pipeline scores:
+pipeline scores as follows, with judged@k 1.000 at each cutoff:
 
-| Queries | nDCG@10 | judged@10 |
-|---|---|---|
-| all 500 | 0.834 | 1.000 |
-| keywords (146) | 0.870 | 1.000 |
-| phrase (130) | 0.851 | 1.000 |
-| description (105) | 0.769 | 1.000 |
-| question (35) | 0.752 | 1.000 |
-| signature (30) | 0.841 | 1.000 |
-| name (24) | 0.843 | 1.000 |
-| exact-name (15) | 0.890 | 1.000 |
-| exact-signature (15) | 0.889 | 1.000 |
-| the first 300 | 0.814 | 1.000 |
-| the 200 new ones | 0.864 | 1.000 |
+| Queries | nDCG@10 | nDCG@5 | nDCG@3 |
+|---|---|---|---|
+| all 500 | 0.834 | 0.789 | 0.769 |
+| keywords (146) | 0.870 | 0.826 | 0.801 |
+| phrase (130) | 0.851 | 0.801 | 0.777 |
+| description (105) | 0.769 | 0.705 | 0.672 |
+| question (35) | 0.752 | 0.723 | 0.728 |
+| signature (30) | 0.841 | 0.834 | 0.818 |
+| name (24) | 0.843 | 0.809 | 0.836 |
+| exact-name (15) | 0.890 | 0.885 | 0.865 |
+| exact-signature (15) | 0.889 | 0.866 | 0.864 |
 
-The mean of the 381 keywords, phrase and description queries is 0.836. On the
+The mean of the 381 keywords, phrase and description queries is 0.836 at 10,
+0.784 at 5 and 0.757 at 3. Descriptions lose the most from 10 to 3: their
+answer is often in the top 10 but below rank 3. Exact names and signatures
+lose the least, because their answer is mostly at rank 1.
+
+At 10, the first 300 queries score 0.814 and the 200 new ones 0.864. On the
 corpus of 36 packages, the first 300 queries scored 0.816, so the larger corpus
 changes their score by only -0.002. The new packages bring distractors, but
 they also bring good answers for the old queries.
