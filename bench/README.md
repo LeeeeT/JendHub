@@ -372,42 +372,47 @@ did not change.
 
 ## The extended benchmark
 
-The 500 queries on the corpus of 44 packages are not pooled yet. The new
-packages put unjudged definitions into the top 10 of the old queries too. The
-production pipeline gives these scores. nDCG@10 counts each unjudged result
-as grade 0, so it is too low. The condensed score drops the unjudged results
-from the ranking, so it is too high. The true score lies between them.
+The 500 queries run on the corpus of 44 packages. The new packages put new
+definitions into the top 10 of the old queries too. Pooling at depth 10 judged
+the 1,937 new pairs of the production pipeline, for about $0.30. The production
+pipeline scores:
 
-| Queries | nDCG@10 | condensed | judged@10 |
-|---|---|---|---|
-| all 500 | 0.769 | 0.852 | 0.613 |
-| the first 300 | 0.738 | 0.809 | 0.824 |
-| the 200 new ones | 0.814 | 0.917 | 0.296 |
-| new keywords (86) | 0.848 | 0.938 | 0.310 |
-| new phrase (63) | 0.834 | 0.922 | 0.276 |
-| new description (51) | 0.731 | 0.873 | 0.296 |
+| Queries | nDCG@10 | judged@10 |
+|---|---|---|
+| all 500 | 0.834 | 1.000 |
+| keywords (146) | 0.870 | 1.000 |
+| phrase (130) | 0.851 | 1.000 |
+| description (105) | 0.769 | 1.000 |
+| question (35) | 0.752 | 1.000 |
+| signature (30) | 0.841 | 1.000 |
+| name (24) | 0.843 | 1.000 |
+| exact-name (15) | 0.890 | 1.000 |
+| exact-signature (15) | 0.889 | 1.000 |
+| the first 300 | 0.814 | 1.000 |
+| the 200 new ones | 0.864 | 1.000 |
 
-On the corpus of 36 packages, the first 300 queries scored 0.816 with each
-result judged. Their condensed score on the larger corpus, 0.809, shows that
-the new distractors push some graded answers out of the top 10.
+The mean of the 381 keywords, phrase and description queries is 0.836. On the
+corpus of 36 packages, the first 300 queries scored 0.816, so the larger corpus
+changes their score by only -0.002. The new packages bring distractors, but
+they also bring good answers for the old queries.
 
-The top 10 hold 1,937 pairs without a grade. Pooling them costs about $0.30.
-Pool before you compare pipelines on the extended benchmark.
+The new queries score higher than the old ones. Many of them name a task that
+only one library does, such as CSV or regular expressions, and the search
+finds these at rank 1. Descriptions stay the weakest kind.
 
-The new packages have no enrichments, so the enriched lab pipelines see only
-part of the corpus enriched until `jendhub enrich` runs. The production
-pipeline needs no enrichment.
+Any other pipeline still has unjudged results in its top 10. Pool it before
+you compare it. The new packages have no enrichments, so the enriched lab
+pipelines see only part of the corpus enriched until `jendhub enrich` runs.
+The production pipeline needs no enrichment.
 
-The production search finds no grade-3 answer in the top 10 for five new
+The production search finds no grade-3 answer in the top 10 for three new
 queries. The answer is in the corpus each time:
 
 | Query | Grade-3 answer |
 |---|---|
 | Remember which items I have already seen so that I do not process them twice. | `Set`, `Set.add`, `Set.has` |
 | Undo the last action by keeping a history of actions in a last-in first-out structure. | `stack:Stack` of `bend-collections` |
-| I need a map that keeps its keys sorted so I can get all entries between two keys. | `balanced_search_tree:sub_map` |
-| Pull the year, month and day out of a date string with one pattern. | `regex:find` |
-| Prove that a message came from me with a public key signature. | `sign:sign` (rank 9) |
+| I need a map that keeps its keys sorted so I can get all entries between two keys. | `balanced_search_tree:sub_map`, at rank 15 |
 
 ## Limits
 
