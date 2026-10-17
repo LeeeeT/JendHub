@@ -1,0 +1,9 @@
+*
+!pyproject.toml
+!uv.lock
+!src/jendhub
+!indexer
+!bend2-lsp-rs
+**/.git
+**/target
+**/__pycache__

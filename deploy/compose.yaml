@@ -7,6 +7,7 @@ x-logging: &logging
     max-file: "3"
 
 x-jendhub: &jendhub
+  image: jendhub:latest
   restart: unless-stopped
   logging: *logging
   environment: &environment
@@ -57,8 +58,9 @@ services:
       - qdrant:/qdrant/storage
 
   migrate:
-    image: jendhub-syncer:latest
-    entrypoint: [jendhub, migrate]
+    image: jendhub:latest
+    entrypoint: [python, -m, jendhub]
+    command: [migrate]
     logging: *logging
     environment: *environment
     depends_on:
@@ -67,22 +69,23 @@ services:
 
   syncer:
     <<: *jendhub
-    image: jendhub-syncer:latest
+    command: [syncer, --host, 0.0.0.0, --port, "8000", --metrics-port, "9000"]
     mem_limit: 192m
 
   worker:
     <<: *jendhub
-    image: jendhub-worker:latest
+    command: [worker, --host, 0.0.0.0, --port, "8000", --metrics-port, "9000"]
     mem_limit: 512m
     environment:
       <<: *environment
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
+      JENDHUB_LIBRARY_PATH: /data/library
     volumes:
       - library:/data/library
 
   site:
     <<: *jendhub
-    image: jendhub-site:latest
+    command: [site, --host, 0.0.0.0, --port, "8000", --metrics-port, "9000"]
     mem_limit: 256m
     environment:
       <<: *environment

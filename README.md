@@ -34,6 +34,11 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   no reranker model. The reranker is a weighted sum of cheap features.
 - **Services:** each job with its own life cycle is a service with an HTTP
   contract. A new service is a new package under `services/`.
+- **Environments:** development and production are decoupled. Development
+  runs with Nix and no Docker. Production runs the Docker image of
+  `deploy/Dockerfile` and no Nix. Each pins its own dependency versions: the
+  dev shell uses nixpkgs, and the image uses `uv.lock`. No data moves between
+  them, so each environment builds its own index.
 
 ## Services
 
@@ -195,26 +200,34 @@ OpenRouter on their own. Start one with `process-compose process start
 
 ### The production stack on your machine
 
-`nix run .#stack` runs the production images with `deploy/compose.yaml`, as a
-deploy does. Use it to check a change before a deploy. It needs Docker, and it
-uses its own volumes, the port 18080 for the site and 19090 for Prometheus, so
-it can run next to `process-compose up`.
+`nix run .#stack` builds the production image and runs it with
+`deploy/compose.yaml`, as a deploy does. Use it to check a change before a
+deploy. It needs Docker, and it uses its own volumes, the port 18080 for the
+site and 19090 for Prometheus, so it can run next to `process-compose up`.
 
 ```bash
-nix develop -c process-compose up postgres qdrant database   # the dev stores
-nix run .#stack -- seed      # copy the dev index into the stack, once
-nix run .#stack -- up        # build and load the images, then start everything
+nix run .#stack -- up        # build the image, then start everything
 nix run .#stack -- down      # stop; the volumes stay
 ```
 
-`seed` copies the dev database into the stack, and then writes the Qdrant
-collections from the embedding cache with `jendhub index restore-vectors`. It
-pays for no embedding, and it takes about 5 minutes. `up` refuses to start a
-stack with no live index, because the syncer and the worker would then build a
-full index and pay OpenRouter for each embedding. `up --fresh` does that on
+The stack never gets data from the dev stores. `up` refuses to start a stack
+with no live index, because the syncer and the worker would then build a full
+index and pay OpenRouter for each embedding. `up --fresh` does that on
 purpose. When the stack runs, its syncer and worker index each new BendHub
 release, as in a deploy. Any other argument goes to `docker compose`, for
-example `nix run .#stack -- logs -f site`.
+example `nix run .#stack -- logs -f site`, or
+`nix run .#stack -- run --rm migrate index status` for a `jendhub` command.
+
+### The image
+
+`deploy/Dockerfile` builds one image, `jendhub`, for all services. Its first
+stage compiles the Rust indexer. Its second stage installs the Python
+dependencies with `uv sync --frozen`, from `pyproject.toml` and `uv.lock`. The
+last stage is `python:3.14-slim` with the dependencies, the indexer and
+`src/jendhub`. The compose file gives each service its command.
+
+The dev shell does not read `uv.lock`. When you add a dependency, add it to
+`flake.nix` and to `pyproject.toml`, then run `uv lock`.
 
 `nix flake check` runs all checks: the Python tests, which start their own
 Postgres and Qdrant, Ruff, Pyright and the Rust lints.
@@ -264,33 +277,31 @@ The production site is https://jend.leeeet.dev. It runs on one server with
 `deploy/compose.yaml`: Postgres 17, Qdrant 1.18.2, `site`, `syncer`, `worker`,
 Prometheus and a Cloudflare Tunnel. No port is open to the internet:
 `cloudflared` connects out to Cloudflare, and Cloudflare sends the requests for
-`jend.leeeet.dev` to `http://site:8000`. Each JendHub image runs as an
-unprivileged user and holds no shell. Each container has a memory limit, and
+`jend.leeeet.dev` to `http://site:8000`. The JendHub services run as an
+unprivileged user. Each container has a memory limit, and
 Docker keeps at most 3 log files of 10 MB for each container. The server has 1
 CPU and 1.6 GiB of RAM, so it needs a swap file: without one, the page cache
 cannot hold Qdrant's vectors, and the restore of the vectors fails. It has a 4
 GB `/swapfile` with `vm.swappiness=10`.
 
-`nix run .#deploy` deploys from your machine. It needs SSH access to the server
-and `OPENROUTER_API_KEY` and `CLOUDFLARE_TUNNEL_TOKEN` in `.env`:
+`nix run .#deploy` deploys from your machine. Nix runs only on your machine:
+the server needs only Docker. The deploy needs SSH access to the server and
+`OPENROUTER_API_KEY` and `CLOUDFLARE_TUNNEL_TOKEN` in `.env`:
 
 ```bash
 nix run .#deploy                 # build, copy and start the current version
-nix run .#deploy -- seed         # copy the database of the local stack, once
 nix run .#deploy -- logs site    # any other argument goes to docker compose
 ```
 
-A deploy builds the images with nix, streams them over SSH into the server's
-Docker, copies the compose file and the Prometheus configuration to
+A deploy builds the image with `docker build`, streams it over SSH into the
+server's Docker, copies the compose file and the Prometheus configuration to
 `/opt/jendhub`, and writes `/opt/jendhub/.env` (mode 600) with the secrets. It
 keeps the Postgres password of the server, or makes one on the first deploy.
 Then `docker compose up --wait` applies the migrations and starts the new
-version. Like `nix run .#stack -- up`, it refuses to start without a live
-index. `seed` copies the database of the local stack without its search log,
-deletes the generations of the dev corpus, and writes the Qdrant collection
-from the embedding cache. Set `JENDHUB_DEPLOY_TARGET` (default
-`root@195.63.145.165`) and `JENDHUB_DEPLOY_DIRECTORY` (default `/opt/jendhub`)
-for another server.
+version, and the previous image is deleted. Like `nix run .#stack -- up`, it
+refuses to start without a live index. `up --fresh` lets the server build its
+own index. Set `JENDHUB_DEPLOY_TARGET` (default `root@195.63.145.165`) and
+`JENDHUB_DEPLOY_DIRECTORY` (default `/opt/jendhub`) for another server.
 
 Prometheus scrapes the metrics port of each service every 30 s, keeps 30 days,
 and evaluates the rules in `deploy/prometheus/alerts.yml`: a service that does
