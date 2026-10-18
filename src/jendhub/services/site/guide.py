@@ -58,8 +58,10 @@ GET {origin}/read.txt?file_path=<name@version>/<path>
 GET {origin}/grep.txt?pattern=<regex>&path=<name@version>
 GET {origin}/glob.txt?pattern=<glob>&path=<name@version>
 
-Their parameters are those of the Read, Grep and Glob tools of Claude Code, but
-grep and glob search only one release.
+read gives numbered lines: offset and limit select them. grep takes a ripgrep
+pattern and these options of rg: glob, output_mode (files_with_matches, content
+or count), -A, -B, -C, -n, -i, -o, multiline, head_limit and offset. glob takes
+a glob such as `**/*.bend`. grep and glob search one release.
 """
 
 
