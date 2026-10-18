@@ -257,6 +257,7 @@ async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) 
     assert 'href="/search?q=decompress+gzip+data"' in home
     assert f'href="/llms.txt">{SITE_URL}/llms.txt</a>' in home
     assert "search.txt" not in home
+    assert 'href="https://github.com/LeeeeT/JendHub"' in home
     assert "<b>2</b> packages" in home
 
 
