@@ -4,7 +4,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from jendhub.search.ranking import FEATURES, Signals, feature_matrix, load_model, singular
+from jendhub.search.ranking import FEATURES, Signals, feature_matrix, jaccard, load_model, singular
 
 
 def signals(name: str, code: float, **changes: object) -> Signals:
@@ -77,3 +77,8 @@ def test_feature_matrix_measures_the_words_that_the_query_and_the_name_share() -
 def test_the_shipped_model_scores_each_candidate() -> None:
     matrix = feature_matrix("map a list", [signals("List.map", 0.9), signals("Nat.add", 0.1)])
     assert load_model().predict(matrix).shape == (2,)
+
+
+def test_jaccard_is_the_share_of_shared_tokens() -> None:
+    assert jaccard(frozenset({"shuffle"}), frozenset({"shuffle.run", "shuffle", "run"})) == 1 / 3
+    assert jaccard(frozenset(), frozenset()) == 0.0

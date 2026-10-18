@@ -1,5 +1,4 @@
 from jendhub.lab.names import NameMatch
-from jendhub.search.names import overlap
 from tests.lab.batches import batch
 
 NAMES = NameMatch(
@@ -11,10 +10,6 @@ NAMES = NameMatch(
         ("List.sort.runs", "List.sort.runs"),
     ]
 )
-
-
-def test_overlap_is_the_share_of_shared_tokens() -> None:
-    assert overlap({"shuffle"}, {"shuffle.run", "shuffle", "run"}) == 1 / 3
 
 
 def test_search_ranks_the_exact_name_first() -> None:

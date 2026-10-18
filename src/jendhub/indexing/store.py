@@ -190,6 +190,17 @@ class IndexStore:
             row = await cursor.fetchone()
         return None if row is None else row[0]
 
+    async def fail_abandoned(self) -> list[str]:
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute(
+                "UPDATE index_jobs SET state = 'failed', lease_until = NULL,"
+                " error = 'its worker stopped during each attempt'"
+                " WHERE state = 'running' AND lease_until < now() AND attempts >= %s"
+                " RETURNING release",
+                (MAX_ATTEMPTS,),
+            )
+            return [release for (release,) in await cursor.fetchall()]
+
     async def claim(self, lease: timedelta) -> Job | None:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
@@ -216,15 +227,16 @@ class IndexStore:
                 (state, job.generation, job.release),
             )
 
-    async def fail(self, job: Job, error: str) -> None:
+    async def fail(self, job: Job, error: str) -> bool:
         delay = min(RETRY_BASE * 2 ** (job.attempts - 1), RETRY_LIMIT)
-        state = "failed" if job.attempts >= MAX_ATTEMPTS else "queued"
+        final = job.attempts >= MAX_ATTEMPTS
         async with self.pool.connection() as connection:
             await connection.execute(
                 "UPDATE index_jobs SET state = %s, error = %s, run_after = now() + %s,"
                 " lease_until = NULL WHERE generation = %s AND release = %s",
-                (state, error, delay, job.generation, job.release),
+                ("failed" if final else "queued", error, delay, job.generation, job.release),
             )
+        return final
 
     async def retry_failed(self, generation_id: int) -> None:
         async with self.pool.connection() as connection:

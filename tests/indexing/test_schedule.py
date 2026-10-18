@@ -101,3 +101,21 @@ async def test_a_failed_job_waits_and_then_stops_the_drain(
         await worker.drain(generation.id)
     await index.retry_failed(generation.id)
     assert (await index.job_states(generation.id)).get("queued")
+
+
+async def test_a_job_whose_worker_stops_each_time_fails_at_last(
+    pool: Pool, vectors: VectorIndex, tmp_path: Path
+) -> None:
+    packages: PackageStore = await seed(pool)
+    index = IndexStore(pool)
+    await schedule_live(index, packages, vectors)
+    [generation] = await index.generations(LIVE)
+    async with pool.connection() as connection:
+        await connection.execute(
+            "UPDATE index_jobs SET state = 'running', attempts = %s,"
+            " lease_until = now() - interval '1 minute'",
+            (MAX_ATTEMPTS,),
+        )
+    worker = Worker(index, packages, Library(tmp_path), vectors, FailingEmbedder())
+    assert not await worker.step()
+    assert await index.job_states(generation.id) == {"failed": 3}

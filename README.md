@@ -47,7 +47,7 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
 |---|---|---|
 | `syncer` | Stores the new packages of BendHub and each new Base release. Queues an index job for each new latest release. Promotes a finished generation and deletes retired ones. | none |
 | `worker` | Runs the index jobs: extracts the definitions of a release, resolves its uses with the Rust indexer, computes the rerank features, embeds the documents and writes Postgres and Qdrant. Scale it out with more replicas. | a local copy of the package files |
-| `site` | The public site. Runs the search (embeds the query, gets candidates from Qdrant and from an exact-name index, and reranks them), and answers people with HTML pages and agents with plain text. | none |
+| `site` | The public site. Runs the search (embeds the query, gets candidates from Qdrant, and reranks them), and answers people with HTML pages and agents with plain text. | none |
 
 Postgres and Qdrant are the only stores.
 
@@ -65,14 +65,16 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 |---|---|---|
 | `GET /llms.txt` | `GET /` | How to use JendHub. The home page also shows the size of the live index. |
 | `GET /search.txt?q=<query>&limit=10&offset=0` | `GET /search?q=<query>&offset=0` | The best definitions with their import line and the name to call. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
-| `GET /src/<release>/<path>?def=<name>` | `GET /definitions/<id>` | A definition with the import lines that its code uses, the definitions that it uses, and the first 100 definitions that use it. |
+| `GET /src/<release>/<path>?def=<name>` | `GET /definitions/<id>` | A definition with the import lines that its code uses, the definitions that it uses, and the number of definitions that use it, with the first 10 (agents) or 100 (people). |
 | `GET /src/<release>/<path>` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. The page links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | `GET /src/<release>/` | `GET /files/<release>` | The files of a release. The page also shows the number of indexed definitions in each file. |
 | `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
 
 A text answer is plain text, also an error. Its links are full URLs, and a
-paged answer ends with the URL of the next page:
+paged answer ends with the URL of the next page. Each answer stays short,
+because it goes into the context of an agent: a head of more than 12 lines
+ends with `…`, and a load error names at most 5 of its files.
 
 ```
 1. Json.parse (https://jend.leeeet.dev/src/bend-net-json@0.3.0.0/json.bend?def=parse)
@@ -130,7 +132,8 @@ the live generation from Postgres.
   one goes live, and the old one is deleted after 10 minutes.
 - **A failed job** waits 1, 2, 4, 8 minutes and so on, at most 1 hour. After 5
   attempts it stops, and `jendhub index retry <generation>` queues it again. A
-  generation with a failed job does not go live.
+  job also fails when its worker stops, for example out of memory, during each
+  of its 5 attempts. A generation with a failed job does not go live.
 - **A lost Qdrant collection:** `jendhub index restore-vectors` writes it again
   from the embedding cache, with no new embeddings.
 
@@ -195,7 +198,9 @@ runs other services and uses swap, so the values change from pass to pass. The
 name scores are the largest part, about 90 ms, and they run in parallel with
 the Postgres read. A
 new query waits 0.8 to 4 s for the embedding from OpenRouter, which is the
-largest part of the latency.
+largest part of the latency. The site waits at most 10 s for an embedding and
+tries once more, so a slow OpenRouter gives an error and not a search that
+hangs. The worker waits up to 120 s and tries 6 more times.
 
 ## Development
 

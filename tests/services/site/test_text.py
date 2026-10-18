@@ -146,7 +146,7 @@ def test_the_status_shows_each_generation_and_the_invalid_releases() -> None:
     assert render_status(StatusView([generation], [invalid], 1, 0), LINKS) == (
         "Generation 3 (live): Base 0.1.2, vectors d2048-binary, indexer 2, 107 releases,"
         " 56650 definitions\n"
-        "  Jobs: 0 queued, 0 running, 119 finished, 0 failed\n\n"
+        "  Jobs: 0 queued, 0 running, 107 indexed, 2 superseded, 10 invalid, 0 failed\n\n"
         f"Invalid releases (1):\n  kit@2.0.0.0 (0x9), Base 0.1.2, 2026-10-15\n{PROBLEM_TEXT}"
     )
 

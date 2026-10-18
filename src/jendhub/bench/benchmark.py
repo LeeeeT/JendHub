@@ -30,7 +30,7 @@ from jendhub.indexing.worker import Worker
 from jendhub.lab.facts import load_facts
 from jendhub.lab.pipelines import PIPELINES, Resources
 from jendhub.remote.openrouter import OpenRouter, open_openrouter
-from jendhub.search.engine import PRODUCTION, SearchEngine, Target
+from jendhub.search.engine import SearchEngine, Target
 from jendhub.search.ranking import load_model
 from jendhub.search.sources import BASE_RELEASE
 from jendhub.settings import (
@@ -40,12 +40,12 @@ from jendhub.settings import (
     load_settings,
 )
 from jendhub.uses.graph import UseGraph
-from jendhub.vectors.index import PRODUCTION as PRODUCTION_VECTORS
-from jendhub.vectors.index import VectorIndex, open_vector_index
+from jendhub.vectors.index import PRODUCTION, VectorIndex, open_vector_index
 
 QUERIES = Path("bench/queries.jsonl")
 JUDGE_PROMPT = Path("bench/JUDGE.md")
 LIBRARY = "library"
+ENGINE = "production"
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ async def dev_index(services: Services, library: Library, listed: DevCorpus) -> 
     corpus = corpus_name(listed.base_tag, listed.packages)
     releases: list[tuple[str, str | None]] = [(BASE_RELEASE, None)]
     releases += [(package.hash, package.release.name) for package in listed.packages]
-    spec = GenerationSpec(corpus, listed.base_tag, releases, PRODUCTION_VECTORS)
+    spec = GenerationSpec(corpus, listed.base_tag, releases, PRODUCTION)
     generation = await ensure_generation(index, services.vectors, spec)
     worker = Worker(index, packages, library, services.vectors, services.embedder)
     await worker.drain(generation.id)
@@ -107,7 +107,7 @@ class Benchmark:
         )
 
     async def searcher(self, name: str) -> Searcher:
-        if name == PRODUCTION:
+        if name == ENGINE:
             return EngineSearcher(await self.engine())
         return LabSearcher(await PIPELINES[name](self.resources), self.services.embedder)
 
@@ -137,7 +137,7 @@ class Benchmark:
 
 
 def pipeline_names() -> list[str]:
-    return sorted([*PIPELINES, PRODUCTION])
+    return sorted([*PIPELINES, ENGINE])
 
 
 async def read_queries(

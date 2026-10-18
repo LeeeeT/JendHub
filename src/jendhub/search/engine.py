@@ -11,7 +11,6 @@ from jendhub.search.ranking import Model, Signals, feature_matrix
 from jendhub.search.signatures import Signature
 from jendhub.vectors.index import CODE, NAME, Neighbor, VectorConfig, VectorIndex, VectorName
 
-PRODUCTION = "production"
 TASK_INSTRUCTION = (
     "Given a programming task, retrieve the Bend library function or type"
     " that a programmer calls to do it"

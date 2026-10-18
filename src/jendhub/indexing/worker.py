@@ -110,6 +110,9 @@ class Worker:
             logger.info("queued %s, the next older release of %s", older, job.name)
 
     async def step(self) -> bool:
+        for release in await self.index.fail_abandoned():
+            JOBS.labels("failed").inc()
+            logger.warning("indexing %s failed: its worker stopped during each attempt", release)
         job = await self.index.claim(LEASE)
         if job is None:
             return False
@@ -117,8 +120,8 @@ class Worker:
             await self.run(job)
         except Exception as error:  # noqa: BLE001
             logger.warning("indexing %s failed: %r", job.release, error)
-            await self.index.fail(job, repr(error))
-            JOBS.labels("failed").inc()
+            final = await self.index.fail(job, repr(error))
+            JOBS.labels("failed" if final else "retried").inc()
         return True
 
     async def serve(self, stop: asyncio.Event) -> None:

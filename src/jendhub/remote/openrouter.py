@@ -14,9 +14,17 @@ from jendhub.remote.http import CONCURRENCY, http_client
 from jendhub.settings import OpenRouterSettings
 
 API = "https://openrouter.ai/api/v1"
-TIMEOUT = 120
-RETRY_DELAYS = (1, 2, 4, 8, 16, 32)
 RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+
+
+@dataclass(frozen=True)
+class Patience:
+    timeout: float
+    retry_delays: tuple[float, ...]
+
+
+BATCH = Patience(timeout=120, retry_delays=(1, 2, 4, 8, 16, 32))
+INTERACTIVE = Patience(timeout=10, retry_delays=(0.5,))
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +34,22 @@ class OpenRouterError(JendHubError):
 
 
 class OpenRouter:
-    def __init__(self, client: httpx.AsyncClient, key: SecretStr) -> None:
+    def __init__(self, client: httpx.AsyncClient, key: SecretStr, patience: Patience) -> None:
         self.client = client
         self.key = key
+        self.patience = patience
 
     async def send(self, path: str, request: dict[str, Json]) -> httpx.Response:
         url = f"{API}/{path}"
         headers = {"authorization": f"Bearer {self.key.get_secret_value()}"}
-        for delay in RETRY_DELAYS:
-            response = await self.client.post(url, json=request, headers=headers, timeout=TIMEOUT)
+        timeout = self.patience.timeout
+        for delay in self.patience.retry_delays:
+            response = await self.client.post(url, json=request, headers=headers, timeout=timeout)
             if response.status_code not in RETRY_STATUSES:
                 return response
-            logger.info("OpenRouter returned %d: retry in %d s", response.status_code, delay)
+            logger.info("OpenRouter returned %d: retry in %s s", response.status_code, delay)
             await asyncio.sleep(delay)
-        return await self.client.post(url, json=request, headers=headers, timeout=TIMEOUT)
+        return await self.client.post(url, json=request, headers=headers, timeout=timeout)
 
     async def post(self, path: str, request: dict[str, Json]) -> Json:
         response = await self.send(path, request)
@@ -60,10 +70,10 @@ class OpenRouter:
 
 @asynccontextmanager
 async def open_openrouter(
-    settings: OpenRouterSettings, connections: int = CONCURRENCY
+    settings: OpenRouterSettings, patience: Patience = BATCH, connections: int = CONCURRENCY
 ) -> AsyncGenerator[OpenRouter]:
     async with http_client(connections) as client:
-        yield OpenRouter(client, settings.openrouter_api_key)
+        yield OpenRouter(client, settings.openrouter_api_key, patience)
 
 
 @dataclass

@@ -18,7 +18,7 @@ from jendhub.indexing.status import (
     invalid_releases,
 )
 from jendhub.indexing.store import LIVE, IndexStore
-from jendhub.remote.openrouter import open_openrouter
+from jendhub.remote.openrouter import INTERACTIVE, open_openrouter
 from jendhub.search.definitions import DefinitionDetail, read_definition
 from jendhub.search.engine import Hit, SearchEngine, Target
 from jendhub.search.packages import PackageDetail, read_package
@@ -86,7 +86,7 @@ async def open_resources(query_cache_size: int) -> AsyncGenerator[Resources]:
     async with (
         open_pool(load_settings(DatabaseSettings)) as pool,
         open_vector_index(load_settings(QdrantSettings)) as vectors,
-        open_openrouter(load_settings(OpenRouterSettings)) as openrouter,
+        open_openrouter(load_settings(OpenRouterSettings), INTERACTIVE) as openrouter,
     ):
         embedder = MemoryCachedEmbedder(RemoteEmbedder(openrouter), query_cache_size)
         yield Resources(pool, vectors, embedder, load_model())

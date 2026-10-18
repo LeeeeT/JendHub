@@ -5,9 +5,12 @@ from jendhub.indexing.failures import Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease
 from jendhub.search.packages import ReleaseDetail
 from jendhub.search.sources import ReleaseFiles, id_source, usage
+from jendhub.services.site.pages import shortened
 from jendhub.services.site.views import DefinitionView, PackageView, Result, Results, StatusView
 
 INDENT = "   "
+USERS = 10
+NAMED_FILES = 5
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,7 @@ def heading(title: str, shown: int, total: int, offset: int) -> str:
 def render_result(rank: int, result: Result, links: Links) -> str:
     hit = result.hit
     return f"{rank}. {result.usage.call_name} ({links.definition(hit.id)})\n" + indented(
-        f"{result.usage.import_line}\n{hit.head}"
+        f"{result.usage.import_line}\n{shortened(hit.head)}"
     )
 
 
@@ -73,15 +76,20 @@ def render_definition(view: DefinitionView, links: Links) -> str:
         + heading("Uses", len(detail.uses), len(detail.uses), 0)
         + "".join(f"  {links.definition(id_)}\n" for id_ in detail.uses)
         + "\n"
-        + heading("Used by", len(detail.users), detail.users_total, 0)
-        + "".join(f"  {links.definition(id_)}\n" for id_ in detail.users)
+        + heading("Used by", len(detail.users[:USERS]), detail.users_total, 0)
+        + "".join(f"  {links.definition(id_)}\n" for id_ in detail.users[:USERS])
     )
 
 
 def render_problem(problem: Problem, links: Links) -> str:
     places = ", ".join(f"{links.source(place.file)} line {place.line}" for place in problem.places)
     where = f"At {places}.\n" if places else ""
-    files = ", ".join(problem.files)
+    named = ", ".join(problem.files[:NAMED_FILES])
+    files = (
+        named
+        if len(problem.files) <= NAMED_FILES
+        else f"{named} and {len(problem.files) - NAMED_FILES} more"
+    )
     return f"{problem.message}\n{where}Files that do not load: {files}.\n"
 
 
@@ -99,7 +107,7 @@ def render_package(view: PackageView, links: Links) -> str:
     package = view.package
     definitions = "".join(
         f"  {call_name(package.name, definition.id, definition.name, definition.module)}"
-        f" ({links.definition(definition.id)})\n" + indented(definition.head)
+        f" ({links.definition(definition.id)})\n" + indented(shortened(definition.head))
         for definition in package.definitions
     )
     return (
@@ -126,8 +134,8 @@ def render_generation(generation: GenerationStatus) -> str:
         f"Generation {generation.id} ({generation.state}): Base {generation.base_tag},"
         f" vectors {generation.vectors}, indexer {generation.indexer_version},"
         f" {generation.releases} releases, {generation.definitions} definitions\n"
-        f"  Jobs: {jobs.queued} queued, {jobs.running} running,"
-        f" {jobs.done + jobs.superseded + jobs.invalid} finished, {jobs.failed} failed\n"
+        f"  Jobs: {jobs.queued} queued, {jobs.running} running, {jobs.done} indexed,"
+        f" {jobs.superseded} superseded, {jobs.invalid} invalid, {jobs.failed} failed\n"
     )
 
 

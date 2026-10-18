@@ -9,7 +9,6 @@ from prometheus_client import REGISTRY
 from jendhub.embedding import remote
 from jendhub.embedding.model import DIMENSIONS, MODEL, PROVIDER
 from jendhub.embedding.remote import RemoteEmbedder
-from jendhub.remote import openrouter
 from jendhub.remote.openrouter import API, OpenRouterError
 from tests.embedding.openrouter_fixture import KEY, fake_openrouter
 
@@ -87,9 +86,8 @@ async def test_embed_of_no_texts_gives_an_empty_matrix(embedder: RemoteEmbedder)
 
 
 async def test_embed_retries_a_rate_limited_request(
-    router: respx.MockRouter, embedder: RemoteEmbedder, monkeypatch: pytest.MonkeyPatch
+    router: respx.MockRouter, embedder: RemoteEmbedder
 ) -> None:
-    monkeypatch.setattr(openrouter, "RETRY_DELAYS", (0,))
     statuses: list[int] = []
 
     def limit_once(request: httpx.Request) -> httpx.Response:
@@ -111,9 +109,8 @@ async def test_embed_reports_the_error_message(
 
 
 async def test_embed_reports_the_raw_message_of_the_provider(
-    router: respx.MockRouter, embedder: RemoteEmbedder, monkeypatch: pytest.MonkeyPatch
+    router: respx.MockRouter, embedder: RemoteEmbedder
 ) -> None:
-    monkeypatch.setattr(openrouter, "RETRY_DELAYS", ())
     error = {"message": "Provider returned error", "metadata": {"raw": "engine overloaded"}}
     router.post(ENDPOINT).respond(429, json={"error": error})
     with pytest.raises(OpenRouterError, match="Provider returned error: engine overloaded"):
