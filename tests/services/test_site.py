@@ -412,7 +412,7 @@ async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) 
     assert 'href="/files/kit@2.0.0.0/main.bend#L2">main.bend:2</a>' in status
     home = (await site.get("/")).text
     assert 'href="/search?q=decompress+gzip+data"' in home
-    assert f'href="/llms.txt">{SITE_URL}/llms.txt</a>' in home
+    assert f"When you write Bend, use {SITE_URL}/llms.txt to search for Bend definitions." in home
     assert f"/mcp add jendhub --scope user --url {SITE_URL}/mcp --transport http" in home
     assert f"claude mcp add --transport http jendhub {SITE_URL}/mcp" in home
     assert f"codex mcp add jendhub --url {SITE_URL}/mcp" in home
