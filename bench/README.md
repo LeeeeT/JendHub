@@ -509,6 +509,16 @@ folds and 3 seeds.
 - These features had no effect: other query instructions, the best similarity
   of the direct users and of the direct uses, the number of uses of the package
   by other releases, and the rank of the candidate.
+- BM25 adds nothing to the learned ranker. The test added BM25 scores of the 50
+  candidates, with the same relative values as the other features, for three
+  fields: the code, the head with the package and the module, and the words of
+  the name. With all grades after pooling, the 37 features score 0.8234, and the
+  changes are -0.0013 [-0.0040, +0.0015] for the code, -0.0024 [-0.0050,
+  +0.0001] for the head, +0.0004 [-0.0022, +0.0030] for the name words, and
+  -0.0036 [-0.0065, -0.0007] for all three. The name features and the
+  embeddings already hold the lexical signal. BM25 as a candidate source can add
+  little, because the dense top 20 holds the best answer for 99.4% of the
+  queries.
 - The LightGBM parameters form a flat plateau. A learning rate of 0.02 with
   300 rounds is too slow (-0.006).
 - A local cross-encoder, `Qwen/Qwen3-Reranker-0.6B`, made the order much
