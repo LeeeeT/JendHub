@@ -41,15 +41,26 @@ class OpenRouter:
 
     async def send(self, path: str, request: dict[str, Json]) -> httpx.Response:
         url = f"{API}/{path}"
-        headers = {"authorization": f"Bearer {self.key.get_secret_value()}"}
-        timeout = self.patience.timeout
         for delay in self.patience.retry_delays:
-            response = await self.client.post(url, json=request, headers=headers, timeout=timeout)
-            if response.status_code not in RETRY_STATUSES:
-                return response
-            logger.info("OpenRouter returned %d: retry in %s s", response.status_code, delay)
+            try:
+                response = await self.attempt(url, request)
+            except OpenRouterError as error:
+                logger.info("%s: retry in %s s", error, delay)
+            else:
+                if response.status_code not in RETRY_STATUSES:
+                    return response
+                logger.info("OpenRouter returned %d: retry in %s s", response.status_code, delay)
             await asyncio.sleep(delay)
-        return await self.client.post(url, json=request, headers=headers, timeout=timeout)
+        return await self.attempt(url, request)
+
+    async def attempt(self, url: str, request: dict[str, Json]) -> httpx.Response:
+        headers = {"authorization": f"Bearer {self.key.get_secret_value()}"}
+        try:
+            return await self.client.post(
+                url, json=request, headers=headers, timeout=self.patience.timeout
+            )
+        except httpx.TransportError as error:
+            raise OpenRouterError(f"OpenRouter did not answer: {type(error).__name__}") from error
 
     async def post(self, path: str, request: dict[str, Json]) -> Json:
         response = await self.send(path, request)

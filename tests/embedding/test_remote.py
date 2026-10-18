@@ -100,6 +100,30 @@ async def test_embed_retries_a_rate_limited_request(
     assert statuses == [429, 200]
 
 
+async def test_embed_retries_a_request_that_gets_no_answer(
+    router: respx.MockRouter, embedder: RemoteEmbedder
+) -> None:
+    attempts: list[httpx.Request] = []
+
+    def time_out_once(request: httpx.Request) -> httpx.Response:
+        attempts.append(request)
+        if len(attempts) == 1:
+            raise httpx.ReadTimeout("no answer", request=request)
+        return embed_by_axis(request)
+
+    router.post(ENDPOINT).mock(side_effect=time_out_once)
+    assert (await embedder.embed(["List.map"]))[0][0] == 1.0
+    assert len(attempts) == 2
+
+
+async def test_embed_reports_a_request_that_never_gets_an_answer(
+    router: respx.MockRouter, embedder: RemoteEmbedder
+) -> None:
+    router.post(ENDPOINT).mock(side_effect=httpx.ConnectError("refused"))
+    with pytest.raises(OpenRouterError, match="OpenRouter did not answer: ConnectError"):
+        await embedder.embed(["List.map"])
+
+
 async def test_embed_reports_the_error_message(
     router: respx.MockRouter, embedder: RemoteEmbedder
 ) -> None:

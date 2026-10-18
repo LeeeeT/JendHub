@@ -9,7 +9,10 @@ import pytest
 from fastapi import FastAPI
 
 from jendhub.db.pool import Pool, open_pool
+from jendhub.embedding.embedder import Embedder
+from jendhub.embedding.model import Vectors
 from jendhub.hub.api import Release
+from jendhub.remote.openrouter import OpenRouterError
 from jendhub.search.ranking import load_model
 from jendhub.services.site.app import create_app
 from jendhub.services.site.views import Resources
@@ -27,11 +30,18 @@ FIXED_BROKEN = BROKEN_SOURCE.replace("./missing.bend", "kit@2.0.0.0/missing.bend
 type Opener = Callable[[], AbstractAsyncContextManager[Resources]]
 
 
-def opener(database: DatabaseSettings, qdrant: QdrantSettings) -> Opener:
+class SilentEmbedder:
+    async def embed(self, texts: list[str]) -> Vectors:
+        raise OpenRouterError(f"OpenRouter did not answer: ReadTimeout ({len(texts)} texts)")
+
+
+def opener(
+    database: DatabaseSettings, qdrant: QdrantSettings, embedder: Embedder | None = None
+) -> Opener:
     @asynccontextmanager
     async def resources() -> AsyncGenerator[Resources]:
         async with open_pool(database) as own, open_vector_index(qdrant) as index:
-            yield Resources(own, index, WordEmbedder(), load_model())
+            yield Resources(own, index, embedder or WordEmbedder(), load_model())
 
     return resources
 
@@ -444,6 +454,19 @@ async def test_searches_from_one_client_are_limited(
     assert other.status_code == httpx.codes.OK
     assert page.status_code == httpx.codes.TOO_MANY_REQUESTS
     assert page.headers["content-type"].startswith("text/html")
+
+
+@pytest.mark.usefixtures("indexed")
+async def test_a_search_without_an_embedding_says_so(
+    database: DatabaseSettings, qdrant_settings: QdrantSettings
+) -> None:
+    app = create_app(opener(database, qdrant_settings, SilentEmbedder()))
+    async with running(app) as client:
+        response = await client.get("/search.txt", params={"q": "double"})
+        tool = await call_tool(client, "search", {"query": "double"})
+    assert response.status_code == httpx.codes.BAD_GATEWAY
+    assert response.text == "The embedding service did not answer. Try again.\n"
+    assert tool == (True, "The embedding service did not answer. Try again.")
 
 
 async def test_without_a_live_index_search_waits_and_the_status_answers(
