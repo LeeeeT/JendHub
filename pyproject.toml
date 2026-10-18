@@ -7,7 +7,7 @@ dependencies = [
     "httpx",
     "jinja2",
     "lightgbm",
-    "mcp>=1.29,<2",
+    "mcp>=2.3",
     "numpy",
     "prometheus-client",
     "psycopg[binary,pool]",

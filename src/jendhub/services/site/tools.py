@@ -3,9 +3,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Annotated
 
-from mcp.server.fastmcp import Context, FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
-from mcp.server.session import ServerSession
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
@@ -16,6 +15,7 @@ from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
 
 from jendhub.errors import JendHubError
+from jendhub.search.searches import Caller
 from jendhub.services.app import Running
 from jendhub.services.parameters import MAX_LIMIT, MAX_QUERY
 from jendhub.services.site.guide import INSTRUCTIONS
@@ -24,7 +24,7 @@ from jendhub.services.site.views import EMBEDDING_FAILED, Site
 
 MCP_PATH = "/mcp"
 SEARCH_TOOL = "search"
-READ_ONLY = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=False)
+READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 
 type Guard = Callable[[Request], Awaitable[None]]
 
@@ -64,11 +64,19 @@ def answering() -> Generator[None]:
         raise ToolError(EMBEDDING_FAILED) from error
 
 
-def caller(ctx: Context[ServerSession, object, Request]) -> Request:
+def http_request(ctx: Context) -> Request:
     request = ctx.request_context.request
-    if request is None:
+    if not isinstance(request, Request):
         raise ToolError("JendHub answers tool calls only over HTTP.")
-    return request
+    return Request(request.scope)
+
+
+def client_name(ctx: Context) -> str | None:
+    params = ctx.session.client_params
+    if params is None:
+        return None
+    info = params.client_info
+    return f"{info.name} {info.version}".strip()
 
 
 def release_file(path: str) -> tuple[str, str]:
@@ -78,21 +86,13 @@ def release_file(path: str) -> tuple[str, str]:
     return release, file
 
 
-def tool_server(running: Running[Site], searching: Guard) -> FastMCP:
-    server = FastMCP(
-        "JendHub",
-        INSTRUCTIONS,
-        log_level="WARNING",
-        streamable_http_path=MCP_PATH,
-        json_response=True,
-        stateless_http=True,
-        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
-    )
+def tool_server(running: Running[Site], searching: Guard) -> MCPServer:
+    server = MCPServer("JendHub", instructions=INSTRUCTIONS, log_level="WARNING")
 
     @server.tool(annotations=READ_ONLY, structured_output=False)
     async def search(
         query: Query,
-        ctx: Context[ServerSession, object, Request],
+        ctx: Context,
         limit: Limit = 10,
         offset: Offset = 0,
     ) -> str:
@@ -102,11 +102,11 @@ def tool_server(running: Running[Site], searching: Guard) -> FastMCP:
         that shows its code.
         """
         with answering():
-            request = caller(ctx)
+            request = http_request(ctx)
             await searching(request)
             site = running.get()
-            user_agent = request.headers.get("user-agent")
-            found, searched = await site.search(query, limit, offset, "mcp", user_agent)
+            caller = Caller("mcp", request.headers.get("user-agent"), client_name(ctx))
+            found, searched = await site.search(query, limit, offset, caller)
             await site.keep(searched)
             return render_results(found, ToolLinks(SEARCH_TOOL, {"query": query, "limit": limit}))
 
@@ -140,6 +140,11 @@ class ToolEndpoint:
         await self.manager.handle_request(scope, receive, send)
 
 
-def tool_route(server: FastMCP, guard: Guard) -> Route:
-    server.streamable_http_app()
+def tool_route(server: MCPServer, guard: Guard) -> Route:
+    server.streamable_http_app(
+        streamable_http_path=MCP_PATH,
+        json_response=True,
+        stateless_http=True,
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
     return Route(MCP_PATH, ToolEndpoint(server.session_manager, guard))

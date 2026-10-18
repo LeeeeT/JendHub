@@ -97,6 +97,21 @@ async def empty_site(
 
 
 MCP_ACCEPT = {"accept": "application/json, text/event-stream"}
+MODERN = "2026-07-28"
+AGENT = {"name": "agent", "version": "1.2"}
+
+
+def envelope(method: str, params: dict[str, object]) -> tuple[dict[str, object], dict[str, str]]:
+    meta = {
+        "io.modelcontextprotocol/protocolVersion": MODERN,
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": AGENT,
+    }
+    headers = {"mcp-protocol-version": MODERN, "mcp-method": method}
+    name = params.get("name")
+    if isinstance(name, str):
+        headers["mcp-name"] = name
+    return params | {"_meta": meta}, headers
 
 
 async def rpc(
@@ -105,8 +120,9 @@ async def rpc(
     params: dict[str, object],
     headers: dict[str, str] | None = None,
 ) -> httpx.Response:
-    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-    return await client.post("/mcp", json=body, headers=MCP_ACCEPT | (headers or {}))
+    sent, routing = envelope(method, params)
+    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": sent}
+    return await client.post("/mcp", json=body, headers=MCP_ACCEPT | routing | (headers or {}))
 
 
 async def call_tool(
@@ -120,13 +136,13 @@ async def call_tool(
     return result["isError"], result["content"][0]["text"]
 
 
-type StoredSearch = tuple[str, str | None, str, int, int, list[str]]
+type StoredSearch = tuple[str, str | None, str | None, str, int, int, list[str]]
 
 
 async def stored_searches(pool: Pool) -> list[StoredSearch]:
     async with pool.connection() as connection:
         cursor = await connection.execute(
-            "SELECT client, user_agent, query, page_offset, page_limit, results"
+            "SELECT client, user_agent, client_name, query, page_offset, page_limit, results"
             " FROM searches ORDER BY id"
         )
         return await cursor.fetchall()
@@ -161,10 +177,10 @@ async def test_each_search_is_stored_with_its_client_and_whole_ranking(
     await site.get("/search.txt", params={"q": "double", "limit": 1}, headers={"user-agent": "a/1"})
     await site.get("/search", params={"q": "double a number"}, headers={"user-agent": "b/2"})
     [agents, web] = await stored_searches(pool)
-    assert agents[:5] == ("agents", "a/1", "double", 0, 1)
-    assert web[:5] == ("web", "b/2", "double a number", 0, 20)
-    assert web[5][0] == DOUBLE
-    assert len(web[5]) > 1
+    assert agents[:6] == ("agents", "a/1", None, "double", 0, 1)
+    assert web[:6] == ("web", "b/2", None, "double a number", 0, 20)
+    assert web[6][0] == DOUBLE
+    assert len(web[6]) > 1
 
 
 async def test_a_definition_gives_its_import_lines_and_its_uses(site: httpx.AsyncClient) -> None:
@@ -248,16 +264,23 @@ async def test_mcp_clients_get_two_read_only_tools(site: httpx.AsyncClient) -> N
     tools = response.json()["result"]["tools"]
     assert [tool["name"] for tool in tools] == ["search", "source"]
     assert all(tool["annotations"]["readOnlyHint"] for tool in tools)
-    initialized = await rpc(
-        site,
-        "initialize",
-        {
-            "protocolVersion": "2025-06-18",
-            "capabilities": {},
-            "clientInfo": {"name": "test", "version": "1"},
-        },
-    )
-    assert "use the search tool" in initialized.json()["result"]["instructions"]
+    discovered = await rpc(site, "server/discover", {})
+    assert "use the search tool" in discovered.json()["result"]["instructions"]
+
+
+async def test_mcp_clients_of_the_2025_protocol_also_search(
+    site: httpx.AsyncClient, pool: Pool
+) -> None:
+    body = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "search", "arguments": {"query": "double", "limit": 1}},
+    }
+    response = await site.post("/mcp", json=body, headers=MCP_ACCEPT)
+    assert response.json()["result"]["content"][0]["text"].startswith("1. Kit.double (")
+    [stored] = await stored_searches(pool)
+    assert stored[:3] == ("mcp", "python-httpx/" + httpx.__version__, None)
 
 
 async def test_mcp_search_gives_source_calls_and_is_stored(
@@ -273,7 +296,7 @@ async def test_mcp_search_gives_source_calls_and_is_stored(
     )
     assert text.endswith('More: search(query="double a number", limit=1, offset=1)\n')
     [stored] = await stored_searches(pool)
-    assert stored[:5] == ("mcp", "c/3", "double a number", 0, 1)
+    assert stored[:6] == ("mcp", "c/3", "agent 1.2", "double a number", 0, 1)
 
 
 async def test_mcp_source_gives_a_definition_or_a_file(site: httpx.AsyncClient) -> None:

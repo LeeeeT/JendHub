@@ -7,6 +7,45 @@
   outputs = { nixpkgs, ... }:
     let
       pkgs = import nixpkgs { system = "x86_64-linux"; };
+      mcpSource = pkgs.fetchFromGitHub {
+        owner = "modelcontextprotocol";
+        repo = "python-sdk";
+        tag = "v2.3.0";
+        hash = "sha256-CnXi78zYxm0/R4fON/DzRYMSDYM/XM/9SE3s+Cf1BR0=";
+      };
+      httpx2Source = pkgs.fetchFromGitHub {
+        owner = "pydantic";
+        repo = "httpx2";
+        tag = "v2.14.0";
+        hash = "sha256-B3sLgMfJIzsM0gDVgvTEFeil0q7VG+xt0jgUcfPVU9w=";
+      };
+      httpx2Package = old: {
+        version = "2.14.0";
+        src = httpx2Source;
+        postPatch = old.postPatch + ''
+          substituteInPlace pyproject.toml \
+            --replace-fail '"uv-dynamic-versioning>=0.14.1"' '"uv-dynamic-versioning"'
+        '';
+        doCheck = false;
+      };
+      interpreter = pkgs.python314.override {
+        self = interpreter;
+        packageOverrides = final: prev: {
+          httpcore2 = prev.httpcore2.overridePythonAttrs httpx2Package;
+          httpx2 = prev.httpx2.overridePythonAttrs (old: httpx2Package old // {
+            dependencies = [ final.anyio final.httpcore2 final.idna final.truststore ];
+          });
+          mcp-types = prev.mcp-types.overridePythonAttrs {
+            version = "2.3.0";
+            src = mcpSource;
+          };
+          mcp = prev.mcp_2.overridePythonAttrs {
+            version = "2.3.0";
+            src = mcpSource;
+            doCheck = false;
+          };
+        };
+      };
       dependencies = ps: [
         ps.fastapi
         ps.httpx
@@ -24,17 +63,17 @@
       ];
       qdrant = pkgs.stdenvNoCC.mkDerivation rec {
         pname = "qdrant";
-        version = "1.18.2";
+        version = "1.19.2";
         src = pkgs.fetchurl {
           url = "https://github.com/qdrant/qdrant/releases/download/v${version}/qdrant-x86_64-unknown-linux-musl.tar.gz";
-          hash = "sha256-QKavRPikllYMnSNStrKgragWqkjQeBxo9gJYLmezrqA=";
+          hash = "sha256-ULJTJDMJ7QrlChn2ePDQrcxPC1Z7O9LFwMfgL6hAS7Y=";
         };
         sourceRoot = ".";
         installPhase = "install -Dm755 qdrant $out/bin/qdrant";
       };
-      services = [ pkgs.postgresql_17 qdrant ];
-      python = pkgs.python314.withPackages dependencies;
-      devPython = pkgs.python314.withPackages (ps:
+      services = [ pkgs.postgresql_18 qdrant ];
+      python = interpreter.withPackages dependencies;
+      devPython = interpreter.withPackages (ps:
         dependencies ps ++ [ ps.pytest ps.pytest-asyncio ps.respx ]);
       indexerSource = pkgs.lib.fileset.toSource {
         root = ./.;

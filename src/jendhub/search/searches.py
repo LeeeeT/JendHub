@@ -7,9 +7,15 @@ type Client = Literal["agents", "web", "mcp"]
 
 
 @dataclass(frozen=True)
-class Search:
+class Caller:
     client: Client
     user_agent: str | None
+    name: str | None = None
+
+
+@dataclass(frozen=True)
+class Search:
+    caller: Caller
     query: str
     offset: int
     limit: int
@@ -21,11 +27,13 @@ class Search:
 async def record_search(pool: Pool, search: Search) -> None:
     async with pool.connection() as connection:
         await connection.execute(
-            "INSERT INTO searches (client, user_agent, query, page_offset, page_limit,"
-            " generation, results, seconds) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO searches (client, user_agent, client_name, query, page_offset,"
+            " page_limit, generation, results, seconds)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
-                search.client,
-                search.user_agent,
+                search.caller.client,
+                search.caller.user_agent,
+                search.caller.name,
                 search.query,
                 search.offset,
                 search.limit,

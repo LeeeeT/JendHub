@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 
 from jendhub.errors import JendHubError
 from jendhub.indexing.store import IndexStore
+from jendhub.search.searches import Caller
 from jendhub.search.sources import id_source
 from jendhub.services.app import Running, service_app
 from jendhub.services.background import every
@@ -141,8 +142,8 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
         offset: SearchOffset = 0,
     ) -> str:
         site = running.get()
-        user_agent = request.headers.get("user-agent")
-        found, searched = await site.search(q, limit, offset, "agents", user_agent)
+        caller = Caller("agents", request.headers.get("user-agent"))
+        found, searched = await site.search(q, limit, offset, caller)
         background.add_task(site.keep, searched)
         return render_results(found, links(site, request))
 
@@ -207,8 +208,8 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
         if len(query) > MAX_QUERY:
             raise HTTPException(400, f"A query has at most {MAX_QUERY} characters.")
         site = running.get()
-        user_agent = request.headers.get("user-agent")
-        found, searched = await site.search(query, WEB_RESULTS, offset, "web", user_agent)
+        caller = Caller("web", request.headers.get("user-agent"))
+        found, searched = await site.search(query, WEB_RESULTS, offset, caller)
         background.add_task(site.keep, searched)
         shown = len(found.results)
         return page(

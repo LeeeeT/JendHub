@@ -1,4 +1,4 @@
-FROM rust:1.98.1-slim-trixie AS indexer
+FROM rust:1.99.1-slim-trixie AS indexer
 WORKDIR /build
 COPY bend2-lsp-rs bend2-lsp-rs
 COPY indexer indexer

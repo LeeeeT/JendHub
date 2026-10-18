@@ -23,7 +23,7 @@ from jendhub.search.definitions import DefinitionDetail, read_definition
 from jendhub.search.engine import Hit, SearchEngine, Target
 from jendhub.search.packages import PackageDetail, read_package
 from jendhub.search.ranking import Model, load_model
-from jendhub.search.searches import Client, Search, record_search
+from jendhub.search.searches import Caller, Search, record_search
 from jendhub.search.sources import (
     Declared,
     ReleaseFiles,
@@ -152,7 +152,7 @@ class Site:
         return self.live.current
 
     async def search(
-        self, query: str, limit: int, offset: int, client: Client, user_agent: str | None
+        self, query: str, limit: int, offset: int, caller: Caller
     ) -> tuple[Results, Search]:
         target = self.target()
         resources = self.resources
@@ -162,8 +162,7 @@ class Site:
         start = time.perf_counter()
         [hits] = await engine.search([query], MAX_LIMIT)
         searched = Search(
-            client,
-            user_agent,
+            caller,
             query,
             offset,
             limit,

@@ -17,8 +17,15 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   the agent. `source` takes the path of an import line, which each result
   already gives. The answers are the text answers, with tool calls in place of
   URLs, so that an agent without a fetch tool can follow them. The server uses
-  the official `mcp` SDK in stateless HTTP mode with JSON answers: it keeps no
-  sessions, and plain request and answer is what most clients support.
+  the official `mcp` SDK 2 in stateless HTTP mode with JSON answers: it keeps no
+  sessions, and plain request and answer is what most clients support. It
+  serves the stateless protocol of 2026-07-28 and the older protocols. A
+  client of the 2026-07-28 protocol sends its name with each request, and the
+  search log keeps it.
+- **Versions:** JendHub uses the latest release of each dependency. The flake
+  packages a Python library itself when nixpkgs does not have its latest
+  release yet. Python stays on the default version of nixpkgs, because nixpkgs
+  caches binary packages only for that version.
 - **Corpus:** the store keeps every version of every package, because packages
   import each other by hash. Search uses only the latest valid version of each
   named package, as if other versions do not exist.
@@ -328,7 +335,7 @@ All settings come from the environment.
 ## Deployment
 
 The production site is https://jend.leeeet.dev. It runs on one server with
-`deploy/compose.yaml`: Postgres 17, Qdrant 1.18.2, `site`, `syncer`, `worker`,
+`deploy/compose.yaml`: Postgres 18, Qdrant 1.19.2, `site`, `syncer`, `worker`,
 Prometheus and a Cloudflare Tunnel. No port is open to the internet:
 `cloudflared` connects out to Cloudflare, and Cloudflare sends the requests for
 `jend.leeeet.dev` to `http://site:8000`. The JendHub services run as an
@@ -374,7 +381,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
-| Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
+| Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
 | Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
 | `data/library` | The worker's copy of the package files in the `BEND_LIB` layout, for the Rust indexer. |
 
