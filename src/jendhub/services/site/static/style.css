@@ -344,9 +344,18 @@ button:hover {
 	color: var(--text);
 }
 
+.tag span {
+	white-space: nowrap;
+}
+
 .examples {
+	max-width: none;
 	margin: 0.8em 0 0;
 	font-size: 0.87em;
+}
+
+.examples a {
+	white-space: nowrap;
 }
 
 .home {
