@@ -3,7 +3,6 @@
 {% block head %}<meta name="description" content="The state of the JendHub index and the BendHub releases that do not load.">{% endblock %}
 {% block main %}
 <h1>Index status</h1>
-<section>
 {% if not view.generations %}
 <p class="muted">No index is built yet.</p>
 {% else %}
@@ -21,7 +20,6 @@
 </table>
 </div>
 {% endif %}
-</section>
 <section>
 <h2>Invalid releases <span>({{ view.invalid_total }})</span></h2>
 <p class="muted">A release is invalid when one of its files does not load with Base. JendHub never indexes an invalid release. Search uses the latest valid release of the same package.</p>
