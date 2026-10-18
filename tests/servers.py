@@ -73,6 +73,7 @@ def qdrant(root: Path) -> Generator[str]:
         "QDRANT__STORAGE__SNAPSHOTS_PATH": str(root / "snapshots"),
         "QDRANT__SERVICE__HTTP_PORT": str(http_port),
         "QDRANT__SERVICE__GRPC_PORT": str(free_port()),
+        "QDRANT__STORAGE__WAL__WAL_CAPACITY_MB": "1",
         "QDRANT__TELEMETRY_DISABLED": "true",
     }
     process = subprocess.Popen(

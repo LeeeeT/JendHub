@@ -330,7 +330,10 @@ The dev shell does not read `uv.lock`. When you add a dependency, add it to
 `flake.nix` and to `pyproject.toml`, then run `uv lock`.
 
 `nix flake check` runs all checks: the Python tests, which start their own
-Postgres and Qdrant, Ruff, Pyright and the Rust lints.
+Postgres and Qdrant, Ruff, Pyright and the Rust lints. The test Postgres runs
+with `fsync=off`, and the test Qdrant keeps its data in `/dev/shm` with a 1 MB
+WAL, because an fsync on a WSL disk takes about 70 ms: on that disk, each new
+collection took 4 s.
 
 ## Commands
 

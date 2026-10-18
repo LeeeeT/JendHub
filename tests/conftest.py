@@ -1,6 +1,8 @@
 import asyncio
 import itertools
-from collections.abc import AsyncGenerator, Iterator
+import tempfile
+from collections.abc import AsyncGenerator, Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import psycopg
@@ -17,6 +19,7 @@ from jendhub.vectors.index import VectorIndex, open_vector_index
 from tests.servers import TEMPLATE, database_url, postgres, qdrant
 
 DATABASES = itertools.count()
+MEMORY = Path("/dev/shm")  # noqa: S108
 
 
 @pytest.fixture
@@ -72,9 +75,18 @@ def packages(pool: Pool, library: Library) -> PackageStore:
     return PackageStore(pool, library)
 
 
+@contextmanager
+def memory_directory(tmp_path_factory: pytest.TempPathFactory, name: str) -> Generator[Path]:
+    if not MEMORY.is_dir():
+        yield tmp_path_factory.mktemp(name)
+        return
+    with tempfile.TemporaryDirectory(dir=MEMORY, prefix=f"jendhub-{name}-") as root:
+        yield Path(root)
+
+
 @pytest.fixture(scope="session")
 def qdrant_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
-    with qdrant(tmp_path_factory.mktemp("qdrant")) as url:
+    with memory_directory(tmp_path_factory, "qdrant") as root, qdrant(root) as url:
         yield url
 
 
