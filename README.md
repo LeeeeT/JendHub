@@ -184,12 +184,12 @@ fail the search. The row holds the whole ranking, not only the page, and no
 IP address.
 
 The first live index holds 56,650 definitions: Base and the latest valid
-release of 106 packages. With the weighted sum that the learned ranker
-replaced, a query answered in 20 to 70 ms when its embedding was in the cache
-of the site. The learned ranker adds one Qdrant request for the name scores,
-a second one when a parent or a child is outside the 1,000, and about 10 ms of
-CPU. A new query waits 0.8 to 4 s for the embedding from OpenRouter, which is
-the largest part of the latency.
+release of 106 packages. On the server, the engine answers a query in 58 ms
+(median) and 144 ms (p95) when its embedding is in the cache of the site,
+measured on 30 benchmark queries with a warm cache. The name scores are the
+largest part, about 80 ms, and they run in parallel with the Postgres read. A
+new query waits 0.8 to 4 s for the embedding from OpenRouter, which is the
+largest part of the latency.
 
 ## Development
 

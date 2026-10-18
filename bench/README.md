@@ -549,7 +549,9 @@ use int8 quantization in RAM, about 117 MB each for the live index, and
 Qdrant scores with the int8 vectors only. On the dev benchmark, the engine
 then scores 0.905, 0.894 and 0.897 at 10, 5 and 3, against 0.907, 0.897 and
 0.900 with exact scores. It gives the same first result as the lab code for
-98.8% of the queries, and 98.3% of the same top 10.
+98.8% of the queries, and 98.3% of the same top 10. On the server, a search
+without the query embedding now takes 58 ms (median) and 144 ms (p95), against
+2 to 3 s with binary quantization.
 
 ## Limits
 
