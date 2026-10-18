@@ -10,6 +10,8 @@ from psycopg import sql
 
 from jendhub.db.migrate import migrate
 from jendhub.db.pool import Pool, open_pool
+from jendhub.hub.library import Library
+from jendhub.hub.store import PackageStore
 from jendhub.settings import DatabaseSettings, QdrantSettings
 from jendhub.vectors.index import VectorIndex, open_vector_index
 from tests.servers import TEMPLATE, database_url, postgres, qdrant
@@ -58,6 +60,16 @@ def database(postgres_sockets: Path, migrated_template: str) -> DatabaseSettings
 async def pool(database: DatabaseSettings) -> AsyncGenerator[Pool]:
     async with open_pool(database) as opened:
         yield opened
+
+
+@pytest.fixture
+def library(tmp_path: Path) -> Library:
+    return Library(tmp_path / "library")
+
+
+@pytest.fixture
+def packages(pool: Pool, library: Library) -> PackageStore:
+    return PackageStore(pool, library)
 
 
 @pytest.fixture(scope="session")

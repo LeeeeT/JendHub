@@ -11,6 +11,7 @@ from jendhub.db.pool import Pool, open_pool
 from jendhub.embedding.embedder import Embedder
 from jendhub.embedding.memory import MemoryCachedEmbedder
 from jendhub.embedding.remote import RemoteEmbedder
+from jendhub.hub.library import Library
 from jendhub.indexing.status import (
     GenerationStatus,
     InvalidRelease,
@@ -32,16 +33,36 @@ from jendhub.search.sources import (
     read_declared,
     read_file,
     read_release_files,
-    source_id,
     usage,
 )
 from jendhub.services.parameters import MAX_LIMIT
-from jendhub.settings import DatabaseSettings, OpenRouterSettings, QdrantSettings, load_settings
+from jendhub.services.site.files import (
+    NOT_READY,
+    GlobArguments,
+    GrepArguments,
+    Lines,
+    Matches,
+    Paths,
+    Place,
+    ReadArguments,
+    glob_files,
+    grep_files,
+    locate,
+    read_lines,
+)
+from jendhub.settings import (
+    DatabaseSettings,
+    LibrarySettings,
+    OpenRouterSettings,
+    QdrantSettings,
+    load_settings,
+)
 from jendhub.vectors.index import VectorIndex, open_vector_index
 
 logger = logging.getLogger(__name__)
 
 EMBEDDING_FAILED = "The embedding service did not answer. Try again."
+GREPS = 2
 
 
 @dataclass
@@ -76,6 +97,7 @@ class Generations:
 @dataclass(frozen=True)
 class Resources:
     pool: Pool
+    library: Library
     vectors: VectorIndex
     embedder: Embedder
     model: Model
@@ -86,13 +108,14 @@ type OpenResources = Callable[[], AbstractAsyncContextManager[Resources]]
 
 @asynccontextmanager
 async def open_resources(query_cache_size: int) -> AsyncGenerator[Resources]:
+    library = Library(load_settings(LibrarySettings).library_path)
     async with (
         open_pool(load_settings(DatabaseSettings)) as pool,
         open_vector_index(load_settings(QdrantSettings)) as vectors,
         open_openrouter(load_settings(OpenRouterSettings), INTERACTIVE) as openrouter,
     ):
         embedder = MemoryCachedEmbedder(RemoteEmbedder(openrouter), query_cache_size)
-        yield Resources(pool, vectors, embedder, load_model())
+        yield Resources(pool, library, vectors, embedder, load_model())
 
 
 @dataclass(frozen=True)
@@ -141,14 +164,19 @@ class Site:
     live: LiveTarget
     generations: Generations
     origin: str
+    greps: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(GREPS))
 
     @property
     def pool(self) -> Pool:
         return self.resources.pool
 
+    @property
+    def library(self) -> Library:
+        return self.resources.library
+
     def target(self) -> Target:
         if self.live.current is None:
-            raise HTTPException(503, "The search index is not ready. Try again later.")
+            raise HTTPException(503, NOT_READY)
         return self.live.current
 
     async def search(
@@ -183,16 +211,27 @@ class Site:
             logger.exception("the search log did not store a search")
 
     async def definition(self, id_: str) -> DefinitionView:
-        found = await read_definition(self.pool, self.target().generation, id_)
+        found = await read_definition(self.pool, self.library, self.target().generation, id_)
         if found is None:
             raise HTTPException(404, f"The index has no definition {id_}.")
         return DefinitionView(found, usage(found.name, found.package, found.version, found.module))
 
-    async def named(self, release: str, path: str, name: str) -> DefinitionView:
-        id_ = await source_id(self.pool, release, path, name)
-        if id_ is None:
-            raise HTTPException(404, f"The index has no definition {name} in {release}/{path}.")
-        return await self.definition(id_)
+    async def locate(self, path: str) -> Place:
+        live = self.live.current
+        return await locate(
+            self.pool, self.library, None if live is None else live.generation, path
+        )
+
+    async def read(self, given: ReadArguments) -> Lines:
+        return await read_lines(await self.locate(given.file_path), given.offset, given.limit)
+
+    async def grep(self, given: GrepArguments) -> Matches:
+        place = await self.locate(given.path)
+        async with self.greps:
+            return await grep_files(place, given)
+
+    async def glob(self, given: GlobArguments) -> Paths:
+        return await glob_files(await self.locate(given.path), given.pattern, given.offset)
 
     async def package(self, name: str, offset: int, limit: int) -> PackageView:
         found = await read_package(self.pool, self.target().generation, name, offset, limit)
@@ -209,13 +248,13 @@ class Site:
         return found[0] if found else None
 
     async def files(self, release: str) -> ReleaseFiles:
-        found = await read_release_files(self.pool, self.target().generation, release)
+        found = await read_release_files(self.pool, self.library, self.target().generation, release)
         if found is None:
             raise HTTPException(404, f"The store has no release {release}.")
         return found
 
     async def source(self, release: str, path: str) -> SourceFile:
-        found = await read_file(self.pool, self.target().generation, release, path)
+        found = await read_file(self.pool, self.library, self.target().generation, release, path)
         if found is None:
             raise HTTPException(404, f"The store has no file {release}/{path}.")
         return found

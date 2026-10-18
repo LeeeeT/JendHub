@@ -26,6 +26,8 @@ class DefinitionSummary:
     name: str
     module: str
     head: str
+    first_line: int
+    end_line: int
 
     @property
     def summary(self) -> str | None:
@@ -87,7 +89,7 @@ async def read_package(
         )
         total_row = await cursor.fetchone()
         cursor = await connection.execute(
-            "SELECT id, kind, name, module, head FROM definitions"
+            "SELECT id, kind, name, module, head, first_line, end_line FROM definitions"
             " WHERE generation = %s AND release = ANY(%s)"
             " ORDER BY module, first_line OFFSET %s LIMIT %s",
             (generation, indexed, offset, limit),

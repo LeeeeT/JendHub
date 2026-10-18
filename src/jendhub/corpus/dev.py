@@ -9,7 +9,6 @@ from jendhub.corpus.corpus import Corpus
 from jendhub.corpus.definitions import BASE, SourceFile, extract
 from jendhub.errors import JendHubError
 from jendhub.hub.api import Listing, PackageRelease, Release, listings, parse_listing
-from jendhub.hub.library import Library, ensure_base, refresh
 from jendhub.hub.store import PackageStore
 from jendhub.json import Json
 from jendhub.remote.http import http_client
@@ -131,13 +130,13 @@ def dev_corpus_list() -> DevCorpus:
     return DevCorpus.from_json(DEV_CORPUS_LIST.read_text())
 
 
-async def open_corpus(library: Library, store: PackageStore, listed: DevCorpus) -> Corpus:
+async def open_corpus(store: PackageStore, listed: DevCorpus) -> Corpus:
     stored = await store.stored_hashes()
     missing = [package.hash for package in listed.packages if package.hash not in stored]
     if missing:
         raise DevError(
             f"{len(missing)} packages of the dev corpus are not stored: run jendhub sync"
         )
-    await refresh(library, store)
-    await ensure_base(library, store, listed.base_tag)
-    return Corpus(library, listed.base_tag, listed.packages)
+    if not store.library.base_source(listed.base_tag).is_file():
+        raise DevError(f"the store has no base.bend {listed.base_tag}: run jendhub sync")
+    return Corpus(store.library, listed.base_tag, listed.packages)

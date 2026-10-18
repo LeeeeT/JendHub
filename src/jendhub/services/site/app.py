@@ -3,9 +3,10 @@ import math
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from http import HTTPStatus
+from typing import Annotated
 from urllib.parse import quote, urlencode
 
-from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,7 +15,6 @@ from starlette.exceptions import HTTPException
 from jendhub.errors import JendHubError
 from jendhub.indexing.store import IndexStore
 from jendhub.search.searches import Caller
-from jendhub.search.sources import id_source
 from jendhub.services.app import Running, service_app
 from jendhub.services.background import every
 from jendhub.services.parameters import (
@@ -26,6 +26,7 @@ from jendhub.services.parameters import (
     SearchOffset,
     invalid_parameters,
 )
+from jendhub.services.site.files import GlobArguments, GrepArguments, ReadArguments
 from jendhub.services.site.guide import OPENSEARCH_TYPE, ROBOTS, llms_text, opensearch
 from jendhub.services.site.limits import RateLimit, client_address
 from jendhub.services.site.pages import (
@@ -40,9 +41,10 @@ from jendhub.services.site.pages import (
 )
 from jendhub.services.site.text import (
     UrlLinks,
-    render_definition,
-    render_files,
+    render_lines,
+    render_matches,
     render_package,
+    render_paths,
     render_results,
     render_status,
 )
@@ -58,6 +60,7 @@ from jendhub.services.site.views import (
 from jendhub.settings import load_settings
 
 WEB_RESULTS = 20
+RELATIVE = UrlLinks("")
 QUIET = frozenset({"/healthz", "/readyz", "/style.css"})
 ASSET_CACHE = {"cache-control": "public, max-age=31536000, immutable"}
 SEARCHES = frozenset({"/search", "/search.txt"})
@@ -79,7 +82,7 @@ class SiteSettings(BaseSettings):
 
 
 def for_agents(path: str) -> bool:
-    return path.endswith(".txt") or path.startswith("/src/") or path == MCP_PATH
+    return path.endswith(".txt") or path == MCP_PATH
 
 
 def links(site: Site, request: Request) -> UrlLinks:
@@ -149,22 +152,20 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
         background.add_task(site.keep, searched)
         return render_results(found, links(site, request))
 
-    @router.get("/src/{release}/")
-    async def release_files(request: Request, release: str) -> str:
+    @router.get("/read.txt")
+    async def read(request: Request, given: Annotated[ReadArguments, Query()]) -> str:
         site = running.get()
-        return render_files(await site.files(release), links(site, request))
+        return render_lines(await site.read(given), links(site, request))
 
-    @router.get("/src/{release}/{path:path}")
-    async def source(
-        request: Request,
-        release: str,
-        path: str,
-    ) -> str:
+    @router.get("/grep.txt")
+    async def grep(request: Request, given: Annotated[GrepArguments, Query()]) -> str:
         site = running.get()
-        wanted = request.query_params.get("def")
-        if wanted is None:
-            return (await site.source(release, path)).text
-        return render_definition(await site.named(release, path, wanted), links(site, request))
+        return render_matches(await site.grep(given), links(site, request))
+
+    @router.get("/glob.txt")
+    async def glob(request: Request, given: Annotated[GlobArguments, Query()]) -> str:
+        site = running.get()
+        return render_paths(await site.glob(given), links(site, request))
 
     @router.get("/packages/{name}.txt")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> str:
@@ -225,8 +226,10 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
     @router.get("/definitions/{id_:path}")
     async def definition(id_: str) -> Response:
         view = await running.get().definition(id_)
-        file, name = id_source(id_)
-        alternate = f"/src/{quote(file, safe='/@')}?{urlencode({'def': name})}"
+        detail = view.detail
+        alternate = RELATIVE.read(
+            view.usage.file, detail.first_line + 1, detail.end_line - detail.first_line
+        )
         return page("definition.html", view=view, alternate=alternate)
 
     return router
@@ -251,13 +254,13 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
     @router.get("/files/{release}")
     async def release_files(release: str) -> Response:
         found = await running.get().files(release)
-        return page("files.html", files=found, alternate=f"/src/{quote(release, safe='@')}/")
+        return page("files.html", files=found, alternate=RELATIVE.glob(found.release))
 
     @router.get("/files/{release}/{path:path}")
     async def file(release: str, path: str, lines: str | None = None) -> Response:
         view = await running.get().file(release, path)
         found = view.file
-        alternate = f"/src/{quote(f'{found.release}/{found.path}', safe='/@')}"
+        alternate = RELATIVE.read(f"{found.release}/{found.path}")
         return page(
             "file.html",
             view=view,

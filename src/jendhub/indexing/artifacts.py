@@ -56,7 +56,7 @@ def source_files(
 ) -> dict[Path, SourceFile]:
     if package is None:
         return {base.resolve(): SourceFile(BASE, base.read_text(encoding="utf-8"))}
-    root = library.lib / release
+    root = library.package_directory(release)
     return {
         (root / path).resolve(): SourceFile(
             Origin(package, path.removesuffix(".bend")), content.decode(errors="replace")

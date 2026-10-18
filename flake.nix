@@ -112,7 +112,7 @@
       };
       jendhubService = pkgs.writeShellApplication {
         name = "jendhub-service";
-        runtimeInputs = [ python indexer ];
+        runtimeInputs = [ python indexer pkgs.ripgrep ];
         text = ''
           export PYTHONPATH="''${PYTHONPATH:+$PYTHONPATH:}${source}"
           exec python -m jendhub.services "$@"
@@ -149,6 +149,7 @@
           jendhubService
           indexer
           pkgs.pyright
+          pkgs.ripgrep
           pkgs.ruff
           pkgs.process-compose
         ] ++ services;
@@ -168,7 +169,7 @@
       checks.x86_64-linux.indexer = indexerLints;
 
       checks.x86_64-linux.default = pkgs.runCommand "jendhub-checks" {
-        nativeBuildInputs = [ devPython indexer pkgs.pyright pkgs.ruff ] ++ services;
+        nativeBuildInputs = [ devPython indexer pkgs.pyright pkgs.ripgrep pkgs.ruff ] ++ services;
         SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
       } ''
         cp -r ${pkgs.lib.fileset.toSource {

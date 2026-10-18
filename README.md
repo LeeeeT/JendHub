@@ -12,10 +12,10 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   format. People get the same data as HTML pages with no JavaScript. One
   service serves both forms, because they are one product with one life cycle.
 - **MCP:** the site is also an MCP server, so that an agent can add JendHub
-  with one command and sees its tools in every session. It has only two tools,
-  `search` and `source`, because each tool description stays in the context of
-  the agent. `source` takes the path of an import line, which each result
-  already gives. The answers are the text answers, with tool calls in place of
+  with one command and sees its tools in every session. It has four tools:
+  `search`, and `read`, `grep` and `glob` to read the code. Each tool
+  description stays in the context of the agent, so the descriptions are
+  short. The answers are the text answers, with tool calls in place of
   URLs, so that an agent without a fetch tool can follow them. The server uses
   the official `mcp` SDK 2 in stateless HTTP mode with JSON answers: it keeps no
   sessions, and plain request and answer is what most clients support. It
@@ -25,6 +25,33 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   declares only what it has: the tools, with no change notifications. Clients
   can keep the tool list for one hour, because it changes only with a deploy.
   `serverInfo.version` is the `git describe` of the deployed commit.
+- **Reading code:** an agent reads JendHub code as it reads the code of its own
+  project. `read`, `grep` and `glob` have the parameters and the answer forms
+  of the Read, Grep and Glob tools of Claude Code, so an agent needs nothing
+  new to learn. `read` gives `N<tab>text` lines, and each search result gives
+  the `read` call of its lines. An agent follows a reference with `grep`, as
+  it does in its own project, so no answer has a list of uses. The
+  differences are for the size of an answer and for the CPU of the server:
+  `grep` and `glob` take one release, a `read` gives at most 2000 lines and cuts
+  a line at 2000 characters, `grep` gives at most 1000 entries (250 by
+  default), and `glob` gives at most 1000 paths. A cut answer ends with the
+  call or URL of the next part. `grep` has no `type` parameter, because the
+  store keeps only `.bend` files.
+- **ripgrep:** `grep` runs `rg` itself on the stored files, so its regular
+  expressions, its options and its output are those of the Grep tool. The
+  regex engine of `rg` runs in linear time, so a pattern cannot block the
+  server. A grep stops after 10 s, and the site runs at most 2 at a time.
+- **File store:** the package files and each `base.bend` are files in the
+  library, a volume in the `BEND_LIB` layout. Postgres keeps only their
+  metadata. So there is one copy of each file, `rg` and the Rust indexer read
+  it directly, and a read does not go through Postgres. The syncer writes the
+  library, and the worker and the site mount it read-only, so these services
+  run on one server. The syncer writes the files of a release before its
+  Postgres row. A release never changes, so a crash can leave only an unused
+  directory, which the next sync writes again.
+- **Original text:** `read` and `grep` give each file as BendHub has it, with
+  its relative imports and hash imports, so the lines of `grep` and `read`
+  agree. The web pages write each import as an exact release.
 - **Versions:** JendHub uses the latest release of each dependency. The flake
   packages a Python library itself when nixpkgs does not have its latest
   release yet. Python stays on the default version of nixpkgs, because nixpkgs
@@ -45,8 +72,9 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   `List.map`. A package definition has `name@version/module:Name`, for example
   `bend-kit-json@0.5.0.1/json:parse.bytes`. IDs do not contain `.bend`.
 - **Scale:** the design must hold millions of definitions. No service keeps
-  the index in memory. Postgres is the source of truth. Qdrant holds the
-  vectors as a projection that can be built again from Postgres.
+  the index in memory. Postgres and the library are the source of truth.
+  Qdrant holds the vectors as a projection that can be built again from
+  Postgres.
 - **Models:** all models run through [OpenRouter](https://openrouter.ai). The
   only paid cost for each search request is the query embedding. The reranker
   is a small LightGBM model of cheap features. It runs in the site and calls no
@@ -64,17 +92,17 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
 | Service | Job | State |
 |---|---|---|
 | `syncer` | Stores the new packages of BendHub and each new Base release. Queues an index job for each new latest release. Promotes a finished generation and deletes retired ones. | none |
-| `worker` | Runs the index jobs: extracts the definitions of a release, resolves its uses with the Rust indexer, computes the rerank features, embeds the documents and writes Postgres and Qdrant. Scale it out with more replicas. | a local copy of the package files |
-| `site` | The public site. Runs the search (embeds the query, gets candidates from Qdrant, and reranks them), and answers people with HTML pages and agents with plain text. | none |
+| `worker` | Runs the index jobs: extracts the definitions of a release, resolves its uses with the Rust indexer, computes the rerank features, embeds the documents and writes Postgres and Qdrant. Scale it out with more replicas. | none |
+| `site` | The public site. Runs the search (embeds the query, gets candidates from Qdrant, and reranks them), reads the library for `read`, `grep` and `glob`, and answers people with HTML pages and agents with plain text. | none |
 
-Postgres and Qdrant are the only stores.
+Postgres, the library and Qdrant are the only stores.
 
 ```
-BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
-                          ▲                      ▲
-                          └─────── site ─────────┘
-                                    ▲
-                 AI agents, people ─┘
+BendHub ──> syncer ──> Postgres, library <── worker ──> Qdrant
+                              ▲                           ▲
+                              └────────── site ───────────┘
+                                           ▲
+                        AI agents, people ─┘
 ```
 
 ### Paths
@@ -83,9 +111,10 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 |---|---|---|
 | `GET /llms.txt` | `GET /` | How to use JendHub. The home page also shows the size of the live index. |
 | `GET /search.txt?q=<query>&limit=10&offset=0` | `GET /search?q=<query>&offset=0` | The best definitions with their import line and the name to call. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
-| `GET /src/<release>/<path>?def=<name>` | `GET /definitions/<id>` | A definition with the import lines that its code uses, and the definitions that it uses. |
-| `GET /src/<release>/<path>` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. The page links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
-| `GET /src/<release>/` | `GET /files/<release>` | The files of a release. The page also shows the number of indexed definitions in each file. |
+| `GET /read.txt?file_path=<release>/<path>&offset=1&limit=2000` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one, as `N<tab>text` lines. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
+| | `GET /definitions/<id>` | A definition with the import lines that its code uses, and the definitions that it uses. Its text form is the `read.txt` of its lines. |
+| `GET /grep.txt?pattern=<regex>&path=<release>` | | The paths, lines or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters are those of the Grep tool: `glob`, `output_mode` (`files_with_matches`, `content` or `count`), `-A`, `-B`, `-C`, `context`, `-n`, `-i`, `-o`, `multiline`, `head_limit` (1 to 1000, 250) and `offset`. |
+| `GET /glob.txt?pattern=<glob>&path=<release>&offset=0` | `GET /files/<release>` | The files of one release whose paths match a glob, such as `**/*.bend`. The page shows all files with the number of indexed definitions in each. |
 | `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
 | | `GET /opensearch.xml` | The OpenSearch description, so that a browser can search JendHub from its address bar. Each page links to it. |
@@ -102,10 +131,12 @@ agent with one of these commands:
 | Tool | Answer |
 |---|---|
 | `search(query, limit=10, offset=0)` | The same as `/search.txt`. |
-| `source(path, definition=None)` | The same as `/src/<path>?def=<definition>`, or the whole file without `definition`. `path` is the path of an import line, for example `kit@1.0.0.0/json.bend`, or `Base/base.bend`. |
+| `read(file_path, offset=1, limit=2000)` | The same as `/read.txt`. `file_path` is the path of an import line, for example `kit@1.0.0.0/json.bend`, or `Base/base.bend`. |
+| `grep(pattern, path, ...)` | The same as `/grep.txt`. |
+| `glob(pattern, path, offset=0)` | The same as `/glob.txt`. |
 
 In tool answers, each link is the tool call that opens it, for example
-`source(path="kit@1.0.0.0/json.bend", definition="parse")`.
+`read(file_path="kit@1.0.0.0/json.bend", offset=12, limit=29)`.
 
 A text answer is plain text, also an error. Its links are full URLs, and a
 paged answer ends with the URL of the next page. Each answer stays short,
@@ -113,7 +144,7 @@ because it goes into the context of an agent: a head of more than 12 lines
 ends with `…`, and a load error names at most 5 of its files.
 
 ```
-1. Json.parse (https://jend.leeeet.dev/src/bend-net-json@0.3.0.0/json.bend?def=parse)
+1. Json.parse (https://jend.leeeet.dev/read.txt?file_path=bend-net-json@0.3.0.0/json.bend&offset=386&limit=3)
    import bend-net-json@0.3.0.0/json.bend as Json
    # One JSON text: a value with optional whitespace around it.
    def parse(+s: String) -> Maybe<&2, Val>:
@@ -121,9 +152,10 @@ ends with `…`, and a load error names at most 5 of its files.
 
 A package definition is imported from its exact release. Its alias is the
 module name in PascalCase, or the package name for a `main` module. A Base
-definition needs only `import Base`. A file of a release gets its relative
-imports and its hash imports written as `name@version` paths. Each page links
-to its text form with `<link rel="alternate" type="text/plain">`.
+definition needs only `import Base`. The file page and the definition page
+write the relative imports and the hash imports of a file as `name@version`
+paths. Each page links to its text form with
+`<link rel="alternate" type="text/plain">`.
 
 Each client IP gets at most 30 searches and 600 requests a minute, with a
 burst of 10 searches and 120 requests. More get `429 Too Many Requests` with
@@ -290,8 +322,8 @@ example `nix run .#stack -- logs -f site`, or
 stage compiles the Rust indexer. Its second stage installs the Python
 dependencies with `uv sync --frozen`, from `pyproject.toml` and `uv.lock`. The
 last stage is `python:3.14-slim` with the dependencies, the indexer and
-`src/jendhub`. It also installs `libgomp1`, because LightGBM needs OpenMP. The
-compose file gives each service its command.
+`src/jendhub`. It also installs `libgomp1`, because LightGBM needs OpenMP, and
+`ripgrep` for `grep`. The compose file gives each service its command.
 
 The dev shell does not read `uv.lock`. When you add a dependency, add it to
 `flake.nix` and to `pyproject.toml`, then run `uv lock`.
@@ -301,8 +333,7 @@ Postgres and Qdrant, Ruff, Pyright and the Rust lints.
 
 ## Commands
 
-`--data` sets the directory of the local package copy and of the corpus text.
-The default is `data`.
+`--data` sets the directory of the corpus text. The default is `data`.
 
 | Command | What it does |
 |---|---|
@@ -336,7 +367,8 @@ All settings come from the environment.
 | `JENDHUB_QUERY_CACHE_SIZE`, `JENDHUB_TARGET_REFRESH_SECONDS` | `site` | 1,000, 10 |
 | `JENDHUB_STATUS_SECONDS` | `site`: the time it keeps the sizes of the generations | 30 |
 | `JENDHUB_SYNC_INTERVAL_SECONDS` | `syncer` | 300 |
-| `JENDHUB_LIBRARY_PATH`, `JENDHUB_WORKER_CONCURRENCY` | `worker` | `library`, 2 |
+| `JENDHUB_LIBRARY_PATH` | `syncer`, `worker`, `site`, the CLI: the directory of the library | `data/library` |
+| `JENDHUB_WORKER_CONCURRENCY` | `worker` | 2 |
 
 ## Deployment
 
@@ -383,7 +415,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 
 | Store | Content |
 |---|---|
-| Postgres `packages`, `package_files`, `rejected_packages`, `base_releases` | The mirror of BendHub and of each Base release. |
+| Postgres `packages`, `rejected_packages`, `base_releases` | The releases of BendHub and of Base that the library has, and the rejected packages. |
 | Postgres `generations`, `index_jobs` | The index generations with their vector settings, and the job queue. |
 | Postgres `invalid_releases` | The releases that never go into the index, with the load error of each file that does not load. |
 | Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
@@ -391,7 +423,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
 | Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
 | Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
-| `data/library` | The worker's copy of the package files in the `BEND_LIB` layout, for the Rust indexer. |
+| The library, `data/library` | The files of each package in the `BEND_LIB` layout (`lib/<hash>/<path>`, and `lib/names/<name@version>` with the hash), and `base/<tag>/base.bend`. |
 
 The sync rejects a release with an invalid name or version, or a package with
 an invalid file name, and never tries it again. A hash mismatch, a network

@@ -1,12 +1,10 @@
 from datetime import timedelta
-from pathlib import Path
 
 import pytest
 
 from jendhub.db.pool import Pool
 from jendhub.embedding.model import Vectors
 from jendhub.hub.base import Base
-from jendhub.hub.library import Library
 from jendhub.hub.store import PackageStore
 from jendhub.indexing import schedule
 from jendhub.indexing.schedule import clean_retired, promote_ready, schedule_live
@@ -31,15 +29,15 @@ async def states(index: IndexStore, corpus: str) -> list[str]:
 
 
 async def test_a_new_base_builds_a_new_generation_beside_the_live_one(
-    pool: Pool, vectors: VectorIndex, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    packages: PackageStore, vectors: VectorIndex, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    packages = await seed(pool)
-    index, old = await index_live(pool, vectors, tmp_path)
+    await seed(packages)
+    index, old = await index_live(packages, vectors)
     await packages.store_base(Base(NEW_TAG, BASE.encode()))
     await schedule_live(index, packages, vectors)
     assert await states(index, LIVE) == ["live", "building"]
     [_, new] = await index.generations(LIVE)
-    worker = Worker(index, packages, Library(tmp_path), vectors, WordEmbedder())
+    worker = Worker(index, packages, vectors, WordEmbedder())
     await worker.drain(new.id)
     await promote_ready(index, LIVE)
     assert await states(index, LIVE) == ["live"]
@@ -52,10 +50,10 @@ async def test_a_new_base_builds_a_new_generation_beside_the_live_one(
 
 
 async def test_a_new_vector_setting_builds_a_new_generation_beside_the_live_one(
-    pool: Pool, vectors: VectorIndex, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    pool: Pool, packages: PackageStore, vectors: VectorIndex, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    packages = await seed(pool)
-    index, old = await index_live(pool, vectors, tmp_path)
+    await seed(packages)
+    index, old = await index_live(packages, vectors)
     setting = VectorConfig(1024, "int8")
     monkeypatch.setattr(schedule, "PRODUCTION", setting)
     await schedule_live(index, packages, vectors)
@@ -66,7 +64,7 @@ async def test_a_new_vector_setting_builds_a_new_generation_beside_the_live_one(
     [_, new] = await index.generations(LIVE)
     assert new.config == setting
     assert await vectors.exists(new.collection)
-    worker = Worker(index, packages, Library(tmp_path), vectors, WordEmbedder())
+    worker = Worker(index, packages, vectors, WordEmbedder())
     await worker.drain(new.id)
     await promote_ready(index, LIVE)
     live = await index.live(LIVE)
@@ -80,13 +78,13 @@ async def test_a_new_vector_setting_builds_a_new_generation_beside_the_live_one(
 
 
 async def test_a_failed_job_waits_and_then_stops_the_drain(
-    pool: Pool, vectors: VectorIndex, tmp_path: Path
+    pool: Pool, packages: PackageStore, vectors: VectorIndex
 ) -> None:
-    packages: PackageStore = await seed(pool)
+    await seed(packages)
     index = IndexStore(pool)
     await schedule_live(index, packages, vectors)
     [generation] = await index.generations(LIVE)
-    worker = Worker(index, packages, Library(tmp_path), vectors, FailingEmbedder())
+    worker = Worker(index, packages, vectors, FailingEmbedder())
     while await worker.step():
         pass
     assert await index.job_states(generation.id) == {"queued": 3}
@@ -104,9 +102,9 @@ async def test_a_failed_job_waits_and_then_stops_the_drain(
 
 
 async def test_a_job_whose_worker_stops_each_time_fails_at_last(
-    pool: Pool, vectors: VectorIndex, tmp_path: Path
+    pool: Pool, packages: PackageStore, vectors: VectorIndex
 ) -> None:
-    packages: PackageStore = await seed(pool)
+    await seed(packages)
     index = IndexStore(pool)
     await schedule_live(index, packages, vectors)
     [generation] = await index.generations(LIVE)
@@ -116,6 +114,6 @@ async def test_a_job_whose_worker_stops_each_time_fails_at_last(
             " lease_until = now() - interval '1 minute'",
             (MAX_ATTEMPTS,),
         )
-    worker = Worker(index, packages, Library(tmp_path), vectors, FailingEmbedder())
+    worker = Worker(index, packages, vectors, FailingEmbedder())
     assert not await worker.step()
     assert await index.job_states(generation.id) == {"failed": 3}

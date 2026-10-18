@@ -13,6 +13,9 @@ x-jendhub: &jendhub
   environment: &environment
     JENDHUB_DATABASE_URL: postgresql://jendhub:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres/jendhub
     JENDHUB_QDRANT_URL: http://qdrant:6333
+    JENDHUB_LIBRARY_PATH: /data/library
+  volumes:
+    - library:/data/library:ro
   healthcheck:
     test:
       - CMD
@@ -68,6 +71,8 @@ services:
   syncer:
     <<: *jendhub
     command: [syncer, --host, 0.0.0.0, --port, "8000", --metrics-port, "9000"]
+    volumes:
+      - library:/data/library
 
   worker:
     <<: *jendhub
@@ -75,9 +80,6 @@ services:
     environment:
       <<: *environment
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
-      JENDHUB_LIBRARY_PATH: /data/library
-    volumes:
-      - library:/data/library
 
   site:
     <<: *jendhub

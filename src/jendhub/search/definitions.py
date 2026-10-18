@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from jendhub.db.pool import Pool
+from jendhub.hub.library import Library
 from jendhub.search.sources import BASE_IMPORT, StoredRelease, package_source, used_imports
 
 
@@ -19,7 +20,9 @@ class DefinitionDetail:
     uses: list[str]
 
 
-async def read_definition(pool: Pool, generation: int, id_: str) -> DefinitionDetail | None:
+async def read_definition(
+    pool: Pool, library: Library, generation: int, id_: str
+) -> DefinitionDetail | None:
     async with pool.connection() as connection:
         cursor = await connection.execute(
             "SELECT point, release, kind, name, package, version, module, text,"
@@ -34,7 +37,7 @@ async def read_definition(pool: Pool, generation: int, id_: str) -> DefinitionDe
             imports = [BASE_IMPORT]
         else:
             stored = StoredRelease(f"{package}@{version}", release)
-            source = await package_source(connection, stored, f"{module}.bend")
+            source = await package_source(connection, library, stored, f"{module}.bend")
             imports = [] if source is None else used_imports(source, text)
         cursor = await connection.execute(
             "SELECT t.id FROM uses JOIN definitions t ON t.point = uses.target_point"

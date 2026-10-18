@@ -29,12 +29,22 @@ from jendhub.errors import JendHubError
 from jendhub.search.searches import Caller
 from jendhub.services.app import Running
 from jendhub.services.parameters import MAX_LIMIT, MAX_QUERY, invalid_parameters
+from jendhub.services.site.files import MAX_LINES, GlobArguments, GrepArguments, ReadArguments
 from jendhub.services.site.guide import INSTRUCTIONS
-from jendhub.services.site.text import SOURCE_TOOL, ToolLinks, render_definition, render_results
+from jendhub.services.site.text import (
+    READ_TOOL,
+    ToolLinks,
+    render_lines,
+    render_matches,
+    render_paths,
+    render_results,
+)
 from jendhub.services.site.views import EMBEDDING_FAILED, Site
 
 MCP_PATH = "/mcp"
 SEARCH_TOOL = "search"
+GREP_TOOL = "grep"
+GLOB_TOOL = "glob"
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 STATIC = CacheHint(ttl_ms=3_600_000, scope="public")
 
@@ -62,39 +72,35 @@ class SearchArguments(BaseModel):
     ] = 0
 
 
-class SourceArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    path: Annotated[
-        str,
-        Field(
-            min_length=1,
-            description="A file as an import line names it, for example"
-            " `kit@1.0.0.0/json.bend`. Base is `Base/base.bend`.",
-        ),
-    ]
-    definition: Annotated[
-        str | None,
-        Field(description="The name of one definition in the file, for example `parse`."),
-    ] = None
-
-
 TOOLS = [
     Tool(
         name=SEARCH_TOOL,
         description="Search the definitions of Base and of the BendHub packages by task or by"
-        " name. Each result gives its import line, the name to call, its head and the source"
+        " name. Each result gives its import line, the name to call, its head and the read"
         " call that shows its code.",
         input_schema=SearchArguments.model_json_schema(),
         annotations=READ_ONLY,
     ),
     Tool(
-        name=SOURCE_TOOL,
-        description="Read Bend code from Base or from a release on BendHub. Without a"
-        " definition, the answer is the whole file. With a definition, the answer is its"
-        " code, the import lines that the code uses, and the source calls of the definitions"
-        " that it uses.",
-        input_schema=SourceArguments.model_json_schema(),
+        name=READ_TOOL,
+        description="Read a file of Base or of a release on BendHub. The answer gives each"
+        f" line as its number, a tab and its text. It gives at most {MAX_LINES} lines: use"
+        " offset and limit to read a part of a long file.",
+        input_schema=ReadArguments.model_json_schema(),
+        annotations=READ_ONLY,
+    ),
+    Tool(
+        name=GREP_TOOL,
+        description="Find a regular expression in the files of one release with ripgrep. The"
+        " answer gives each path as the read tool takes it.",
+        input_schema=GrepArguments.model_json_schema(),
+        annotations=READ_ONLY,
+    ),
+    Tool(
+        name=GLOB_TOOL,
+        description="Find the files of one release whose paths match a glob. The answer"
+        " gives each path as the read tool takes it.",
+        input_schema=GlobArguments.model_json_schema(),
         annotations=READ_ONLY,
     ),
 ]
@@ -132,11 +138,8 @@ def client_name(ctx: Context) -> str | None:
     return f"{info.name} {info.version}".strip()
 
 
-def release_file(path: str) -> tuple[str, str]:
-    release, _, file = path.partition("/")
-    if not release or not file:
-        raise ToolCallError(f"{path} is not a file of a release, such as kit@1.0.0.0/json.bend.")
-    return release, file
+def tool_links(tool: str, given: BaseModel) -> ToolLinks:
+    return ToolLinks(tool, given.model_dump(by_alias=True, exclude_unset=True, exclude_none=True))
 
 
 def answer(text: str, *, failed: bool = False) -> CallToolResult:
@@ -155,16 +158,24 @@ def tool_server(running: Running[Site], searching: Guard, version: str) -> Serve
         links = ToolLinks(SEARCH_TOOL, {"query": given.query, "limit": given.limit})
         return render_results(found, links)
 
-    async def source(_: Context, arguments: dict[str, Any]) -> str:
-        given = SourceArguments.model_validate(arguments)
-        release, file = release_file(given.path)
-        site = running.get()
-        if given.definition is None:
-            return (await site.source(release, file)).text
-        view = await site.named(release, file, given.definition)
-        return render_definition(view, ToolLinks(SOURCE_TOOL))
+    async def read(_: Context, arguments: dict[str, Any]) -> str:
+        given = ReadArguments.model_validate(arguments)
+        return render_lines(await running.get().read(given), tool_links(READ_TOOL, given))
 
-    answers: dict[str, Answer] = {SEARCH_TOOL: search, SOURCE_TOOL: source}
+    async def grep(_: Context, arguments: dict[str, Any]) -> str:
+        given = GrepArguments.model_validate(arguments)
+        return render_matches(await running.get().grep(given), tool_links(GREP_TOOL, given))
+
+    async def glob(_: Context, arguments: dict[str, Any]) -> str:
+        given = GlobArguments.model_validate(arguments)
+        return render_paths(await running.get().glob(given), tool_links(GLOB_TOOL, given))
+
+    answers: dict[str, Answer] = {
+        SEARCH_TOOL: search,
+        READ_TOOL: read,
+        GREP_TOOL: grep,
+        GLOB_TOOL: glob,
+    }
 
     async def list_tools(_: Context, __: PaginatedRequestParams | None) -> ListToolsResult:
         return ListToolsResult(tools=TOOLS)

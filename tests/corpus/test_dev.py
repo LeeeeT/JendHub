@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 import respx
 
@@ -14,10 +12,8 @@ from jendhub.corpus.dev import (
     open_corpus,
     select,
 )
-from jendhub.db.pool import Pool
 from jendhub.hub.api import Listing, Package, PackageRelease, Rejection, Release
 from jendhub.hub.base import Base
-from jendhub.hub.library import Library
 from jendhub.hub.store import PackageStore
 from tests.hub.fixture import listing, serve_pages
 
@@ -38,8 +34,7 @@ HOT = [
 ]
 
 
-async def full_store(pool: Pool) -> PackageStore:
-    full = PackageStore(pool)
+async def full_store(full: PackageStore) -> PackageStore:
     await full.store_base(Base("v2.0.36", b"base"))
     sources = {
         HTTP_OLD: b"def get() -> Nat:\n  0n\n",
@@ -54,15 +49,16 @@ async def full_store(pool: Pool) -> PackageStore:
     return full
 
 
-async def select_hot(router: respx.MockRouter, pool: Pool, budget: Budget) -> Selection:
+async def select_hot(router: respx.MockRouter, packages: PackageStore, budget: Budget) -> Selection:
     serve_pages(router, [HOT])
-    selection = await select(await full_store(pool), budget, set())
+    selection = await select(await full_store(packages), budget, set())
     assert selection.corpus.base_tag == "v2.0.36"
     return selection
 
 
-async def selected(router: respx.MockRouter, pool: Pool, budget: Budget) -> list[str]:
-    return [package.hash for package in (await select_hot(router, pool, budget)).corpus.packages]
+async def selected(router: respx.MockRouter, packages: PackageStore, budget: Budget) -> list[str]:
+    found = await select_hot(router, packages, budget)
+    return [package.hash for package in found.corpus.packages]
 
 
 def test_count_definitions_counts_top_level_declarations() -> None:
@@ -71,39 +67,41 @@ def test_count_definitions_counts_top_level_declarations() -> None:
 
 
 async def test_select_keeps_the_hottest_release_of_each_named_package(
-    router: respx.MockRouter, pool: Pool
+    router: respx.MockRouter, packages: PackageStore
 ) -> None:
-    assert await selected(router, pool, PackageBudget(10)) == [HTTP_OLD, TIME, JSON]
+    assert await selected(router, packages, PackageBudget(10)) == [HTTP_OLD, TIME, JSON]
 
 
-async def test_select_stops_at_the_package_budget(router: respx.MockRouter, pool: Pool) -> None:
-    assert await selected(router, pool, PackageBudget(2)) == [HTTP_OLD, TIME]
+async def test_select_stops_at_the_package_budget(
+    router: respx.MockRouter, packages: PackageStore
+) -> None:
+    assert await selected(router, packages, PackageBudget(2)) == [HTTP_OLD, TIME]
 
 
 async def test_select_skips_a_package_that_exceeds_the_definition_budget(
-    router: respx.MockRouter, pool: Pool
+    router: respx.MockRouter, packages: PackageStore
 ) -> None:
-    assert await selected(router, pool, DefinitionBudget(2)) == [HTTP_OLD, JSON]
+    assert await selected(router, packages, DefinitionBudget(2)) == [HTTP_OLD, JSON]
 
 
 async def test_select_stops_when_the_definition_budget_is_used(
-    router: respx.MockRouter, pool: Pool
+    router: respx.MockRouter, packages: PackageStore
 ) -> None:
-    assert await selected(router, pool, DefinitionBudget(1)) == [HTTP_OLD]
+    assert await selected(router, packages, DefinitionBudget(1)) == [HTTP_OLD]
 
 
 async def test_select_counts_the_definitions_of_the_selected_packages(
-    router: respx.MockRouter, pool: Pool
+    router: respx.MockRouter, packages: PackageStore
 ) -> None:
-    assert (await select_hot(router, pool, PackageBudget(3))).definitions == 4
+    assert (await select_hot(router, packages, PackageBudget(3))).definitions == 4
 
 
 async def test_select_requires_the_packages_in_the_full_corpus(
-    router: respx.MockRouter, pool: Pool
+    router: respx.MockRouter, packages: PackageStore
 ) -> None:
     serve_pages(router, [[listing("0x" + "9" * 32, "fresh", "0.1.0.0")]])
     with pytest.raises(DevError):
-        await select(await full_store(pool), PackageBudget(1), set())
+        await select(await full_store(packages), PackageBudget(1), set())
 
 
 def test_dev_corpus_round_trips_through_json() -> None:
@@ -118,19 +116,26 @@ def test_dev_corpus_refuses_an_unnamed_package() -> None:
         )
 
 
-async def test_open_corpus_copies_the_packages_and_the_base(pool: Pool, tmp_path: Path) -> None:
-    store = await full_store(pool)
+async def test_open_corpus_reads_the_packages_from_the_store(packages: PackageStore) -> None:
+    store = await full_store(packages)
     listed = DevCorpus("v2.0.36", [PackageRelease(TIME, Release("time", "0.1.0.0"))])
-    corpus = await open_corpus(Library(tmp_path), store, listed)
+    corpus = await open_corpus(store, listed)
     assert corpus.packages == listed.packages
-    assert corpus.library.read_package(TIME) == (await store.package(TIME)).files
-    assert corpus.library.base_source("v2.0.36").read_bytes() == b"base"
+    assert corpus.library == store.library
 
 
-async def test_open_corpus_requires_the_packages_in_the_store(pool: Pool, tmp_path: Path) -> None:
-    listed = DevCorpus("v2.0.36", [PackageRelease("0x" + "9" * 32, Release("x", "0.1.0.0"))])
+@pytest.mark.parametrize(
+    "listed",
+    [
+        DevCorpus("v2.0.36", [PackageRelease("0x" + "9" * 32, Release("x", "0.1.0.0"))]),
+        DevCorpus("v2.0.35", []),
+    ],
+)
+async def test_open_corpus_requires_the_packages_and_the_base_in_the_store(
+    packages: PackageStore, listed: DevCorpus
+) -> None:
     with pytest.raises(DevError):
-        await open_corpus(Library(tmp_path), await full_store(pool), listed)
+        await open_corpus(await full_store(packages), listed)
 
 
 def test_top_keeps_the_hottest_packages() -> None:
@@ -149,7 +154,9 @@ def test_top_refuses_a_count_outside_the_corpus(count: int) -> None:
         DevCorpus("v2.0.36", [PackageRelease(TIME, Release("time", "0.1.0.0"))]).top(count)
 
 
-async def test_select_skips_an_invalid_release(router: respx.MockRouter, pool: Pool) -> None:
+async def test_select_skips_an_invalid_release(
+    router: respx.MockRouter, packages: PackageStore
+) -> None:
     serve_pages(router, [HOT])
-    selection = await select(await full_store(pool), PackageBudget(10), {TIME})
+    selection = await select(await full_store(packages), PackageBudget(10), {TIME})
     assert [package.hash for package in selection.corpus.packages] == [HTTP_OLD, JSON]

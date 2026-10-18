@@ -18,10 +18,10 @@ at the top of your Bend file and call it by the name that the result gives. For
 example, after `import kit@1.0.0.0/json.bend as Json`, call `Json.parse(text)`.
 Base needs only `import Base`."""
 
-SOURCES = """When you are not sure that a result fits, open its source. It shows the code
-with its import lines and the definitions that it uses. When a result is close
-to what you need, copy its code and its import lines into your project and
-change it. You can read and copy all code on BendHub."""
+SOURCES = """When you are not sure that a result fits, read its code. When a result is
+close to what you need, copy its code and its import lines into your project
+and change it. An import of `./` or `../` names a file of the same release. You
+can read and copy all code on BendHub."""
 
 INSTRUCTIONS = f"""{SUMMARY}
 
@@ -32,7 +32,8 @@ exists. {QUERIES}
 
 {SOURCES}
 
-To open a source, make the source call that the answer gives."""
+To read the code of a result, make the read call that the result gives. To find
+code in one release, use grep and glob."""
 
 
 def llms_text(origin: str) -> str:
@@ -51,9 +52,14 @@ GET {origin}/search.txt?q=<query>
 
 {SOURCES}
 
-To read a whole file, follow its import line:
+Each result links to its code. To read a file, or to find code in one release:
 
-GET {origin}/src/<name@version>/<path>
+GET {origin}/read.txt?file_path=<name@version>/<path>
+GET {origin}/grep.txt?pattern=<regex>&path=<name@version>
+GET {origin}/glob.txt?pattern=<glob>&path=<name@version>
+
+Their parameters are those of the Read, Grep and Glob tools of Claude Code, but
+grep and glob search only one release.
 """
 
 

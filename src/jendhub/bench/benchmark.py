@@ -17,8 +17,7 @@ from jendhub.embedding.embedder import Embedder
 from jendhub.embedding.remote import RemoteEmbedder
 from jendhub.enrich.store import EnrichmentStore
 from jendhub.enrich.windows import corpus_windows
-from jendhub.hub.library import Library
-from jendhub.hub.store import PackageStore
+from jendhub.hub.store import PackageStore, package_store
 from jendhub.indexing.schedule import (
     GenerationSpec,
     corpus_name,
@@ -44,13 +43,13 @@ from jendhub.vectors.index import PRODUCTION, VectorIndex, open_vector_index
 
 QUERIES = Path("bench/queries.jsonl")
 JUDGE_PROMPT = Path("bench/JUDGE.md")
-LIBRARY = "library"
 ENGINE = "production"
 
 
 @dataclass(frozen=True)
 class Services:
     pool: Pool
+    packages: PackageStore
     vectors: VectorIndex
     openrouter: OpenRouter
     embedder: Embedder
@@ -64,18 +63,17 @@ async def open_services() -> AsyncGenerator[Services]:
         open_openrouter(load_settings(OpenRouterSettings)) as openrouter,
     ):
         embedder = CachedEmbedder(EmbeddingCache(pool), RemoteEmbedder(openrouter))
-        yield Services(pool, vectors, openrouter, embedder)
+        yield Services(pool, package_store(pool), vectors, openrouter, embedder)
 
 
-async def dev_index(services: Services, library: Library, listed: DevCorpus) -> int:
+async def dev_index(services: Services, listed: DevCorpus) -> int:
     index = IndexStore(services.pool)
-    packages = PackageStore(services.pool)
     corpus = corpus_name(listed.base_tag, listed.packages)
     releases: list[tuple[str, str | None]] = [(BASE_RELEASE, None)]
     releases += [(package.hash, package.release.name) for package in listed.packages]
     spec = GenerationSpec(corpus, listed.base_tag, releases, PRODUCTION)
     generation = await ensure_generation(index, services.vectors, spec)
-    worker = Worker(index, packages, library, services.vectors, services.embedder)
+    worker = Worker(index, services.packages, services.vectors, services.embedder)
     await worker.drain(generation.id)
     await promote_ready(index, corpus)
     return generation.id
@@ -141,7 +139,7 @@ def pipeline_names() -> list[str]:
 
 
 async def read_queries(
-    services: Services, library: Library, listed: DevCorpus, ids: set[str], top: int | None
+    services: Services, listed: DevCorpus, ids: set[str], top: int | None
 ) -> list[Query]:
     try:
         text = await asyncio.to_thread(QUERIES.read_text, encoding="utf-8")
@@ -149,7 +147,7 @@ async def read_queries(
         raise BenchError(f"{QUERIES} does not exist") from error
     known = ids
     if top is not None:
-        full = await open_corpus(library, PackageStore(services.pool), listed)
+        full = await open_corpus(services.packages, listed)
         known = {definition.id for definition in corpus_definitions(full)}
     queries, problems = check(text, known)
     if problems:
@@ -159,19 +157,18 @@ async def read_queries(
 
 
 @asynccontextmanager
-async def open_benchmark(data: Path, top: int | None) -> AsyncGenerator[Benchmark]:
+async def open_benchmark(top: int | None) -> AsyncGenerator[Benchmark]:
     async with open_services() as services:
-        library = Library(data / LIBRARY)
         listed = dev_corpus_list()
         selected = listed if top is None else listed.top(top)
-        corpus = await open_corpus(library, PackageStore(services.pool), selected)
-        generation = await dev_index(services, library, selected)
+        corpus = await open_corpus(services.packages, selected)
+        generation = await dev_index(services, selected)
         definitions, edges = await IndexStore(services.pool).corpus(generation)
         graph = UseGraph.of(edges)
         windows = corpus_windows(corpus)
         enrichments = (await EnrichmentStore(services.pool).load(windows)).enrichments
         ids = {definition.id for definition in definitions}
-        queries = await read_queries(services, library, listed, ids, top)
+        queries = await read_queries(services, listed, ids, top)
         judge = Judge(await asyncio.to_thread(JUDGE_PROMPT.read_text, encoding="utf-8"))
         store = JudgmentStore(services.pool)
         judgments, stale = current_judgments(await store.load(), queries, definitions, judge, graph)

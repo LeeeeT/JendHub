@@ -36,6 +36,8 @@ class Candidate:
     version: str | None
     module: str
     head: str
+    first_line: int
+    end_line: int
     length: int
     signature: Signature | None
     documented: bool
@@ -59,6 +61,8 @@ class Hit:
     version: str | None
     module: str
     head: str
+    first_line: int
+    end_line: int
     score: float
 
 
@@ -71,6 +75,8 @@ def hit(candidate: Candidate, score: float) -> Hit:
         candidate.version,
         candidate.module,
         candidate.head,
+        candidate.first_line,
+        candidate.end_line,
         score,
     )
 
@@ -177,9 +183,9 @@ class SearchEngine:
     async def candidates(self, points: list[int]) -> dict[int, Candidate]:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT point, id, kind, name, package, version, module, head, length(text),"
-                " parameters, result, documented, helper, users, external, parent, children"
-                " FROM definitions WHERE point = ANY(%s)",
+                "SELECT point, id, kind, name, package, version, module, head, first_line,"
+                " end_line, length(text), parameters, result, documented, helper, users,"
+                " external, parent, children FROM definitions WHERE point = ANY(%s)",
                 (points,),
             )
             rows = await cursor.fetchall()
@@ -194,13 +200,15 @@ class SearchEngine:
                 row[6],
                 row[7],
                 row[8],
-                None if row[9] is None else Signature.from_json(row[9], row[10]),
-                row[11],
-                row[12],
+                row[9],
+                row[10],
+                None if row[11] is None else Signature.from_json(row[11], row[12]),
                 row[13],
                 row[14],
                 row[15],
-                list(row[16]),
+                row[16],
+                row[17],
+                list(row[18]),
             )
             for row in rows
         }

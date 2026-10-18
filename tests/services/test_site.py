@@ -2,7 +2,6 @@ import asyncio
 from asyncio import FIRST_COMPLETED
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from pathlib import Path
 
 import httpx
 import pytest
@@ -12,20 +11,29 @@ from jendhub.db.pool import Pool, open_pool
 from jendhub.embedding.embedder import Embedder
 from jendhub.embedding.model import Vectors
 from jendhub.hub.api import Release
+from jendhub.hub.library import Library
+from jendhub.hub.store import PackageStore
 from jendhub.remote.openrouter import OpenRouterError
 from jendhub.search.ranking import load_model
 from jendhub.services.site.app import create_app
 from jendhub.services.site.views import Resources
 from jendhub.settings import DatabaseSettings, QdrantSettings
 from jendhub.vectors.index import PRODUCTION, VectorIndex, open_vector_index
-from tests.indexing.live import APP, KIT_V2, WordEmbedder, index_live, seed, store_package
+from tests.indexing.live import (
+    APP,
+    APP_SOURCE,
+    KIT_V2,
+    WordEmbedder,
+    index_live,
+    seed,
+    store_package,
+)
 
 SITE_URL = "https://jend.test"
 DOUBLE = "kit@1.0.0.0/main:double"
-DOUBLE_SOURCE = f"{SITE_URL}/src/kit@1.0.0.0/main.bend?def=double"
+DOUBLE_READ = f"{SITE_URL}/read.txt?file_path=kit@1.0.0.0/main.bend&offset=3&limit=3"
 QUADRUPLE = "app@1.0.0.0/main:quadruple"
 BROKEN_SOURCE = "import Base\nimport ./missing.bend as M\n\ndef broken(n: Nat) -> Nat:\n  n\n"
-FIXED_BROKEN = BROKEN_SOURCE.replace("./missing.bend", "kit@2.0.0.0/missing.bend")
 
 type Opener = Callable[[], AbstractAsyncContextManager[Resources]]
 
@@ -36,12 +44,15 @@ class SilentEmbedder:
 
 
 def opener(
-    database: DatabaseSettings, qdrant: QdrantSettings, embedder: Embedder | None = None
+    database: DatabaseSettings,
+    qdrant: QdrantSettings,
+    library: Library,
+    embedder: Embedder | None = None,
 ) -> Opener:
     @asynccontextmanager
     async def resources() -> AsyncGenerator[Resources]:
         async with open_pool(database) as own, open_vector_index(qdrant) as index:
-            yield Resources(own, index, embedder or WordEmbedder(), load_model())
+            yield Resources(own, library, index, embedder or WordEmbedder(), load_model())
 
     return resources
 
@@ -74,35 +85,34 @@ def site_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JENDHUB_SITE_URL", SITE_URL)
 
 
-async def build_index(pool: Pool, vectors: VectorIndex, library: Path) -> None:
-    packages = await seed(pool)
+async def build_index(packages: PackageStore, vectors: VectorIndex) -> None:
+    await seed(packages)
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), BROKEN_SOURCE)
-    await index_live(pool, vectors, library)
+    await index_live(packages, vectors)
 
 
 @pytest.fixture
-async def indexed(pool: Pool, vectors: VectorIndex, tmp_path: Path) -> None:
-    await build_index(pool, vectors, tmp_path)
+async def indexed(packages: PackageStore, vectors: VectorIndex) -> None:
+    await build_index(packages, vectors)
 
 
 @pytest.fixture
 async def site(
-    pool: Pool,
+    packages: PackageStore,
     vectors: VectorIndex,
-    tmp_path: Path,
     database: DatabaseSettings,
     qdrant_settings: QdrantSettings,
 ) -> AsyncGenerator[httpx.AsyncClient]:
-    await build_index(pool, vectors, tmp_path)
-    async with running(create_app(opener(database, qdrant_settings))) as client:
+    await build_index(packages, vectors)
+    async with running(create_app(opener(database, qdrant_settings, packages.library))) as client:
         yield client
 
 
 @pytest.fixture
 async def empty_site(
-    database: DatabaseSettings, qdrant_settings: QdrantSettings
+    database: DatabaseSettings, qdrant_settings: QdrantSettings, library: Library
 ) -> AsyncGenerator[httpx.AsyncClient]:
-    async with running(create_app(opener(database, qdrant_settings))) as client:
+    async with running(create_app(opener(database, qdrant_settings, library))) as client:
         yield client
 
 
@@ -158,16 +168,18 @@ async def stored_searches(pool: Pool) -> list[StoredSearch]:
         return await cursor.fetchall()
 
 
-async def test_agents_get_results_with_their_source_and_import_line(
+async def test_agents_get_results_with_their_code_and_import_line(
     site: httpx.AsyncClient,
 ) -> None:
     params = {"q": "double a number", "limit": 1}
     response = await site.get("/search.txt", params=params, headers={"accept": "text/html"})
     assert response.headers["content-type"].startswith("text/plain")
     assert response.text.startswith(
-        f"1. Kit.double ({DOUBLE_SOURCE})\n"
+        f"1. Kit.double ({DOUBLE_READ})\n"
         "   import kit@1.0.0.0/main.bend as Kit\n   # Doubles a number.\n"
     )
+    code = (await site.get(DOUBLE_READ)).text
+    assert code == ("3\t# Doubles a number.\n4\tdef double(n: Nat) -> Nat:\n5\t  Nat.add(n, n)\n")
     assert response.text.endswith(
         f"More: {SITE_URL}/search.txt?q=double+a+number&limit=1&offset=1\n"
     )
@@ -193,49 +205,54 @@ async def test_each_search_is_stored_with_its_client_and_whole_ranking(
     assert len(web[6]) > 1
 
 
-async def test_a_definition_gives_its_import_lines_and_its_uses(site: httpx.AsyncClient) -> None:
-    response = await site.get("/src/app@1.0.0.0/main.bend", params={"def": "quadruple"})
-    assert response.text == (
-        "App.quadruple (def, app@1.0.0.0, lines 4-5)\n"
-        "Use: import app@1.0.0.0/main.bend as App, then call App.quadruple.\n"
-        f"File: {SITE_URL}/src/app@1.0.0.0/main.bend\n\n"
-        "import Base\nimport kit@1.0.0.0/main.bend as K\n\n"
-        "def quadruple(n: Nat) -> Nat:\n  K.double(K.double(n))\n\n"
-        f"Uses (2):\n  {SITE_URL}/src/Base/base.bend?def=Nat\n  {DOUBLE_SOURCE}\n"
+def numbered(text: str) -> str:
+    return "".join(f"{number}\t{line}\n" for number, line in enumerate(text.splitlines(), 1))
+
+
+async def test_agents_read_each_file_as_it_is_stored(site: httpx.AsyncClient) -> None:
+    broken = await site.get("/read.txt", params={"file_path": "kit@2.0.0.0/main.bend"})
+    assert broken.text == numbered(BROKEN_SOURCE)
+    by_hash = await site.get("/read.txt", params={"file_path": f"{APP}/main.bend"})
+    assert by_hash.text == numbered(APP_SOURCE)
+    base = await site.get("/read.txt", params={"file_path": "Base/base.bend", "limit": 1})
+    assert base.text == (
+        "1\ttype Nat is Data:\n"
+        f"More: {SITE_URL}/read.txt?file_path=Base/base.bend&limit=1&offset=2\n"
     )
 
 
-async def test_a_base_definition_is_under_base(site: httpx.AsyncClient) -> None:
-    response = await site.get("/src/Base/base.bend", params={"def": "Nat.add"})
-    assert response.text.startswith("Nat.add (def, Base, lines ")
-    assert "Use: import Base, then call Nat.add.\n" in response.text
-
-
-async def test_a_file_names_exact_releases_in_its_imports(site: httpx.AsyncClient) -> None:
-    assert (await site.get("/src/kit@2.0.0.0/main.bend")).text == FIXED_BROKEN
-    by_hash = (await site.get(f"/src/{APP}/main.bend")).text
-    assert "import kit@1.0.0.0/main.bend as K" in by_hash
-    assert "Nat.add" in (await site.get("/src/Base/base.bend")).text
-
-
-async def test_the_files_of_a_release_are_listed(site: httpx.AsyncClient) -> None:
-    response = await site.get("/src/kit@1.0.0.0/")
-    assert response.text == f"kit@1.0.0.0\n\n  {SITE_URL}/src/kit@1.0.0.0/main.bend\n"
+async def test_agents_find_code_in_one_release(site: httpx.AsyncClient) -> None:
+    content = {"pattern": "double", "path": "app@1.0.0.0", "output_mode": "content", "-n": "false"}
+    assert (await site.get("/grep.txt", params=content)).text == (
+        "app@1.0.0.0/main.bend:  K.double(K.double(n))\n"
+    )
+    files = {"pattern": "Nat", "path": "kit@1.0.0.0/main.bend"}
+    assert (await site.get("/grep.txt", params=files)).text == (
+        "Found 1 file\nkit@1.0.0.0/main.bend\n"
+    )
+    paths = {"pattern": "**/*.bend", "path": "kit@1.0.0.0"}
+    assert (await site.get("/glob.txt", params=paths)).text == "kit@1.0.0.0/main.bend\n"
 
 
 @pytest.mark.parametrize(
-    "path",
+    ("path", "params", "status"),
     [
-        "/src/kit@9.0.0.0/main.bend",
-        "/src/kit@1.0.0.0/other.bend",
-        "/src/nothing/",
-        "/src/kit@1.0.0.0/main.bend?def=nothing",
-        "/packages/nothing.txt",
+        ("/read.txt", {"file_path": "kit@9.0.0.0/main.bend"}, httpx.codes.NOT_FOUND),
+        ("/read.txt", {"file_path": "kit@1.0.0.0/other.bend"}, httpx.codes.NOT_FOUND),
+        ("/read.txt", {"file_path": "kit@1.0.0.0"}, httpx.codes.BAD_REQUEST),
+        ("/read.txt", {"file_path": "kit@1.0.0.0/../x.bend"}, httpx.codes.BAD_REQUEST),
+        ("/read.txt", {"file_path": "kit@1.0.0.0/main.bend", "offset": 9}, httpx.codes.BAD_REQUEST),
+        ("/grep.txt", {"pattern": "(", "path": "kit@1.0.0.0"}, httpx.codes.BAD_REQUEST),
+        ("/grep.txt", {"pattern": "x", "path": "kit@1.0.0.0/no.bend"}, httpx.codes.NOT_FOUND),
+        ("/glob.txt", {"pattern": "**", "path": "nothing"}, httpx.codes.NOT_FOUND),
+        ("/packages/nothing.txt", {}, httpx.codes.NOT_FOUND),
     ],
 )
-async def test_agents_get_a_missing_thing_as_text(site: httpx.AsyncClient, path: str) -> None:
-    response = await site.get(path)
-    assert response.status_code == httpx.codes.NOT_FOUND
+async def test_agents_get_a_failure_as_text(
+    site: httpx.AsyncClient, path: str, params: dict[str, str | int], status: int
+) -> None:
+    response = await site.get(path, params=params)
+    assert response.status_code == status
     assert response.headers["content-type"].startswith("text/plain")
 
 
@@ -251,18 +268,18 @@ async def test_agents_get_an_invalid_query_as_text(
 async def test_agents_get_a_package_and_the_status_as_text(site: httpx.AsyncClient) -> None:
     package = (await site.get("/packages/kit.txt")).text
     assert package.startswith("kit\n\nReleases (2):\n  2.0.0.0  ")
-    assert f"indexed  {SITE_URL}/src/kit@1.0.0.0/\n" in package
-    assert f"  Kit.double ({DOUBLE_SOURCE})\n   # Doubles a number.\n" in package
+    assert f"indexed  {SITE_URL}/glob.txt?pattern=**&path=kit@1.0.0.0\n" in package
+    assert f"  Kit.double ({DOUBLE_READ})\n   # Doubles a number.\n" in package
     status = (await site.get("/status.txt")).text
     assert "  Jobs: 0 queued, 0 running, 3 indexed, 0 superseded, 0 failed\n" in status
     assert f"Invalid releases (1):\n  kit@2.0.0.0 ({KIT_V2})" in status
-    assert f"   At {SITE_URL}/src/kit@2.0.0.0/main.bend line 2.\n" in status
+    assert f"   At {SITE_URL}/read.txt?file_path=kit@2.0.0.0/main.bend&offset=2.\n" in status
     assert "   Files that do not load: main.bend.\n" in status
 
 
-async def test_mcp_clients_get_two_read_only_tools(site: httpx.AsyncClient) -> None:
+async def test_mcp_clients_get_four_read_only_tools(site: httpx.AsyncClient) -> None:
     listed = (await rpc(site, "tools/list", {})).json()["result"]
-    assert [tool["name"] for tool in listed["tools"]] == ["search", "source"]
+    assert [tool["name"] for tool in listed["tools"]] == ["search", "read", "grep", "glob"]
     assert all(tool["annotations"]["readOnlyHint"] for tool in listed["tools"])
     assert (listed["ttlMs"], listed["cacheScope"]) == (3_600_000, "public")
     discovered = (await rpc(site, "server/discover", {})).json()["result"]
@@ -288,7 +305,7 @@ async def test_mcp_clients_of_the_2025_protocol_also_search(
     assert stored[:3] == ("mcp", "python-httpx/" + httpx.__version__, None)
 
 
-async def test_mcp_search_gives_source_calls_and_is_stored(
+async def test_mcp_search_gives_read_calls_and_is_stored(
     site: httpx.AsyncClient, pool: Pool
 ) -> None:
     failed, text = await call_tool(
@@ -296,7 +313,7 @@ async def test_mcp_search_gives_source_calls_and_is_stored(
     )
     assert not failed
     assert text.startswith(
-        '1. Kit.double (source(path="kit@1.0.0.0/main.bend", definition="double"))\n'
+        '1. Kit.double (read(file_path="kit@1.0.0.0/main.bend", offset=3, limit=3))\n'
         "   import kit@1.0.0.0/main.bend as Kit\n"
     )
     assert text.endswith('More: search(query="double a number", limit=1, offset=1)\n')
@@ -304,19 +321,31 @@ async def test_mcp_search_gives_source_calls_and_is_stored(
     assert stored[:6] == ("mcp", "c/3", "agent 1.2", "double a number", 0, 1)
 
 
-async def test_mcp_source_gives_a_definition_or_a_file(site: httpx.AsyncClient) -> None:
-    arguments: dict[str, object] = {"path": "app@1.0.0.0/main.bend", "definition": "quadruple"}
-    failed, text = await call_tool(site, "source", arguments)
-    assert not failed
-    assert text.startswith("App.quadruple (def, app@1.0.0.0, lines 4-5)\n")
-    assert 'File: source(path="app@1.0.0.0/main.bend")\n' in text
-    assert text.endswith(
-        'Uses (2):\n  source(path="Base/base.bend", definition="Nat")\n'
-        '  source(path="kit@1.0.0.0/main.bend", definition="double")\n'
-    )
-    assert await call_tool(site, "source", {"path": "kit@2.0.0.0/main.bend"}) == (
+async def test_mcp_read_grep_and_glob_work_on_the_stored_files(site: httpx.AsyncClient) -> None:
+    read: dict[str, object] = {"file_path": "app@1.0.0.0/main.bend", "offset": 2, "limit": 2}
+    assert await call_tool(site, "read", read) == (
         False,
-        FIXED_BROKEN,
+        (
+            "2\timport kit@1.0.0.0/main.bend as K\n3\t\n"
+            'More: read(file_path="app@1.0.0.0/main.bend", offset=4, limit=2)\n'
+        ),
+    )
+    grep: dict[str, object] = {
+        "pattern": "def",
+        "path": "app@1.0.0.0",
+        "output_mode": "content",
+        "-A": 1,
+    }
+    assert await call_tool(site, "grep", grep) == (
+        False,
+        (
+            "app@1.0.0.0/main.bend:4:def quadruple(n: Nat) -> Nat:\n"
+            "app@1.0.0.0/main.bend-5-  K.double(K.double(n))\n"
+        ),
+    )
+    assert await call_tool(site, "glob", {"pattern": "*.bend", "path": "Base"}) == (
+        False,
+        "Base/base.bend\n",
     )
 
 
@@ -324,14 +353,15 @@ async def test_mcp_source_gives_a_definition_or_a_file(site: httpx.AsyncClient) 
     ("name", "arguments", "message"),
     [
         (
-            "source",
-            {"path": "kit@1.0.0.0/main.bend", "definition": "nothing"},
-            "The index has no definition kit@1.0.0.0/main:nothing.",
+            "read",
+            {"file_path": "kit@1.0.0.0/nothing.bend"},
+            "The store has no file kit@1.0.0.0/nothing.bend.",
         ),
+        ("read", {"file_path": "kit/main.bend"}, "The store has no release kit."),
         (
-            "source",
-            {"path": "kit"},
-            "kit is not a file of a release, such as kit@1.0.0.0/json.bend.",
+            "grep",
+            {"pattern": "x", "path": "kit@1.0.0.0", "-A": -1},
+            "Invalid parameter -A: Input should be greater than or equal to 0.",
         ),
         (
             "search",
@@ -381,7 +411,7 @@ async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.Async
     assert f'href="/definitions/{DOUBLE}"' in html
     assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert "App.quadruple" in html
-    assert 'href="/src/app@1.0.0.0/main.bend?def=quadruple"' in html
+    assert 'href="/read.txt?file_path=app@1.0.0.0/main.bend&amp;offset=4&amp;limit=2"' in html
 
 
 async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient) -> None:
@@ -432,12 +462,15 @@ async def test_the_metrics_are_not_on_the_public_port(site: httpx.AsyncClient) -
 
 @pytest.mark.usefixtures("indexed")
 async def test_searches_from_one_client_are_limited(
-    database: DatabaseSettings, qdrant_settings: QdrantSettings, monkeypatch: pytest.MonkeyPatch
+    database: DatabaseSettings,
+    qdrant_settings: QdrantSettings,
+    library: Library,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("JENDHUB_SEARCH_BURST", "1")
     monkeypatch.setenv("JENDHUB_SEARCHES_PER_MINUTE", "1")
     monkeypatch.setenv("JENDHUB_CLIENT_IP_HEADER", "cf-connecting-ip")
-    async with running(create_app(opener(database, qdrant_settings))) as client:
+    async with running(create_app(opener(database, qdrant_settings, library))) as client:
         first = await client.get("/search.txt?q=double", headers={"cf-connecting-ip": "1.1.1.1"})
         second = await client.get("/search.txt?q=double", headers={"cf-connecting-ip": "1.1.1.1"})
         other = await client.get("/search.txt?q=double", headers={"cf-connecting-ip": "2.2.2.2"})
@@ -458,9 +491,9 @@ async def test_searches_from_one_client_are_limited(
 
 @pytest.mark.usefixtures("indexed")
 async def test_a_search_without_an_embedding_says_so(
-    database: DatabaseSettings, qdrant_settings: QdrantSettings
+    database: DatabaseSettings, qdrant_settings: QdrantSettings, library: Library
 ) -> None:
-    app = create_app(opener(database, qdrant_settings, SilentEmbedder()))
+    app = create_app(opener(database, qdrant_settings, library, SilentEmbedder()))
     async with running(app) as client:
         response = await client.get("/search.txt", params={"q": "double"})
         tool = await call_tool(client, "search", {"query": "double"})
@@ -477,3 +510,13 @@ async def test_without_a_live_index_search_waits_and_the_status_answers(
     assert response.text == "The search index is not ready. Try again later.\n"
     assert (await empty_site.get("/readyz")).status_code == httpx.codes.SERVICE_UNAVAILABLE
     assert (await empty_site.get("/status.txt")).text.startswith("No generation.\n")
+
+
+async def test_without_a_live_index_only_base_waits(
+    empty_site: httpx.AsyncClient, packages: PackageStore
+) -> None:
+    await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), BROKEN_SOURCE)
+    package = await empty_site.get("/read.txt", params={"file_path": "kit@2.0.0.0/main.bend"})
+    assert package.text == numbered(BROKEN_SOURCE)
+    base = await empty_site.get("/read.txt", params={"file_path": "Base/base.bend"})
+    assert base.status_code == httpx.codes.SERVICE_UNAVAILABLE

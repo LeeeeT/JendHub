@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from jendhub.bench.benchmark import LIBRARY, QUERIES, open_benchmark, open_services, pipeline_names
+from jendhub.bench.benchmark import QUERIES, open_benchmark, open_services, pipeline_names
 from jendhub.cli.bench import DEFAULT_DEPTH, DEFAULT_K, run_bench
 from jendhub.cli.corpus import (
     budget_from,
@@ -22,8 +22,7 @@ from jendhub.db.pool import Pool, open_pool
 from jendhub.embedding.cache import EmbeddingCache
 from jendhub.enrich.store import EnrichmentStore
 from jendhub.errors import JendHubError
-from jendhub.hub.library import Library
-from jendhub.hub.store import PackageStore
+from jendhub.hub.store import package_store
 from jendhub.indexing.project import restore_vectors
 from jendhub.indexing.schedule import clean_retired, schedule_live
 from jendhub.indexing.store import IndexStore
@@ -162,7 +161,7 @@ async def run(arguments: argparse.Namespace) -> None:
                 corpus = await selected_corpus(pool, arguments)
                 write_corpus_text(corpus, arguments.data / "dev-corpus.txt")
         case "bench":
-            async with open_benchmark(arguments.data, arguments.top) as benchmark:
+            async with open_benchmark(arguments.top) as benchmark:
                 await run_bench(benchmark, arguments.subcommand, arguments)
         case command:
             raise AssertionError(command)
@@ -171,7 +170,7 @@ async def run(arguments: argparse.Namespace) -> None:
 async def selected_corpus(pool: Pool, arguments: argparse.Namespace) -> Corpus:
     listed = dev_corpus_list()
     selected = listed if arguments.top is None else listed.top(arguments.top)
-    return await open_corpus(Library(arguments.data / LIBRARY), PackageStore(pool), selected)
+    return await open_corpus(package_store(pool), selected)
 
 
 async def run_store_command(pool: Pool, arguments: argparse.Namespace) -> None:
@@ -181,9 +180,9 @@ async def run_store_command(pool: Pool, arguments: argparse.Namespace) -> None:
                 for name in await migrate(connection):
                     sys.stdout.write(f"applied {name}\n")
         case "sync":
-            await sync_store(PackageStore(pool), dry_run=arguments.dry_run)
+            await sync_store(package_store(pool), dry_run=arguments.dry_run)
         case "dev":
-            await select_dev_corpus(PackageStore(pool), IndexStore(pool), budget_from(arguments))
+            await select_dev_corpus(package_store(pool), IndexStore(pool), budget_from(arguments))
         case command:
             raise AssertionError(command)
 
@@ -198,7 +197,7 @@ async def run_index_command(arguments: argparse.Namespace) -> None:
             case "status":
                 await show_status(pool)
             case "schedule":
-                await schedule_live(index, PackageStore(pool), vectors)
+                await schedule_live(index, package_store(pool), vectors)
                 await clean_retired(index, vectors)
             case "restore-vectors":
                 for name in await restore_vectors(index, vectors, EmbeddingCache(pool)):

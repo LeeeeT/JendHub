@@ -8,7 +8,7 @@ from prometheus_client import Counter, Gauge
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from jendhub.db.pool import open_pool
-from jendhub.hub.store import PackageStore
+from jendhub.hub.store import package_store
 from jendhub.hub.sync import sync
 from jendhub.indexing.schedule import clean_retired, schedule_live
 from jendhub.indexing.store import IndexStore
@@ -39,7 +39,7 @@ def create_app() -> FastAPI:
             open_pool(load_settings(DatabaseSettings)) as pool,
             open_vector_index(load_settings(QdrantSettings)) as vectors,
         ):
-            packages = PackageStore(pool)
+            packages = package_store(pool)
             index = IndexStore(pool)
 
             async def cycle() -> None:

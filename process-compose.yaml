@@ -53,8 +53,6 @@ processes:
   worker:
     command: jendhub-service worker --port 8002 --metrics-port 9002
     disabled: true
-    environment:
-      - "JENDHUB_LIBRARY_PATH=data/library"
     depends_on:
       database:
         condition: process_completed_successfully

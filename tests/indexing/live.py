@@ -1,14 +1,11 @@
 import hashlib
-from pathlib import Path
 
 import numpy as np
 
-from jendhub.db.pool import Pool
 from jendhub.embedding.cache import CachedEmbedder, EmbeddingCache
 from jendhub.embedding.model import DIMENSIONS, Vectors
 from jendhub.hub.api import Listing, Package, Release
 from jendhub.hub.base import Base
-from jendhub.hub.library import Library
 from jendhub.hub.store import PackageStore
 from jendhub.indexing.schedule import promote_ready, schedule_live
 from jendhub.indexing.store import LIVE, IndexStore
@@ -41,12 +38,11 @@ async def store_package(store: PackageStore, hash_: str, release: Release, sourc
     await store.store_package(Package(Listing(hash_, release), {"main.bend": source.encode()}))
 
 
-async def index_live(pool: Pool, vectors: VectorIndex, library: Path) -> tuple[IndexStore, Target]:
-    packages = PackageStore(pool)
-    index = IndexStore(pool)
+async def index_live(packages: PackageStore, vectors: VectorIndex) -> tuple[IndexStore, Target]:
+    index = IndexStore(packages.pool)
     await schedule_live(index, packages, vectors)
-    embedder = CachedEmbedder(EmbeddingCache(pool), WordEmbedder())
-    worker = Worker(index, packages, Library(library), vectors, embedder)
+    embedder = CachedEmbedder(EmbeddingCache(packages.pool), WordEmbedder())
+    worker = Worker(index, packages, vectors, embedder)
     [generation] = await index.generations(LIVE)
     await worker.drain(generation.id)
     await promote_ready(index, LIVE)
@@ -55,9 +51,7 @@ async def index_live(pool: Pool, vectors: VectorIndex, library: Path) -> tuple[I
     return index, Target(live.id, live.collection, live.config)
 
 
-async def seed(pool: Pool) -> PackageStore:
-    packages = PackageStore(pool)
+async def seed(packages: PackageStore) -> None:
     await packages.store_base(Base(TAG, BASE.encode()))
     await store_package(packages, KIT_V1, Release("kit", "1.0.0.0"), KIT_SOURCE)
     await store_package(packages, APP, Release("app", "1.0.0.0"), APP_SOURCE)
-    return packages

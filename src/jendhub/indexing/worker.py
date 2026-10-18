@@ -1,14 +1,13 @@
 import asyncio
 import contextlib
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 
 from prometheus_client import Counter
 
 from jendhub.embedding.embedder import Embedder
 from jendhub.errors import JendHubError
-from jendhub.hub.library import Library, ensure_base, refresh
 from jendhub.hub.store import PackageStore
 from jendhub.indexing.artifacts import build
 from jendhub.indexing.failures import LoadError, summary
@@ -33,14 +32,12 @@ class IndexingError(JendHubError):
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class Worker:
     index: IndexStore
     packages: PackageStore
-    library: Library
     vectors: VectorIndex
     embedder: Embedder
-    library_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def run(self, job: Job) -> None:
         generation = await self.index.generation(job.generation)
@@ -48,13 +45,12 @@ class Worker:
             await self.index.finish(job, "invalid")
             JOBS.labels("invalid").inc()
             return
-        async with self.library_lock:
-            await refresh(self.library, self.packages)
-            base = await ensure_base(self.library, self.packages, generation.base_tag)
+        library = self.packages.library
+        base = library.base_source(generation.base_tag)
         package = None
         if job.release != BASE_RELEASE:
             package = (await self.packages.releases([job.release]))[job.release]
-        artifacts = await build(self.library, base, job.release, package, self.packages.releases)
+        artifacts = await build(library, base, job.release, package, self.packages.releases)
         if artifacts.errors:
             await self.drop(job, generation, artifacts.errors)
             return

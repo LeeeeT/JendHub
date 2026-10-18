@@ -1,5 +1,13 @@
+from pathlib import Path
+
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class LibrarySettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="JENDHUB_")
+
+    library_path: Path = Path("data/library")
 
 
 class DatabaseSettings(BaseSettings):

@@ -1,13 +1,16 @@
+import asyncio
 import itertools
 import posixpath
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from psycopg import AsyncConnection
 
 from jendhub.corpus.definitions import IMPORT
 from jendhub.db.pool import Pool
-from jendhub.hub.api import HASH, Release, valid_release
+from jendhub.hub.api import HASH, Release, valid_path, valid_release
+from jendhub.hub.library import Library, file_paths
 
 BASE = "Base"
 BASE_FILE = "base.bend"
@@ -84,16 +87,6 @@ def id_source(id_: str) -> tuple[str, str]:
     return f"{release}/{module}.bend", name
 
 
-async def source_id(pool: Pool, release: str, path: str, name: str) -> str | None:
-    if release == BASE:
-        return name if path == BASE_FILE else None
-    async with pool.connection() as connection:
-        stored = await stored_release(connection, release)
-    if stored is None or stored.hash == stored.label or not path.endswith(".bend"):
-        return None
-    return f"{stored.label}/{path.removesuffix('.bend')}:{name}"
-
-
 def label(hash_: str, name: str | None, version: str | None) -> str:
     return hash_ if name is None else f"{name}@{version}"
 
@@ -165,46 +158,52 @@ async def hash_labels(connection: AsyncConnection, hashes: list[str]) -> dict[st
     return {hash_: label(hash_, name, version) for hash_, name, version in await cursor.fetchall()}
 
 
-async def base_source(connection: AsyncConnection, generation: int) -> str | None:
+async def base_tag(connection: AsyncConnection, generation: int) -> str | None:
     cursor = await connection.execute(
-        "SELECT b.source FROM generations g JOIN base_releases b ON b.tag = g.base_tag"
-        " WHERE g.id = %s",
-        (generation,),
+        "SELECT base_tag FROM generations WHERE id = %s", (generation,)
     )
     row = await cursor.fetchone()
-    return None if row is None else bytes(row[0]).decode(errors="replace")
+    return None if row is None else row[0]
+
+
+def read_text(path: Path) -> str | None:
+    try:
+        return path.read_bytes().decode(errors="replace")
+    except FileNotFoundError, IsADirectoryError, NotADirectoryError:
+        return None
+
+
+async def file_text(directory: Path, path: str) -> str | None:
+    if not valid_path(path):
+        return None
+    return await asyncio.to_thread(read_text, directory / path)
 
 
 async def package_source(
-    connection: AsyncConnection, release: StoredRelease, path: str
+    connection: AsyncConnection, library: Library, release: StoredRelease, path: str
 ) -> str | None:
-    cursor = await connection.execute(
-        "SELECT content FROM package_files WHERE hash = %s AND path = %s", (release.hash, path)
-    )
-    row = await cursor.fetchone()
-    if row is None:
+    if release.hash is None:
         return None
-    text = bytes(row[0]).decode(errors="replace")
+    text = await file_text(library.package_directory(release.hash), path)
+    if text is None:
+        return None
     labels = await hash_labels(connection, imported_hashes(text))
     return absolute_imports(text, release.label, path, labels)
 
 
-async def read_source(
-    connection: AsyncConnection, generation: int, release: str, path: str
+async def read_file(
+    pool: Pool, library: Library, generation: int, release: str, path: str
 ) -> SourceFile | None:
-    if release == BASE:
-        text = await base_source(connection, generation) if path == BASE_FILE else None
-        return None if text is None else SourceFile(BASE, None, BASE_FILE, text)
-    stored = await stored_release(connection, release)
-    if stored is None:
-        return None
-    text = await package_source(connection, stored, path)
-    return None if text is None else SourceFile(stored.label, stored.hash, path, text)
-
-
-async def read_file(pool: Pool, generation: int, release: str, path: str) -> SourceFile | None:
     async with pool.connection() as connection:
-        return await read_source(connection, generation, release, path)
+        if release == BASE:
+            tag = await base_tag(connection, generation) if path == BASE_FILE else None
+            text = None if tag is None else await file_text(library.base_directory(tag), path)
+            return None if text is None else SourceFile(BASE, None, BASE_FILE, text)
+        stored = await stored_release(connection, release)
+        if stored is None:
+            return None
+        text = await package_source(connection, library, stored, path)
+    return None if text is None else SourceFile(stored.label, stored.hash, path, text)
 
 
 @dataclass(frozen=True)
@@ -232,7 +231,9 @@ async def read_declared(pool: Pool, generation: int, file: SourceFile) -> list[D
     return [Declared(id_, name, declared_line(first, head)) for id_, name, first, head in rows]
 
 
-async def read_release_files(pool: Pool, generation: int, release: str) -> ReleaseFiles | None:
+async def read_release_files(
+    pool: Pool, library: Library, generation: int, release: str
+) -> ReleaseFiles | None:
     async with pool.connection() as connection:
         if release == BASE:
             cursor = await connection.execute(
@@ -242,12 +243,10 @@ async def read_release_files(pool: Pool, generation: int, release: str) -> Relea
             row = await cursor.fetchone()
             return ReleaseFiles(BASE, None, [BASE_FILE], {BASE_FILE: 0 if row is None else row[0]})
         stored = await stored_release(connection, release)
-        if stored is None:
+        if stored is None or stored.hash is None:
             return None
-        cursor = await connection.execute(
-            "SELECT path FROM package_files WHERE hash = %s ORDER BY path", (stored.hash,)
-        )
-        paths = [path for (path,) in await cursor.fetchall()]
+        directory = library.package_directory(stored.hash)
+        paths = await asyncio.to_thread(file_paths, directory) if directory.is_dir() else []
         cursor = await connection.execute(
             "SELECT module || '.bend', count(*) FROM definitions"
             " WHERE generation = %s AND release = %s GROUP BY module",
