@@ -36,14 +36,12 @@ from jendhub.search.sources import (
     usage,
 )
 from jendhub.services.parameters import MAX_LIMIT
+from jendhub.services.site.arguments import GlobArguments, GrepArguments, ReadArguments
 from jendhub.services.site.files import (
     NOT_READY,
-    GlobArguments,
-    GrepArguments,
     Lines,
     Matches,
     Place,
-    ReadArguments,
     glob_files,
     grep_files,
     locate,

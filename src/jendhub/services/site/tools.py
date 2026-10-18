@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Any
 
 from mcp.server.caching import CacheHint
 from mcp.server.context import ServerRequestContext
@@ -19,7 +19,7 @@ from mcp.types import (
     Tool,
     ToolAnnotations,
 )
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import ValidationError
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.routing import Route
@@ -28,11 +28,20 @@ from starlette.types import Receive, Scope, Send
 from jendhub.errors import JendHubError
 from jendhub.search.searches import Caller
 from jendhub.services.app import Running
-from jendhub.services.parameters import MAX_LIMIT, MAX_QUERY, invalid_parameters
-from jendhub.services.site.files import MAX_LINES, GlobArguments, GrepArguments, ReadArguments
+from jendhub.services.parameters import invalid_parameters
+from jendhub.services.site.arguments import (
+    GLOB,
+    GREP,
+    READ,
+    SEARCH,
+    GlobArguments,
+    GrepArguments,
+    ReadArguments,
+    SearchArguments,
+)
+from jendhub.services.site.arguments import TOOLS as SPECS
 from jendhub.services.site.guide import INSTRUCTIONS
 from jendhub.services.site.text import (
-    READ_TOOL,
     ToolLinks,
     render_lines,
     render_matches,
@@ -42,9 +51,6 @@ from jendhub.services.site.text import (
 from jendhub.services.site.views import EMBEDDING_FAILED, Site
 
 MCP_PATH = "/mcp"
-SEARCH_TOOL = "search"
-GREP_TOOL = "grep"
-GLOB_TOOL = "glob"
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 STATIC = CacheHint(ttl_ms=3_600_000, scope="public")
 
@@ -52,57 +58,14 @@ type Guard = Callable[[Request], Awaitable[None]]
 type Context = ServerRequestContext[Any, Any]
 type Answer = Callable[[Context, dict[str, Any]], Awaitable[str]]
 
-
-class SearchArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    query: Annotated[
-        str,
-        Field(
-            min_length=1,
-            max_length=MAX_QUERY,
-            description="What you need in a few words, for example `decompress gzip data`.",
-        ),
-    ]
-    limit: Annotated[
-        int, Field(ge=1, le=MAX_LIMIT, description="The number of results to give.")
-    ] = 10
-    offset: Annotated[
-        int, Field(ge=0, lt=MAX_LIMIT, description="The number of best results to skip.")
-    ] = 0
-
-
 TOOLS = [
     Tool(
-        name=SEARCH_TOOL,
-        description="Search the definitions of Base and of the BendHub packages by task or by"
-        " name. Each result gives its import line, the name to call, its head and the read"
-        " call that shows its code.",
-        input_schema=SearchArguments.model_json_schema(),
+        name=spec.name,
+        description=spec.description,
+        input_schema=spec.arguments.model_json_schema(),
         annotations=READ_ONLY,
-    ),
-    Tool(
-        name=READ_TOOL,
-        description="Read a file of Base or of a release on BendHub. The answer gives each"
-        f" line as its number, a tab and its text. It gives at most {MAX_LINES} lines: use"
-        " offset and limit to read a part of a long file.",
-        input_schema=ReadArguments.model_json_schema(),
-        annotations=READ_ONLY,
-    ),
-    Tool(
-        name=GREP_TOOL,
-        description="Find a regular expression in the files of one release with ripgrep. The"
-        " answer gives each path as the read tool takes it.",
-        input_schema=GrepArguments.model_json_schema(),
-        annotations=READ_ONLY,
-    ),
-    Tool(
-        name=GLOB_TOOL,
-        description="Find the files of one release whose paths match a glob. The answer"
-        " gives each path as the read tool takes it.",
-        input_schema=GlobArguments.model_json_schema(),
-        annotations=READ_ONLY,
-    ),
+    )
+    for spec in SPECS
 ]
 SCHEMAS = {tool.name: tool.input_schema for tool in TOOLS}
 
@@ -151,7 +114,7 @@ def tool_server(running: Running[Site], searching: Guard, version: str) -> Serve
         caller = Caller("mcp", request.headers.get("user-agent"), client_name(ctx))
         found, searched = await site.search(given.query, given.limit, given.offset, caller)
         await site.keep(searched)
-        links = ToolLinks(SEARCH_TOOL, {"query": given.query, "limit": given.limit})
+        links = ToolLinks(SEARCH.name, {"query": given.query, "limit": given.limit})
         return render_results(found, links)
 
     async def read(_: Context, arguments: dict[str, Any]) -> str:
@@ -167,10 +130,10 @@ def tool_server(running: Running[Site], searching: Guard, version: str) -> Serve
         return render_paths(await running.get().glob(given))
 
     answers: dict[str, Answer] = {
-        SEARCH_TOOL: search,
-        READ_TOOL: read,
-        GREP_TOOL: grep,
-        GLOB_TOOL: glob,
+        SEARCH.name: search,
+        READ.name: read,
+        GREP.name: grep,
+        GLOB.name: glob,
     }
 
     async def list_tools(_: Context, __: PaginatedRequestParams | None) -> ListToolsResult:

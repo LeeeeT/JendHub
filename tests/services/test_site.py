@@ -31,7 +31,7 @@ from tests.indexing.live import (
 
 SITE_URL = "https://jend.test"
 DOUBLE = "kit@1.0.0.0/main:double"
-DOUBLE_READ = f"{SITE_URL}/read.txt?file_path=kit@1.0.0.0/main.bend&offset=3&limit=3"
+DOUBLE_READ = f"{SITE_URL}/read.txt?file_path=kit@1.0.0.0/main.bend&offset=2&limit=3"
 QUADRUPLE = "app@1.0.0.0/main:quadruple"
 BROKEN_SOURCE = "import Base\nimport ./missing.bend as M\n\ndef broken(n: Nat) -> Nat:\n  n\n"
 
@@ -171,7 +171,7 @@ async def stored_searches(pool: Pool) -> list[StoredSearch]:
 async def test_agents_get_results_with_their_code_and_import_line(
     site: httpx.AsyncClient,
 ) -> None:
-    params = {"q": "double a number", "limit": 1}
+    params = {"query": "double a number", "limit": 1}
     response = await site.get("/search.txt", params=params, headers={"accept": "text/html"})
     assert response.headers["content-type"].startswith("text/plain")
     assert response.text.startswith(
@@ -181,22 +181,26 @@ async def test_agents_get_results_with_their_code_and_import_line(
     code = (await site.get(DOUBLE_READ)).text
     assert code == ("3\t# Doubles a number.\n4\tdef double(n: Nat) -> Nat:\n5\t  Nat.add(n, n)\n")
     assert response.text.endswith(
-        f"More: {SITE_URL}/search.txt?q=double+a+number&limit=1&offset=1\n"
+        f"More: {SITE_URL}/search.txt?query=double+a+number&limit=1&offset=1\n"
     )
 
 
 async def test_search_pages_through_one_fixed_ranking(site: httpx.AsyncClient) -> None:
-    every = (await site.get("/search.txt", params={"q": "double a number", "limit": 50})).text
-    later = (await site.get("/search.txt", params={"q": "double", "limit": 1, "offset": 1})).text
+    every = (await site.get("/search.txt", params={"query": "double a number", "limit": 50})).text
+    later = (
+        await site.get("/search.txt", params={"query": "double", "limit": 1, "offset": 1})
+    ).text
     assert every.startswith("1. ")
     assert later.startswith("2. ")
-    assert (await site.get("/search.txt", params={"q": "x", "offset": 50})).status_code == 400
+    assert (await site.get("/search.txt", params={"query": "x", "offset": 50})).status_code == 400
 
 
 async def test_each_search_is_stored_with_its_client_and_whole_ranking(
     site: httpx.AsyncClient, pool: Pool
 ) -> None:
-    await site.get("/search.txt", params={"q": "double", "limit": 1}, headers={"user-agent": "a/1"})
+    await site.get(
+        "/search.txt", params={"query": "double", "limit": 1}, headers={"user-agent": "a/1"}
+    )
     await site.get("/search", params={"q": "double a number"}, headers={"user-agent": "b/2"})
     [agents, web] = await stored_searches(pool)
     assert agents[:6] == ("agents", "a/1", None, "double", 0, 1)
@@ -253,7 +257,9 @@ async def test_agents_get_a_failure_as_text(
     assert response.headers["content-type"].startswith("text/plain")
 
 
-@pytest.mark.parametrize("params", [{"q": ""}, {"q": "map", "limit": 0}, {"q": "x" * 1001}])
+@pytest.mark.parametrize(
+    "params", [{"query": ""}, {"query": "map", "limit": 0}, {"query": "x" * 1001}]
+)
 async def test_agents_get_an_invalid_query_as_text(
     site: httpx.AsyncClient, params: dict[str, str | int]
 ) -> None:
@@ -270,7 +276,7 @@ async def test_agents_get_a_package_and_the_status_as_text(site: httpx.AsyncClie
     status = (await site.get("/status.txt")).text
     assert "  Jobs: 0 queued, 0 running, 3 indexed, 0 superseded, 0 failed\n" in status
     assert f"Invalid releases (1):\n  kit@2.0.0.0 ({KIT_V2})" in status
-    assert f"   At {SITE_URL}/read.txt?file_path=kit@2.0.0.0/main.bend&offset=2.\n" in status
+    assert f"   At {SITE_URL}/read.txt?file_path=kit@2.0.0.0/main.bend&offset=1.\n" in status
     assert "   Files that do not load: main.bend.\n" in status
 
 
@@ -310,7 +316,7 @@ async def test_mcp_search_gives_read_calls_and_is_stored(
     )
     assert not failed
     assert text.startswith(
-        '1. Kit.double (read(file_path="kit@1.0.0.0/main.bend", offset=3, limit=3))\n'
+        '1. Kit.double (read(file_path="kit@1.0.0.0/main.bend", offset=2, limit=3))\n'
         "   import kit@1.0.0.0/main.bend as Kit\n"
     )
     assert text.endswith('More: search(query="double a number", limit=1, offset=1)\n')
@@ -319,7 +325,7 @@ async def test_mcp_search_gives_read_calls_and_is_stored(
 
 
 async def test_mcp_read_grep_and_glob_work_on_the_stored_files(site: httpx.AsyncClient) -> None:
-    read: dict[str, object] = {"file_path": "app@1.0.0.0/main.bend", "offset": 2, "limit": 2}
+    read: dict[str, object] = {"file_path": "app@1.0.0.0/main.bend", "offset": 1, "limit": 2}
     assert await call_tool(site, "read", read) == (
         False,
         "2\timport kit@1.0.0.0/main.bend as K\n3\t\n",
@@ -390,7 +396,7 @@ async def test_people_get_the_results_as_a_page(site: httpx.AsyncClient) -> None
     assert f'href="/definitions/{DOUBLE}"' in html
     assert 'href="/packages/kit"' in html
     assert "import kit@1.0.0.0/main.bend as Kit" in html
-    assert 'type="text/plain" href="/search.txt?q=double+a+number"' in html
+    assert 'type="text/plain" href="/search.txt?query=double+a+number"' in html
 
 
 async def test_an_empty_search_goes_home(site: httpx.AsyncClient) -> None:
@@ -405,7 +411,7 @@ async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.Async
     assert f'href="/definitions/{DOUBLE}"' in html
     assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert "App.quadruple" in html
-    assert 'href="/read.txt?file_path=app@1.0.0.0/main.bend&amp;offset=4&amp;limit=2"' in html
+    assert 'href="/read.txt?file_path=app@1.0.0.0/main.bend&amp;offset=3&amp;limit=2"' in html
 
 
 async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient) -> None:
@@ -441,7 +447,7 @@ async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> Non
 
 
 async def test_every_answer_has_the_security_headers(site: httpx.AsyncClient) -> None:
-    for path in ("/", "/search.txt?q=double", "/style.css"):
+    for path in ("/", "/search.txt?query=double", "/style.css"):
         headers = (await site.get(path)).headers
         assert headers["x-content-type-options"] == "nosniff"
         assert headers["referrer-policy"] == "no-referrer"
@@ -465,9 +471,15 @@ async def test_searches_from_one_client_are_limited(
     monkeypatch.setenv("JENDHUB_SEARCHES_PER_MINUTE", "1")
     monkeypatch.setenv("JENDHUB_CLIENT_IP_HEADER", "cf-connecting-ip")
     async with running(create_app(opener(database, qdrant_settings, library))) as client:
-        first = await client.get("/search.txt?q=double", headers={"cf-connecting-ip": "1.1.1.1"})
-        second = await client.get("/search.txt?q=double", headers={"cf-connecting-ip": "1.1.1.1"})
-        other = await client.get("/search.txt?q=double", headers={"cf-connecting-ip": "2.2.2.2"})
+        first = await client.get(
+            "/search.txt?query=double", headers={"cf-connecting-ip": "1.1.1.1"}
+        )
+        second = await client.get(
+            "/search.txt?query=double", headers={"cf-connecting-ip": "1.1.1.1"}
+        )
+        other = await client.get(
+            "/search.txt?query=double", headers={"cf-connecting-ip": "2.2.2.2"}
+        )
         page = await client.get("/search?q=double", headers={"cf-connecting-ip": "1.1.1.1"})
         tool = await call_tool(
             client, "search", {"query": "double"}, {"cf-connecting-ip": "1.1.1.1"}
@@ -489,7 +501,7 @@ async def test_a_search_without_an_embedding_says_so(
 ) -> None:
     app = create_app(opener(database, qdrant_settings, library, SilentEmbedder()))
     async with running(app) as client:
-        response = await client.get("/search.txt", params={"q": "double"})
+        response = await client.get("/search.txt", params={"query": "double"})
         tool = await call_tool(client, "search", {"query": "double"})
     assert response.status_code == httpx.codes.BAD_GATEWAY
     assert response.text == "The embedding service did not answer. Try again.\n"
@@ -499,7 +511,7 @@ async def test_a_search_without_an_embedding_says_so(
 async def test_without_a_live_index_search_waits_and_the_status_answers(
     empty_site: httpx.AsyncClient,
 ) -> None:
-    response = await empty_site.get("/search.txt", params={"q": "double"})
+    response = await empty_site.get("/search.txt", params={"query": "double"})
     assert response.status_code == httpx.codes.SERVICE_UNAVAILABLE
     assert response.text == "The search index is not ready. Try again later.\n"
     assert (await empty_site.get("/readyz")).status_code == httpx.codes.SERVICE_UNAVAILABLE

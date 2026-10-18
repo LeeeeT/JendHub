@@ -3,14 +3,8 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-from jendhub.services.site.files import (
-    GrepArguments,
-    Matches,
-    Place,
-    glob_files,
-    grep_files,
-    read_lines,
-)
+from jendhub.services.site.arguments import GrepArguments
+from jendhub.services.site.files import Matches, Place, glob_files, grep_files, read_lines
 
 LABEL = "kit@1.0.0.0"
 FILES = {
@@ -37,8 +31,8 @@ async def grep(place: Place, **arguments: object) -> Matches:
 
 
 async def test_read_gives_the_asked_lines(release: Place) -> None:
-    found = await read_lines(inside(release, "main.bend"), 3, 1)
-    assert (found.path, found.offset, found.lines, found.total) == (
+    found = await read_lines(inside(release, "main.bend"), 2, 1)
+    assert (found.path, found.first, found.lines, found.total) == (
         f"{LABEL}/main.bend",
         3,
         ["def f() -> Nat:"],
@@ -47,7 +41,7 @@ async def test_read_gives_the_asked_lines(release: Place) -> None:
 
 
 @pytest.mark.parametrize(
-    ("path", "offset", "status"), [("main.bend", 5, 400), ("src", 1, 400), ("no.bend", 1, 404)]
+    ("path", "offset", "status"), [("main.bend", 4, 400), ("src", 1, 400), ("no.bend", 1, 404)]
 )
 async def test_read_refuses_what_it_cannot_read(
     release: Place, path: str, offset: int, status: int

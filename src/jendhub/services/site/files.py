@@ -2,122 +2,24 @@ import asyncio
 from asyncio.subprocess import DEVNULL, PIPE, Process
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
 
 from jendhub.db.pool import Pool
 from jendhub.hub.api import valid_path
 from jendhub.hub.library import Library, file_paths
 from jendhub.search.sources import BASE, base_tag, read_text, stored_release
+from jendhub.services.site.arguments import (
+    MAX_COLUMNS,
+    MAX_PATHS,
+    GrepArguments,
+    OutputMode,
+)
 
-MAX_LINES = 2000
-MAX_COLUMNS = 2000
-MAX_ENTRIES = 1000
-MAX_PATHS = 1000
 GREP_SECONDS = 10.0
 RIPGREP = "rg"
 HERE = "./"
 NOT_READY = "The search index is not ready. Try again later."
-RELEASE_PATH = (
-    "One release, or a directory or a file in it, for example `kit@1.0.0.0` or"
-    " `kit@1.0.0.0/src`. Base is `Base`."
-)
-
-type OutputMode = Literal["content", "files_with_matches", "count"]
-
-
-class ReadArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    file_path: Annotated[
-        str,
-        Field(
-            min_length=1,
-            description="The file to read, as an import line names it, for example"
-            " `kit@1.0.0.0/json.bend`. Base is `Base/base.bend`.",
-        ),
-    ]
-    offset: Annotated[int, Field(ge=1, description="The line number to start reading from.")] = 1
-    limit: Annotated[int, Field(ge=1, le=MAX_LINES, description="The number of lines to read.")] = (
-        MAX_LINES
-    )
-
-
-class GrepArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    pattern: Annotated[
-        str,
-        Field(
-            min_length=1,
-            description="The regular expression to find in the file contents, in ripgrep syntax.",
-        ),
-    ]
-    path: Annotated[str, Field(min_length=1, description=RELEASE_PATH)]
-    glob: Annotated[
-        str | None,
-        Field(description="A glob that selects the files to search, for example `src/**`."),
-    ] = None
-    output_mode: Annotated[
-        OutputMode,
-        Field(
-            description="`content` gives the matching lines, `files_with_matches` gives the"
-            " paths of the files, and `count` gives the number of matching lines in each file."
-        ),
-    ] = "files_with_matches"
-    before: Annotated[
-        int | None,
-        Field(alias="-B", ge=0, description="The number of lines to show before each match."),
-    ] = None
-    after: Annotated[
-        int | None,
-        Field(alias="-A", ge=0, description="The number of lines to show after each match."),
-    ] = None
-    around: Annotated[
-        int | None,
-        Field(
-            alias="-C",
-            ge=0,
-            description="The number of lines to show before and after each match.",
-        ),
-    ] = None
-    context: Annotated[int | None, Field(ge=0, description="The same as -C.")] = None
-    line_numbers: Annotated[
-        bool, Field(alias="-n", description="Show the number of each line.")
-    ] = True
-    ignore_case: Annotated[bool, Field(alias="-i", description="Ignore the case of letters.")] = (
-        False
-    )
-    only_matching: Annotated[
-        bool, Field(alias="-o", description="Show only the matching part of each line.")
-    ] = False
-    multiline: Annotated[
-        bool,
-        Field(description="Let a match go across lines, and let `.` match a line end."),
-    ] = False
-    head_limit: Annotated[
-        int,
-        Field(ge=1, le=MAX_ENTRIES, description="The number of lines, paths or counts to give."),
-    ] = 250
-    offset: Annotated[
-        int, Field(ge=0, description="The number of lines, paths or counts to skip.")
-    ] = 0
-
-
-class GlobArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    pattern: Annotated[
-        str,
-        Field(
-            min_length=1,
-            description="The glob that the paths must match, for example `**/*.bend`.",
-        ),
-    ]
-    path: Annotated[str, Field(min_length=1, description=RELEASE_PATH)]
-    offset: Annotated[int, Field(ge=0, description="The number of paths to skip.")] = 0
 
 
 @dataclass(frozen=True)
@@ -138,7 +40,7 @@ class Place:
 @dataclass(frozen=True)
 class Lines:
     path: str
-    offset: int
+    first: int
     lines: list[str]
     total: int
 
@@ -177,9 +79,9 @@ async def read_lines(place: Place, offset: int, limit: int) -> Lines:
     if text is None:
         raise HTTPException(404, f"The store has no file {place.path}.")
     lines = split_lines(text)
-    if lines and offset > len(lines):
+    if lines and offset >= len(lines):
         raise HTTPException(400, f"{place.path} has {len(lines)} lines.")
-    return Lines(place.path, offset, lines[offset - 1 : offset - 1 + limit], len(lines))
+    return Lines(place.path, offset + 1, lines[offset : offset + limit], len(lines))
 
 
 def ripgrep_command(given: GrepArguments, target: str) -> list[str]:

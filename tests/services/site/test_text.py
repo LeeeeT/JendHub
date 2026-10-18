@@ -29,7 +29,7 @@ from jendhub.services.site.views import (
 
 ORIGIN = "https://jend.test"
 LINKS = UrlLinks(ORIGIN)
-KIT_MAP = f"{ORIGIN}/read.txt?file_path=kit@1.0.0.0/main.bend&offset=5&limit=2"
+KIT_MAP = f"{ORIGIN}/read.txt?file_path=kit@1.0.0.0/main.bend&offset=4&limit=2"
 PROBLEM = Problem(
     "a fresh name (duplicate declaration: Nat)",
     "'Nat'",
@@ -38,7 +38,7 @@ PROBLEM = Problem(
 )
 PROBLEM_TEXT = (
     "   expected a fresh name (duplicate declaration: Nat)\n"
-    f"   At {ORIGIN}/read.txt?file_path=kit@2.0.0.0/nat.bend&offset=3.\n"
+    f"   At {ORIGIN}/read.txt?file_path=kit@2.0.0.0/nat.bend&offset=2.\n"
     "   Files that do not load: main.bend, nat.bend.\n"
 )
 
@@ -63,7 +63,7 @@ def result(id_: str, package: str | None) -> Result:
 def test_results_show_how_to_use_and_read_each_definition() -> None:
     found = Results("map", [result("List.map", None), result("kit@1.0.0.0/main:map", "kit")], 2, 0)
     assert render_results(found, LINKS) == (
-        f"1. List.map ({ORIGIN}/read.txt?file_path=Base/base.bend&offset=5&limit=2)\n"
+        f"1. List.map ({ORIGIN}/read.txt?file_path=Base/base.bend&offset=4&limit=2)\n"
         "   import Base\n   # Maps.\n   def map(xs):\n\n"
         f"2. Kit.map ({KIT_MAP})\n"
         "   import kit@1.0.0.0/main.bend as Kit\n   # Maps.\n   def map(xs):\n"
@@ -74,7 +74,7 @@ def test_tool_results_give_read_calls() -> None:
     found = Results("map", [result("kit@1.0.0.0/main:map", "kit")], 3, 0)
     links = ToolLinks("search", {"query": "map", "limit": 1})
     assert render_results(found, links).splitlines() == [
-        '1. Kit.map (read(file_path="kit@1.0.0.0/main.bend", offset=5, limit=2))',
+        '1. Kit.map (read(file_path="kit@1.0.0.0/main.bend", offset=4, limit=2))',
         "   import kit@1.0.0.0/main.bend as Kit",
         "   # Maps.",
         "   def map(xs):",

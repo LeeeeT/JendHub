@@ -8,13 +8,13 @@ from jendhub.indexing.failures import Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease
 from jendhub.search.packages import ReleaseDetail
 from jendhub.search.sources import id_source, usage
-from jendhub.services.site.files import MAX_COLUMNS, Lines, Matches
+from jendhub.services.site.arguments import MAX_COLUMNS, READ
+from jendhub.services.site.files import Lines, Matches
 from jendhub.services.site.pages import counted, shortened
 from jendhub.services.site.views import PackageView, Result, Results, StatusView
 
 INDENT = "   "
 NAMED_FILES = 5
-READ_TOOL = "read"
 EVERY_FILE = "**"
 
 type Argument = str | int | bool
@@ -53,7 +53,7 @@ class ToolLinks:
     arguments: dict[str, Argument] = field(default_factory=dict[str, Argument])
 
     def read(self, file: str, offset: int | None = None, limit: int | None = None) -> str:
-        return call(READ_TOOL, given(file_path=file, offset=offset, limit=limit))
+        return call(READ.name, given(file_path=file, offset=offset, limit=limit))
 
     def next(self, parameter: str, value: int) -> str:
         return f"More: {call(self.tool, self.arguments | {parameter: value})}\n"
@@ -87,7 +87,7 @@ def heading(title: str, shown: int, total: int, offset: int) -> str:
 
 def definition_link(links: Links, id_: str, first_line: int, end_line: int) -> str:
     file, _ = id_source(id_)
-    return links.read(file, first_line + 1, end_line - first_line)
+    return links.read(file, first_line, end_line - first_line)
 
 
 def render_result(rank: int, result: Result, links: Links) -> str:
@@ -114,7 +114,7 @@ def render_lines(found: Lines) -> str:
         return f"{found.path} is empty.\n"
     return "".join(
         f"{number}\t{line[:MAX_COLUMNS]}\n"
-        for number, line in enumerate(found.lines, start=found.offset)
+        for number, line in enumerate(found.lines, start=found.first)
     )
 
 
@@ -131,7 +131,7 @@ def render_paths(paths: list[str]) -> str:
 
 
 def render_problem(problem: Problem, links: Links) -> str:
-    places = ", ".join(links.read(place.file, place.line) for place in problem.places)
+    places = ", ".join(links.read(place.file, place.line - 1) for place in problem.places)
     where = f"At {places}.\n" if places else ""
     named = ", ".join(problem.files[:NAMED_FILES])
     files = (

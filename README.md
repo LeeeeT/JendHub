@@ -13,9 +13,10 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   service serves both forms, because they are one product with one life cycle.
 - **MCP:** the site is also an MCP server, so that an agent can add JendHub
   with one command and sees its tools in every session. It has four tools:
-  `search`, and `read`, `grep` and `glob` to read the code. Each tool
-  description stays in the context of the agent, so the descriptions are
-  short. The answers are the text answers, with tool calls in place of
+  `search`, and `read`, `grep` and `glob` to read the code. Each text path
+  takes the same parameters as its tool, and `/llms.txt` prints the same
+  descriptions, from one source in `services/site/arguments.py`. The answers
+  are the text answers, with tool calls in place of
   URLs, so that an agent without a fetch tool can follow them. The server uses
   the official `mcp` SDK 2 in stateless HTTP mode with JSON answers: it keeps no
   sessions, and plain request and answer is what most clients support. It
@@ -37,7 +38,11 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   default), and `glob` gives at most 1000 paths. As with the Read, Grep and
   Glob tools, an answer does not tell where the next part starts: the agent
   asks for it with `offset`. `grep` has no `type` parameter, because the store
-  keeps only `.bend` files.
+  keeps only `.bend` files. The `offset` of `read` is a true offset, unlike the
+  line number of the Read tool: 0 starts at the first line, and 1 skips it.
+  This is the only change to the parameters. The descriptions copy those of
+  the three tools word for word, with changes only where JendHub works
+  differently, so they are not in ASD-STE100.
 - **ripgrep:** `grep` runs `rg` itself on the stored files, so its regular
   expressions, its options and its output are those of the Grep tool. The
   regex engine of `rg` runs in linear time, so a pattern cannot block the
@@ -111,8 +116,8 @@ BendHub ──> syncer ──> Postgres, library <── worker ──> Qdrant
 | For agents (plain text) | For people (HTML) | Answer |
 |---|---|---|
 | `GET /llms.txt` | `GET /` | How to use JendHub. The home page also shows the size of the live index. |
-| `GET /search.txt?q=<query>&limit=10&offset=0` | `GET /search?q=<query>&offset=0` | The best definitions with their import line and the name to call. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
-| `GET /read.txt?file_path=<release>/<path>&offset=1&limit=2000` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one, as `N<tab>text` lines. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
+| `GET /search.txt?query=<query>&limit=10&offset=0` | `GET /search?q=<query>&offset=0` | The best definitions with their import line and the name to call. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
+| `GET /read.txt?file_path=<release>/<path>&offset=0&limit=2000` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one, as `N<tab>text` lines. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | | `GET /definitions/<id>` | A definition with the import lines that its code uses, and the definitions that it uses. Its text form is the `read.txt` of its lines. |
 | `GET /grep.txt?pattern=<regex>&path=<release>` | | The paths, lines or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters are those of the Grep tool: `glob`, `output_mode` (`files_with_matches`, `content` or `count`), `-A`, `-B`, `-C`, `context`, `-n`, `-i`, `-o`, `multiline`, `head_limit` (1 to 1000, 250) and `offset`. |
 | `GET /glob.txt?pattern=<glob>&path=<release>&offset=0` | `GET /files/<release>` | The files of one release whose paths match a glob, such as `**/*.bend`. The page shows all files with the number of indexed definitions in each. |
@@ -132,7 +137,7 @@ agent with one of these commands:
 | Tool | Answer |
 |---|---|
 | `search(query, limit=10, offset=0)` | The same as `/search.txt`. |
-| `read(file_path, offset=1, limit=2000)` | The same as `/read.txt`. `file_path` is the path of an import line, for example `kit@1.0.0.0/json.bend`, or `Base/base.bend`. |
+| `read(file_path, offset=0, limit=2000)` | The same as `/read.txt`. `file_path` is the path of an import line, for example `kit@1.0.0.0/json.bend`, or `Base/base.bend`. |
 | `grep(pattern, path, ...)` | The same as `/grep.txt`. |
 | `glob(pattern, path, offset=0)` | The same as `/glob.txt`. |
 
@@ -145,7 +150,7 @@ because it goes into the context of an agent: a head of more than 12 lines
 ends with `…`, and a load error names at most 5 of its files.
 
 ```
-1. Json.parse (https://jend.leeeet.dev/read.txt?file_path=bend-net-json@0.3.0.0/json.bend&offset=386&limit=3)
+1. Json.parse (https://jend.leeeet.dev/read.txt?file_path=bend-net-json@0.3.0.0/json.bend&offset=385&limit=3)
    import bend-net-json@0.3.0.0/json.bend as Json
    # One JSON text: a value with optional whitespace around it.
    def parse(+s: String) -> Maybe<&2, Val>:

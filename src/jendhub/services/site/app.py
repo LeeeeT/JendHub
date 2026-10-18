@@ -20,13 +20,16 @@ from jendhub.services.background import every
 from jendhub.services.parameters import (
     MAX_QUERY,
     PAGE,
-    Limit,
     Offset,
-    QueryText,
     SearchOffset,
     invalid_parameters,
 )
-from jendhub.services.site.files import GlobArguments, GrepArguments, ReadArguments
+from jendhub.services.site.arguments import (
+    GlobArguments,
+    GrepArguments,
+    ReadArguments,
+    SearchArguments,
+)
 from jendhub.services.site.guide import OPENSEARCH_TYPE, ROBOTS, llms_text, opensearch
 from jendhub.services.site.limits import RateLimit, client_address
 from jendhub.services.site.pages import (
@@ -140,15 +143,11 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
 
     @router.get("/search.txt")
     async def search(
-        request: Request,
-        background: BackgroundTasks,
-        q: QueryText,
-        limit: Limit = 10,
-        offset: SearchOffset = 0,
+        request: Request, background: BackgroundTasks, given: Annotated[SearchArguments, Query()]
     ) -> str:
         site = running.get()
         caller = Caller("agents", request.headers.get("user-agent"))
-        found, searched = await site.search(q, limit, offset, caller)
+        found, searched = await site.search(given.query, given.limit, given.offset, caller)
         background.add_task(site.keep, searched)
         return render_results(found, links(site, request))
 
@@ -217,7 +216,7 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
             query=query,
             found=found,
             pages=pages(request, "offset", Span(offset, shown, found.total), WEB_RESULTS),
-            alternate=f"/search.txt?{urlencode({'q': query})}",
+            alternate=f"/search.txt?{urlencode({'query': query})}",
         )
 
     @router.get("/definitions/{id_:path}")
@@ -225,7 +224,7 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
         view = await running.get().definition(id_)
         detail = view.detail
         alternate = RELATIVE.read(
-            view.usage.file, detail.first_line + 1, detail.end_line - detail.first_line
+            view.usage.file, detail.first_line, detail.end_line - detail.first_line
         )
         return page("definition.html", view=view, alternate=alternate)
 
