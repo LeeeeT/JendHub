@@ -5,6 +5,7 @@
 	--muted: #555555;
 	--line: #000000;
 	--faint: #c8c8c8;
+	--mark: #dcdcdc;
 	--measure: 100ch;
 	--prose: 72ch;
 }
@@ -17,6 +18,7 @@
 		--muted: #ababab;
 		--line: #ffffff;
 		--faint: #3c3c3c;
+		--mark: #303030;
 	}
 }
 
@@ -444,16 +446,14 @@ button:hover {
 
 .source .line:target,
 .source .line.marked {
-	color: var(--background);
-	background: var(--text);
+	background: var(--mark);
+	box-shadow: inset 3px 0 0 var(--text);
 }
 
 .source .line:target .n,
-.source .line:target a,
-.source .line.marked .n,
-.source .line.marked a {
-	color: var(--background);
-	border-bottom-color: var(--background);
+.source .line.marked .n {
+	color: var(--text);
+	font-weight: 700;
 }
 
 .list {
