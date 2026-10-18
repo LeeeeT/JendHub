@@ -33,7 +33,6 @@ services:
     image: postgres:18
     restart: unless-stopped
     logging: *logging
-    mem_limit: 384m
     environment:
       POSTGRES_USER: jendhub
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
@@ -51,8 +50,6 @@ services:
     image: qdrant/qdrant:v1.19.2
     restart: unless-stopped
     logging: *logging
-    mem_limit: 1g
-    memswap_limit: 1g
     environment:
       QDRANT__TELEMETRY_DISABLED: "true"
     volumes:
@@ -71,12 +68,10 @@ services:
   syncer:
     <<: *jendhub
     command: [syncer, --host, 0.0.0.0, --port, "8000", --metrics-port, "9000"]
-    mem_limit: 192m
 
   worker:
     <<: *jendhub
     command: [worker, --host, 0.0.0.0, --port, "8000", --metrics-port, "9000"]
-    mem_limit: 1g
     environment:
       <<: *environment
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
@@ -87,8 +82,6 @@ services:
   site:
     <<: *jendhub
     command: [site, --host, 0.0.0.0, --port, "8000", --metrics-port, "9000"]
-    mem_limit: 256m
-    memswap_limit: 256m
     environment:
       <<: *environment
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
@@ -99,7 +92,6 @@ services:
     image: prom/prometheus:v3.15.0
     restart: unless-stopped
     logging: *logging
-    mem_limit: 192m
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -116,7 +108,6 @@ services:
     command: tunnel --no-autoupdate run
     restart: unless-stopped
     logging: *logging
-    mem_limit: 128m
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:

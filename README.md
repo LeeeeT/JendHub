@@ -345,14 +345,13 @@ The production site is https://jend.leeeet.dev. It runs on one server with
 Prometheus and a Cloudflare Tunnel. No port is open to the internet:
 `cloudflared` connects out to Cloudflare, and Cloudflare sends the requests for
 `jend.leeeet.dev` to `http://site:8000`. The JendHub services run as an
-unprivileged user. Each container has a memory limit, and
-Docker keeps at most 3 log files of 10 MB for each container. The server has 1
+unprivileged user. The containers have no memory limits, so a process uses swap
+instead of being killed when memory runs low. Docker keeps at most 3 log files
+of 10 MB for each container. The server has 1
 CPU and 1.6 GiB of RAM, so it needs a swap file: without one, the page cache
 cannot hold Qdrant's vectors, and the restore of the vectors fails. It has a 4
-GB `/swapfile` with `vm.swappiness=10`. Qdrant and the site may not use swap,
-because each search reads their memory: when it is in swap, a search takes
-seconds. The other containers wait between jobs, so the kernel swaps them
-instead.
+GB `/swapfile` with `vm.swappiness=10`. When Qdrant's vectors are in swap, a
+search takes seconds; more RAM is the fix.
 
 `nix run .#deploy` deploys from your machine. Nix runs only on your machine:
 the server needs only Docker. The deploy needs SSH access to the server and
