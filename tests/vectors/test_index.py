@@ -73,9 +73,10 @@ async def test_scores_gives_the_exact_cosine_of_the_named_points(
     code = await index.scores(name, config, query, [6, 7, 8], CODE)
     names = await index.scores(name, config, query, [5], NAME)
     expected = config.project(vectors) @ config.project(query.reshape(1, -1))[0]
+    tolerance = 0.02 if config.quantization == "int8" else 1e-5
     assert sorted(code) == [6, 7]
-    assert code[7] == pytest.approx(float(expected[2]), abs=1e-5)
-    assert names[5] == pytest.approx(float(expected[2]), abs=1e-5)
+    assert code[7] == pytest.approx(float(expected[2]), abs=tolerance)
+    assert names[5] == pytest.approx(float(expected[2]), abs=tolerance)
 
 
 async def test_create_twice_keeps_the_points(index: VectorIndex) -> None:

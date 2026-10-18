@@ -12,7 +12,7 @@ from jendhub.search.ranking import load_model
 from jendhub.services.site.app import create_app
 from jendhub.services.site.views import Resources
 from jendhub.settings import DatabaseSettings, QdrantSettings
-from jendhub.vectors.index import VectorIndex, open_vector_index
+from jendhub.vectors.index import PRODUCTION, VectorIndex, open_vector_index
 from tests.indexing.live import APP, KIT_V2, WordEmbedder, index_live, seed, store_package
 
 SITE_URL = "https://jend.test"
@@ -241,7 +241,7 @@ async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient
 async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) -> None:
     status = (await site.get("/status")).text
     assert "Finished" in status
-    assert "d2048-binary" in status
+    assert PRODUCTION.label in status
     home = (await site.get("/")).text
     assert 'href="/search?q=decompress+gzip+data"' in home
     assert f"GET {SITE_URL}/search.txt?q=" in home

@@ -541,6 +541,16 @@ candidates, and the code scores of parents and children outside the 1,000. The
 features and the model take about 6 ms. Qdrant computes the name scores, so no
 vector goes over the network.
 
+On the server, binary quantization made the search slow. Qdrant rescored
+2,000 candidates with their full vectors on disk, and its page cache did not
+keep the 470 MB of code vectors: the first search of a query took 1.2 to
+1.7 s, and the same search without rescoring 12 to 27 ms. Both vectors now
+use int8 quantization in RAM, about 117 MB each for the live index, and
+Qdrant scores with the int8 vectors only. On the dev benchmark, the engine
+then scores 0.905, 0.894 and 0.897 at 10, 5 and 3, against 0.907, 0.897 and
+0.900 with exact scores. It gives the same first result as the lab code for
+98.8% of the queries, and 98.3% of the same top 10.
+
 ## Limits
 
 - There is no held-out query set. The weights of the rerankers were tuned on

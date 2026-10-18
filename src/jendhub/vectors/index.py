@@ -49,14 +49,29 @@ class VectorConfig:
                     binary=models.BinaryQuantizationConfig(always_ram=True)
                 )
 
+    @property
+    def rescores(self) -> bool:
+        return self.quantization == "binary"
+
     def search_params(self, ef: int) -> models.SearchParams:
+        match self.quantization:
+            case "none":
+                return models.SearchParams(hnsw_ef=ef)
+            case "int8":
+                quantized = models.QuantizationSearchParams(rescore=False)
+                return models.SearchParams(hnsw_ef=ef, quantization=quantized)
+            case "binary":
+                rescore = models.QuantizationSearchParams(rescore=True, oversampling=OVERSAMPLING)
+                return models.SearchParams(hnsw_ef=ef, quantization=rescore)
+
+    def exact_params(self) -> models.SearchParams:
         if self.quantization == "none":
-            return models.SearchParams(hnsw_ef=ef)
-        rescore = models.QuantizationSearchParams(rescore=True, oversampling=OVERSAMPLING)
-        return models.SearchParams(hnsw_ef=ef, quantization=rescore)
+            return models.SearchParams(exact=True)
+        quantized = models.QuantizationSearchParams(ignore=self.rescores, rescore=False)
+        return models.SearchParams(exact=True, quantization=quantized)
 
 
-PRODUCTION = VectorConfig(2048, "binary")
+PRODUCTION = VectorConfig(2048, "int8")
 
 
 def collection_name(generation: int, config: VectorConfig) -> str:
@@ -125,6 +140,7 @@ class VectorIndex:
                     distance=models.Distance.COSINE,
                     on_disk=True,
                     hnsw_config=models.HnswConfigDiff(m=0),
+                    quantization_config=config.quantization_config(),
                 ),
             },
         )
@@ -199,9 +215,7 @@ class VectorIndex:
             query_filter=models.Filter(
                 must=[models.HasIdCondition(has_id=list[models.ExtendedPointId](points))]
             ),
-            search_params=models.SearchParams(
-                exact=True, quantization=models.QuantizationSearchParams(ignore=True)
-            ),
+            search_params=config.exact_params(),
             limit=len(points),
             with_payload=False,
         )

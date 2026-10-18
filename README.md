@@ -148,12 +148,13 @@ package name and the module path, then the name, for example
 module, which share most of their code vocabulary.
 
 1. Qdrant returns the 1,000 nearest definitions by the code vector, with the
-   release and the module of each. The code vectors have 2,048 dimensions with
-   binary quantization in RAM. Qdrant rescores the candidates with the full
-   vectors on disk. The name vectors stay on disk with no HNSW graph, because
-   the engine only reads them.
-2. The engine reads the top 50 from Postgres, their name vectors from Qdrant,
-   and the code vectors of their parents and children outside the 1,000.
+   release and the module of each. Both vectors have 2,048 dimensions with
+   int8 quantization in RAM, and Qdrant scores with the int8 vectors only. The
+   full vectors stay on disk for a rebuild. The name vectors have no HNSW
+   graph, because the engine only scores the candidates with them.
+2. The engine reads the top 50 from Postgres, and asks Qdrant for their name
+   scores and for the code scores of their parents and children outside the
+   1,000.
 3. It computes 37 features for each of the 50 and sorts them with a LambdaMART
    model (LightGBM). `search/ranking.py` defines the features. The model is
    `search/ranker.txt`.
