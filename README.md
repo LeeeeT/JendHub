@@ -333,7 +333,7 @@ All settings come from the environment.
 | `JENDHUB_CLIENT_IP_HEADER` | `site`: the header that holds the client IP; without it, the IP of the connection | none |
 | `JENDHUB_SEARCHES_PER_MINUTE`, `JENDHUB_SEARCH_BURST` | `site`: the search limit of each client IP | 30, 10 |
 | `JENDHUB_REQUESTS_PER_MINUTE`, `JENDHUB_REQUEST_BURST` | `site`: the request limit of each client IP | 600, 120 |
-| `JENDHUB_QUERY_CACHE_SIZE`, `JENDHUB_TARGET_REFRESH_SECONDS` | `site` | 10,000, 10 |
+| `JENDHUB_QUERY_CACHE_SIZE`, `JENDHUB_TARGET_REFRESH_SECONDS` | `site` | 1,000, 10 |
 | `JENDHUB_STATUS_SECONDS` | `site`: the time it keeps the sizes of the generations | 30 |
 | `JENDHUB_SYNC_INTERVAL_SECONDS` | `syncer` | 300 |
 | `JENDHUB_LIBRARY_PATH`, `JENDHUB_WORKER_CONCURRENCY` | `worker` | `library`, 2 |
@@ -349,7 +349,10 @@ unprivileged user. Each container has a memory limit, and
 Docker keeps at most 3 log files of 10 MB for each container. The server has 1
 CPU and 1.6 GiB of RAM, so it needs a swap file: without one, the page cache
 cannot hold Qdrant's vectors, and the restore of the vectors fails. It has a 4
-GB `/swapfile` with `vm.swappiness=10`.
+GB `/swapfile` with `vm.swappiness=10`. Qdrant and the site may not use swap,
+because each search reads their memory: when it is in swap, a search takes
+seconds. The other containers wait between jobs, so the kernel swaps them
+instead.
 
 `nix run .#deploy` deploys from your machine. Nix runs only on your machine:
 the server needs only Docker. The deploy needs SSH access to the server and

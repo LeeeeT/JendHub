@@ -69,7 +69,7 @@ class SiteSettings(BaseSettings):
     site_url: str
     version: str = "dev"
     client_ip_header: str | None = None
-    query_cache_size: int = 10_000
+    query_cache_size: int = 1_000
     target_refresh_seconds: float = 10.0
     status_seconds: float = 30.0
     requests_per_minute: float = 600.0
