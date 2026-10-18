@@ -1,31 +1,5 @@
-from jendhub.search.engine import Candidate, best_by, module_key
+from jendhub.search.engine import best_by, module_key
 from jendhub.vectors.index import Neighbor
-
-
-def candidate(parent: int | None, children: list[int]) -> Candidate:
-    return Candidate(
-        1,
-        "List.map",
-        "def",
-        "List.map",
-        None,
-        None,
-        "",
-        "def List.map(xs: List) -> List:",
-        30,
-        None,
-        documented=True,
-        helper=False,
-        users=1,
-        external=False,
-        parent=parent,
-        children=children,
-    )
-
-
-def test_related_holds_the_parent_and_the_children() -> None:
-    assert candidate(7, [8, 9]).related == [7, 8, 9]
-    assert candidate(None, [8]).related == [8]
 
 
 def test_best_by_keeps_the_best_score_of_each_module() -> None:

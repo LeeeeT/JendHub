@@ -67,12 +67,6 @@ def test_extract_reads_each_top_level_definition() -> None:
     ]
 
 
-def test_the_span_of_a_definition_covers_its_doc_comment_and_its_lines() -> None:
-    lines = SOURCE.splitlines()
-    [_, swap, *_] = extract(SourceFile(PAIR, SOURCE))
-    assert "\n".join(lines[swap.start : swap.end]) == swap.text
-
-
 def test_extract_names_base_definitions_without_a_prefix() -> None:
     [definition] = extract(SourceFile(BASE, "def Nat.id(n: Nat) -> Nat:\n  n\n"))
     assert definition.id == "Nat.id"

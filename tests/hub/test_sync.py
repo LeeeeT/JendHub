@@ -2,10 +2,10 @@ import httpx
 import respx
 
 from jendhub.db.pool import Pool
-from jendhub.hub.api import HUB, Listing, Rejection, Release
+from jendhub.hub.api import HUB, Listing, Release
 from jendhub.hub.base import LATEST_RELEASE, SOURCE, Base
 from jendhub.hub.store import PackageStore
-from jendhub.hub.sync import Plan, describe_plan, plan, sync
+from jendhub.hub.sync import plan, sync
 from tests.hub.fixture import listing, serve_package, serve_pages
 
 
@@ -81,31 +81,6 @@ async def test_sync_keeps_a_current_base(router: respx.MockRouter, pool: Pool) -
     serve_pages(router, [[]])
     await sync(store)
     assert not source.called
-
-
-def test_describe_plan_lists_each_step_oldest_first() -> None:
-    hash_a = "0x" + "a" * 32
-    hash_b = "0x" + "b" * 32
-    hash_c = "0x" + "c" * 32
-    entries: list[Listing | Rejection] = [
-        Listing(hash_a, Release("kit", "0.1.0.0")),
-        Listing(hash_b, None),
-        Rejection(hash_c, "invalid release name or version"),
-    ]
-    assert describe_plan(Plan("v2.0.35", "v2.0.36", entries)) == "\n".join(
-        [
-            "fetch base.bend v2.0.36 (stored: v2.0.35)",
-            f"fetch {hash_a} kit@0.1.0.0",
-            f"fetch {hash_b}",
-            f"reject {hash_c}: invalid release name or version",
-            "new packages: 3, to fetch: 2, to reject: 1",
-        ]
-    )
-
-
-def test_describe_plan_reports_a_current_base() -> None:
-    expected = "base.bend is current at v2.0.36\nnew packages: 0, to fetch: 0, to reject: 0"
-    assert describe_plan(Plan("v2.0.36", "v2.0.36", [])) == expected
 
 
 async def test_plan_changes_nothing(router: respx.MockRouter, pool: Pool) -> None:

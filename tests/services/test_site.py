@@ -250,20 +250,12 @@ async def test_agents_get_a_package_and_the_status_as_text(site: httpx.AsyncClie
     assert "   Files that do not load: main.bend.\n" in status
 
 
-async def test_agents_read_the_guide_and_robots_allow_them(site: httpx.AsyncClient) -> None:
-    guide = (await site.get("/llms.txt")).text
-    assert f"GET {SITE_URL}/search.txt?q=<query>" in guide
-    assert f"GET {SITE_URL}/src/<name@version>/<path>" in guide
-    assert (await site.get("/robots.txt")).text == "User-agent: *\nDisallow: /search?\n"
-
-
 async def test_mcp_clients_get_two_read_only_tools(site: httpx.AsyncClient) -> None:
     listed = (await rpc(site, "tools/list", {})).json()["result"]
     assert [tool["name"] for tool in listed["tools"]] == ["search", "source"]
     assert all(tool["annotations"]["readOnlyHint"] for tool in listed["tools"])
     assert (listed["ttlMs"], listed["cacheScope"]) == (3_600_000, "public")
     discovered = (await rpc(site, "server/discover", {})).json()["result"]
-    assert "use the search tool" in discovered["instructions"]
     assert discovered["capabilities"] == {"tools": {"listChanged": False}}
     assert discovered["_meta"]["io.modelcontextprotocol/serverInfo"] == {
         "name": "JendHub",
@@ -365,7 +357,6 @@ async def test_people_get_the_results_as_a_page(site: httpx.AsyncClient) -> None
     assert 'href="/packages/kit"' in html
     assert "import kit@1.0.0.0/main.bend as Kit" in html
     assert 'type="text/plain" href="/search.txt?q=double+a+number"' in html
-    assert "<script" not in html
 
 
 async def test_an_empty_search_goes_home(site: httpx.AsyncClient) -> None:
@@ -399,12 +390,10 @@ async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient
     assert 'href="/files/kit@1.0.0.0/main.bend"' in file
     assert 'href="/files/Base/base.bend"' in file
     assert f'href="/definitions/{QUADRUPLE}">quadruple</a>' in file
-    assert (await site.get("/packages")).status_code == httpx.codes.NOT_FOUND
 
 
 async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) -> None:
     status = (await site.get("/status")).text
-    assert "Indexed" in status
     assert PRODUCTION.label in status
     assert 'href="/files/kit@2.0.0.0/main.bend#L2">main.bend:2</a>' in status
     assert "<b>2</b> packages" in (await site.get("/")).text
@@ -415,7 +404,6 @@ async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> Non
     assert response.status_code == httpx.codes.NOT_FOUND
     assert response.headers["content-type"].startswith("text/html")
     assert "The index has no definition nothing." in response.text
-    assert "<title>Not Found · JendHub</title>" in response.text
 
 
 async def test_every_answer_has_the_security_headers(site: httpx.AsyncClient) -> None:

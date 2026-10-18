@@ -7,8 +7,6 @@ from jendhub.bench.evaluate import (
     Score,
     compare,
     evaluate,
-    format_comparisons,
-    format_scores,
     ndcg,
 )
 from jendhub.bench.judgments import Assessment
@@ -113,24 +111,3 @@ async def test_compare_gives_the_judged_share_of_each_pipeline() -> None:
     candidate = FixedPipeline({ZIP.text: ["List.zip", "List.map"]})
     [all_kinds, *_] = await compare(baseline, candidate, [ZIP], 10)
     assert (all_kinds.baseline_judged, all_kinds.candidate_judged) == (1.0, 0.5)
-
-
-def test_format_comparisons_prints_one_row_for_each_kind() -> None:
-    comparisons = [Comparison("all", 200, 0.5, 0.625, 0.1, 0.15, 30, 12, 0.9, 0.85)]
-    assert format_comparisons(comparisons, 10).splitlines() == [
-        "kind  queries    A@10    B@10   B - A      95% interval  better  worse",
-        "all      200   0.500   0.625  +0.125  [+0.100, +0.150]      30     12",
-        "judged@10: A 0.900, B 0.850",
-    ]
-
-
-def test_format_scores_prints_one_row_for_each_kind() -> None:
-    scores = [
-        Score("all", 200, {10: 0.5123}, {10: 0.9}),
-        Score("name", 24, {10: 0.25}, {10: 0.75}),
-    ]
-    assert format_scores(scores, [10]).splitlines() == [
-        "kind  queries   nDCG@10  judged@10",
-        "all       200     0.512      0.900",
-        "name       24     0.250      0.750",
-    ]

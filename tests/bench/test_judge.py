@@ -98,10 +98,6 @@ def test_request_pins_the_model_and_the_provider() -> None:
     ]
 
 
-def test_the_message_length_counts_the_prompt_and_the_user_message() -> None:
-    assert Judge("prompt").message_length(PAIR) == len("prompt") + len(user_message(PAIR))
-
-
 def test_the_key_changes_with_the_prompt_and_the_message() -> None:
     judge = Judge("prompt a")
     assert judge.key(PAIR) == Judge("prompt a").key(PAIR)

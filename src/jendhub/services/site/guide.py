@@ -54,8 +54,6 @@ GET {origin}/search.txt?q=<query>
 To read a whole file, follow its import line:
 
 GET {origin}/src/<name@version>/<path>
-
-JendHub is also an MCP server at {origin}/mcp, with the tools search and source.
 """
 
 

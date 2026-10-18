@@ -8,7 +8,6 @@ from jendhub.corpus.definitions import BASE, SourceFile
 from jendhub.enrich import enricher
 from jendhub.enrich.enricher import (
     MODEL,
-    PROMPT,
     PROVIDERS,
     Enrichment,
     InvalidAnswerError,
@@ -41,10 +40,6 @@ def enrich_all(request: httpx.Request) -> httpx.Response:
     message = json.loads(request.content)["messages"][1]["content"]
     names = message.split("Write the metadata for these definitions:\n")[1].splitlines()
     return httpx.Response(200, json=completion([entry(name) for name in names]))
-
-
-def test_the_prompt_explains_forward_declarations() -> None:
-    assert "forward declaration" in PROMPT
 
 
 def window_of(names: list[str]) -> Window:

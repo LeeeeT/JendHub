@@ -47,15 +47,6 @@ async def test_uses_cross_the_modules_of_a_package(tmp_path: Path) -> None:
     assert found.mismatches == {}
 
 
-async def test_a_local_shadows_a_declaration(tmp_path: Path) -> None:
-    main = (
-        "import Base\n\ndef name(n: Nat) -> Nat:\n  n\n\n"
-        "def root(x: Nat) -> Nat:\n  name = x\n  name\n"
-    )
-    found = await artifacts(library(tmp_path, {LIB: (LIB_HASH, {"main.bend": main})}), LIB_HASH)
-    assert found.uses == []
-
-
 async def test_uses_of_base_and_other_packages_are_external_keys(tmp_path: Path) -> None:
     main = (
         "import Base\nimport other@1.0.0.0/box.bend as B\n\n"

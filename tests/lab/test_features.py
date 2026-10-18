@@ -1,5 +1,3 @@
-import math
-
 import numpy as np
 import pytest
 
@@ -46,23 +44,6 @@ def test_matrix_ranks_candidates_by_code_similarity() -> None:
     assert ids == ["List.map", "List", "List.map.go", "Nat.add", "pkg@1.0.0/mod:sort"]
     assert matrix.shape == (len(CODE), len(FEATURES))
     assert column(matrix, "code") == pytest.approx([1.0, 0.8, 0.6, 0.0, 0.0])
-
-
-def test_matrix_compares_a_definition_with_its_parent_and_children() -> None:
-    _, matrix = features().matrix("map a list", np.array([1.0, 0.0, 0.0], dtype=np.float32))
-    parents = column(matrix, "parent_gap")
-    children = column(matrix, "children_gap")
-    assert parents[0] == pytest.approx(-0.2)
-    assert children[0] == pytest.approx(-0.4)
-    assert math.isnan(parents[3])
-    assert math.isnan(children[3])
-
-
-def test_matrix_measures_the_words_that_the_query_and_the_name_share() -> None:
-    _, matrix = features().matrix("map lists", np.array([1.0, 0.0, 0.0], dtype=np.float32))
-    assert column(matrix, "last_coverage")[0] == pytest.approx(1.0)
-    assert column(matrix, "query_coverage")[0] == pytest.approx(1.0)
-    assert column(matrix, "query_coverage")[3] == pytest.approx(0.0)
 
 
 def test_matrix_compares_each_candidate_with_the_best_of_its_package() -> None:

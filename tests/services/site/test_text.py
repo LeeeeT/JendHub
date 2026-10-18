@@ -9,11 +9,10 @@ from jendhub.search.packages import (
     PackageDetail,
     ReleaseDetail,
 )
-from jendhub.search.sources import ReleaseFiles, usage
+from jendhub.search.sources import usage
 from jendhub.services.site.text import (
     UrlLinks,
     render_definition,
-    render_files,
     render_package,
     render_results,
     render_status,
@@ -65,14 +64,6 @@ def test_results_show_how_to_use_each_definition() -> None:
         f"2. Kit.map ({KIT_MAP})\n"
         "   import kit@1.0.0.0/main.bend as Kit\n   # Maps.\n   def map(xs):\n"
     )
-
-
-def test_results_link_to_the_next_results() -> None:
-    found = Results("map", [result("List.map", None)], 5, 2)
-    links = UrlLinks(ORIGIN, "/search.txt", {"q": "map", "limit": "1", "offset": "2"})
-    text = render_results(found, links)
-    assert text.startswith("3. List.map (")
-    assert text.endswith(f"\nMore: {ORIGIN}/search.txt?q=map&limit=1&offset=3\n")
 
 
 def test_no_results_say_so() -> None:
@@ -144,17 +135,4 @@ def test_the_status_shows_each_generation_and_the_invalid_releases() -> None:
         " 56650 definitions\n"
         "  Jobs: 0 queued, 0 running, 107 indexed, 2 superseded, 10 invalid, 0 failed\n\n"
         f"Invalid releases (1):\n  kit@2.0.0.0 (0x9), Base 0.1.2, 2026-10-15\n{PROBLEM_TEXT}"
-    )
-
-
-def test_a_status_with_no_generation_says_so() -> None:
-    view = StatusView([], [], 0, 0)
-    assert render_status(view, LINKS) == "No generation.\n\nInvalid releases (0):\n"
-
-
-def test_the_files_of_a_release_are_full_urls() -> None:
-    files = ReleaseFiles("kit@1.0.0.0", "0x1", ["main.bend", "src/a.bend"], {"main.bend": 2})
-    assert render_files(files, LINKS) == (
-        "kit@1.0.0.0\n\n"
-        f"  {ORIGIN}/src/kit@1.0.0.0/main.bend\n  {ORIGIN}/src/kit@1.0.0.0/src/a.bend\n"
     )

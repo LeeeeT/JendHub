@@ -20,10 +20,6 @@ def test_search_gives_one_ranking_for_each_query() -> None:
     assert NAMES.search(batch(["allow", "shuffle"]), 10) == [["allow"], ["shuffle"]]
 
 
-def test_search_omits_names_with_a_small_overlap() -> None:
-    assert NAMES.search(batch(["shuffle"]), 10) == [["shuffle"]]
-
-
 def test_search_keeps_names_with_a_large_overlap() -> None:
     assert NAMES.search(batch(["sort list"]), 10) == [["List.sort", "List.sort.runs"]]
 

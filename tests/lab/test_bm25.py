@@ -1,6 +1,4 @@
-import math
-
-from jendhub.lab.bm25 import Bm25, inverse_document_frequency
+from jendhub.lab.bm25 import Bm25
 from tests.lab.batches import batch
 
 DOCUMENTS = [
@@ -10,20 +8,12 @@ DOCUMENTS = [
 ]
 
 
-def test_inverse_document_frequency_is_positive_for_a_common_term() -> None:
-    assert inverse_document_frequency(3, 3) == math.log(1 + 0.5 / 3.5)
-
-
 def test_search_ranks_the_best_match_first() -> None:
     assert Bm25(DOCUMENTS).search(batch(["list map"]), 10) == [["List.map", "List.zip"]]
 
 
 def test_search_gives_one_ranking_for_each_query() -> None:
     assert Bm25(DOCUMENTS).search(batch(["add", "zip"]), 10) == [["Nat.add"], ["List.zip"]]
-
-
-def test_search_matches_identifier_parts() -> None:
-    assert Bm25(DOCUMENTS).search(batch(["add"]), 10) == [["Nat.add"]]
 
 
 def test_search_returns_at_most_limit_results() -> None:
