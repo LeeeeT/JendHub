@@ -260,12 +260,17 @@ async def test_agents_read_the_guide_and_robots_allow_them(site: httpx.AsyncClie
 
 
 async def test_mcp_clients_get_two_read_only_tools(site: httpx.AsyncClient) -> None:
-    response = await rpc(site, "tools/list", {})
-    tools = response.json()["result"]["tools"]
-    assert [tool["name"] for tool in tools] == ["search", "source"]
-    assert all(tool["annotations"]["readOnlyHint"] for tool in tools)
-    discovered = await rpc(site, "server/discover", {})
-    assert "use the search tool" in discovered.json()["result"]["instructions"]
+    listed = (await rpc(site, "tools/list", {})).json()["result"]
+    assert [tool["name"] for tool in listed["tools"]] == ["search", "source"]
+    assert all(tool["annotations"]["readOnlyHint"] for tool in listed["tools"])
+    assert (listed["ttlMs"], listed["cacheScope"]) == (3_600_000, "public")
+    discovered = (await rpc(site, "server/discover", {})).json()["result"]
+    assert "use the search tool" in discovered["instructions"]
+    assert discovered["capabilities"] == {"tools": {"listChanged": False}}
+    assert discovered["_meta"]["io.modelcontextprotocol/serverInfo"] == {
+        "name": "JendHub",
+        "version": "dev",
+    }
 
 
 async def test_mcp_clients_of_the_2025_protocol_also_search(
@@ -323,16 +328,27 @@ async def test_mcp_source_gives_a_definition_or_a_file(site: httpx.AsyncClient) 
             {"path": "kit@1.0.0.0/main.bend", "definition": "nothing"},
             "The index has no definition kit@1.0.0.0/main:nothing.",
         ),
-        ("source", {"path": "kit"}, "kit is not a file of a release"),
-        ("search", {"query": "double", "limit": 0}, "limit"),
+        (
+            "source",
+            {"path": "kit"},
+            "kit is not a file of a release, such as kit@1.0.0.0/json.bend.",
+        ),
+        (
+            "search",
+            {"query": "double", "limit": 0},
+            "Invalid parameter limit: Input should be greater than or equal to 1.",
+        ),
     ],
 )
 async def test_mcp_tools_explain_a_failure(
     site: httpx.AsyncClient, name: str, arguments: dict[str, object], message: str
 ) -> None:
-    failed, text = await call_tool(site, name, arguments)
-    assert failed
-    assert message in text
+    assert await call_tool(site, name, arguments) == (True, message)
+
+
+async def test_mcp_clients_get_an_error_for_an_unknown_tool(site: httpx.AsyncClient) -> None:
+    response = await rpc(site, "tools/call", {"name": "nothing", "arguments": {}})
+    assert response.json()["error"]["message"] == "JendHub has no tool nothing."
 
 
 async def test_browsers_get_a_search_description(site: httpx.AsyncClient) -> None:
@@ -397,7 +413,9 @@ async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) 
     home = (await site.get("/")).text
     assert 'href="/search?q=decompress+gzip+data"' in home
     assert f'href="/llms.txt">{SITE_URL}/llms.txt</a>' in home
+    assert f"/mcp add jendhub --scope user --url {SITE_URL}/mcp --transport http" in home
     assert f"claude mcp add --transport http jendhub {SITE_URL}/mcp" in home
+    assert f"codex mcp add jendhub --url {SITE_URL}/mcp" in home
     assert "search.txt" not in home
     assert 'href="https://github.com/LeeeeT/JendHub"' in home
     assert "<b>2</b> packages" in home

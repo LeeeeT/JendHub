@@ -26,7 +26,8 @@ live_generations() {
 }
 
 up() {
-  docker build --file deploy/Dockerfile --tag jendhub:latest .
+  docker build --file deploy/Dockerfile --tag jendhub:latest \
+    --build-arg JENDHUB_VERSION="$(git describe --always --dirty)" .
   compose up --detach --wait postgres
   if [ "$(live_generations)" = 0 ] && [ "${1:-}" != --fresh ]; then
     echo "jendhub-stack: the stack has no live index." >&2

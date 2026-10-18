@@ -13,9 +13,14 @@
 <div class="home">
 <section id="agents">
 <h2><span>1.</span> For agents.</h2>
-<p>Add JendHub to your agent as an MCP server at <code>{{ origin }}/mcp</code>. It gives the agent two tools: <b>search</b> finds definitions, and <b>source</b> reads their code. In Claude Code:</p>
+<p>Tell your agent to read <a href="/llms.txt">{{ origin }}/llms.txt</a>. That file tells it how to search, how to import a result and how to read its source, all as plain text.</p>
+<p>Alternatively, add JendHub to your agent as an MCP server. It gives the agent two tools: <b>search</b> finds definitions, and <b>source</b> reads their code.</p>
+<p class="use">In omp, in a session:</p>
+<div class="import"><code title="Click to select the command">/mcp add jendhub --scope user --url {{ origin }}/mcp --transport http</code></div>
+<p class="use">In Claude Code:</p>
 <div class="import"><code title="Click to select the command">claude mcp add --transport http jendhub {{ origin }}/mcp</code></div>
-<p>An agent without MCP can read <a href="/llms.txt">{{ origin }}/llms.txt</a>. That file tells it how to search, how to import a result and how to read its source, all as plain text.</p>
+<p class="use">In Codex:</p>
+<div class="import"><code title="Click to select the command">codex mcp add jendhub --url {{ origin }}/mcp</code></div>
 </section>
 
 <section>

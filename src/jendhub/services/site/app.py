@@ -24,6 +24,7 @@ from jendhub.services.parameters import (
     Offset,
     QueryText,
     SearchOffset,
+    invalid_parameters,
 )
 from jendhub.services.site.guide import OPENSEARCH_TYPE, ROBOTS, llms_text, opensearch
 from jendhub.services.site.limits import RateLimit, client_address
@@ -66,6 +67,7 @@ class SiteSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="JENDHUB_")
 
     site_url: str
+    version: str = "dev"
     client_ip_header: str | None = None
     query_cache_size: int = 10_000
     target_refresh_seconds: float = 10.0
@@ -290,7 +292,7 @@ def create_app(resources: OpenResources | None = None) -> FastAPI:
     header = settings.client_ip_header
     requested = guard(RateLimit(settings.requests_per_minute, settings.request_burst), header)
     searching = guard(RateLimit(settings.searches_per_minute, settings.search_burst), header)
-    tools = tool_server(running, searching)
+    tools = tool_server(running, searching, settings.version)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -323,8 +325,7 @@ def create_app(resources: OpenResources | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def invalid(request: Request, error: RequestValidationError) -> Response:
-        problems = [f"{problem['loc'][-1]}: {problem['msg']}" for problem in error.errors()]
-        return failure(request, 400, f"Invalid parameter {'; '.join(problems)}.")
+        return failure(request, 400, invalid_parameters(error.errors()))
 
     @app.exception_handler(JendHubError)
     async def upstream(request: Request, _: JendHubError) -> Response:

@@ -21,7 +21,10 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   sessions, and plain request and answer is what most clients support. It
   serves the stateless protocol of 2026-07-28 and the older protocols. A
   client of the 2026-07-28 protocol sends its name with each request, and the
-  search log keeps it.
+  search log keeps it. The server uses the low-level server of the SDK, so it
+  declares only what it has: the tools, with no change notifications. Clients
+  can keep the tool list for one hour, because it changes only with a deploy.
+  `serverInfo.version` is the `git describe` of the deployed commit.
 - **Versions:** JendHub uses the latest release of each dependency. The flake
   packages a Python library itself when nixpkgs does not have its latest
   release yet. Python stays on the default version of nixpkgs, because nixpkgs
@@ -87,11 +90,14 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
 | | `GET /opensearch.xml` | The OpenSearch description, so that a browser can search JendHub from its address bar. Each page links to it. |
 
-`POST /mcp` is the MCP server. Add it to Claude Code with:
+`POST /mcp` is the MCP server, an alternative to `/llms.txt`. Add it to an
+agent with one of these commands:
 
-```bash
-claude mcp add --transport http jendhub https://jend.leeeet.dev/mcp
-```
+| Agent | Command |
+|---|---|
+| omp, in a session | `/mcp add jendhub --scope user --url https://jend.leeeet.dev/mcp --transport http` |
+| Claude Code | `claude mcp add --transport http jendhub https://jend.leeeet.dev/mcp` |
+| Codex | `codex mcp add jendhub --url https://jend.leeeet.dev/mcp` |
 
 | Tool | Answer |
 |---|---|

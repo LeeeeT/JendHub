@@ -25,7 +25,9 @@ COPY src/jendhub /opt/jendhub/jendhub
 RUN python -m compileall -q /opt/jendhub \
     && mkdir -p /data/library \
     && chown -R 65534:65534 /data
+ARG JENDHUB_VERSION=dev
 ENV PATH=/opt/venv/bin:$PATH \
+    JENDHUB_VERSION=$JENDHUB_VERSION \
     PYTHONPATH=/opt/jendhub \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

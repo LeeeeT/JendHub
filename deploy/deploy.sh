@@ -53,7 +53,8 @@ live_generations() {
 }
 
 up() {
-  docker build --file deploy/Dockerfile --tag jendhub:latest .
+  docker build --file deploy/Dockerfile --tag jendhub:latest \
+    --build-arg JENDHUB_VERSION="$(git describe --always --dirty)" .
   copy_files
   send_image
   compose up --detach --wait postgres
