@@ -6,11 +6,12 @@ import pytest
 from jendhub.corpus.definitions import BASE, Definition, Origin
 from jendhub.hub.api import Release
 from jendhub.lab.facts import Facts
-from jendhub.lab.features import Features
+from jendhub.lab.features import Features, Setup
 from jendhub.search.ranking import FEATURES
 from jendhub.vectors.index import VectorConfig
 
 CONFIG = VectorConfig(3, "none")
+POOL = 1000
 PACKAGE = Origin(Release("pkg", "1.0.0"), "mod")
 CODE = {
     "List": [0.8, 0.6, 0.0],
@@ -27,14 +28,14 @@ def definition(id_: str, origin: Origin) -> Definition:
     return Definition(id_, kind, name, origin, f"def {name}():", f"def {name}():", 0, 1)
 
 
-def features() -> Features:
+def features(columns: tuple[str, ...] = FEATURES) -> Features:
     definitions = [definition(id_, PACKAGE if ":" in id_ else BASE) for id_ in CODE]
     facts = {
         found.id: Facts(None, documented=True, helper=False, users=1, external=False, reached=[])
         for found in definitions
     }
     code = np.array(list(CODE.values()), dtype=np.float32)
-    return Features(definitions, facts, code, code, CONFIG)
+    return Features(definitions, facts, code, code, Setup(CONFIG, POOL, columns))
 
 
 def column(matrix: np.ndarray, name: str) -> list[float]:
@@ -69,3 +70,10 @@ def test_matrix_compares_each_candidate_with_the_best_of_its_package() -> None:
     _, matrix = features().matrix("sort", np.array([0.0, 0.6, 0.8], dtype=np.float32))
     assert column(matrix, "package_gap")[0] == pytest.approx(0.0)
     assert column(matrix, "query_best") == pytest.approx([1.0] * len(CODE))
+
+
+def test_matrix_gives_only_the_selected_columns() -> None:
+    selected = features(("log_children", "code"))
+    _, matrix = selected.matrix("map a list", np.array([1.0, 0.0, 0.0], dtype=np.float32))
+    assert matrix[:, 1].tolist() == pytest.approx([1.0, 0.8, 0.6, 0.0, 0.0])
+    assert matrix.shape == (len(CODE), 2)

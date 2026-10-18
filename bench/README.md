@@ -528,6 +528,40 @@ folds and 3 seeds.
   role of a Bend definition. It took 4.2 s for each query on a GTX 1050 Ti. A
   larger reranker costs too much for a public search with high throughput.
 
+### The lean variant
+
+`dense-origin+name+lambdamart-lean` tests a simpler ranker. Each of its
+removals had no significant effect alone (the mean of the three cutoffs, 3
+seeds):
+
+| Removal | Change alone |
+|---|---|
+| Pool of 50 in place of 1,000 nearest definitions | -0.0007 [-0.0031, +0.0017] |
+| The reached gain | -0.0019 [-0.0054, +0.0015] |
+| The two query features | -0.0003 [-0.0028, +0.0022] |
+| The relative values (11 features) | -0.0017 [-0.0069, +0.0032] |
+| The word features with their relative values (9 features) | -0.0018 [-0.0057, +0.0021] |
+
+The lean variant keeps 20 features: the two cosines, the signature match, the
+index facts without the reached gain, the shape and the neighbors. Together,
+the removals cost quality. `jendhub bench compare`, against
+`dense-origin+name+lambdamart`, both cross-validated:
+
+| Cutoff | Full | Lean | Change |
+|---|---|---|---|
+| 10 | 0.848 | 0.836 | -0.011 [-0.017, -0.006] |
+| 5 | 0.817 | 0.812 | -0.005 [-0.013, +0.002] |
+| 3 | 0.812 | 0.802 | -0.009 [-0.019, +0.001] |
+
+Phrase queries lose most: -0.024 at 10 and -0.026 at 3, both significant.
+Exact-name queries lose -0.038 at 3. These queries contain the words of the
+name, so the word features help them. The lean top 10 has more definitions
+without a grade (judged@10 0.931 against 0.973), so the value at 10 can be a
+little too low. At 5 and at 3, judged is 0.995 or more.
+
+When the variant removes only the larger pool, the reached gain and the two
+query features, the score does not change: +0.0001 [-0.0035, +0.0035].
+
 ### In production
 
 The search engine now uses the learned ranker. The sections before "The

@@ -15,6 +15,7 @@ from jendhub.bench.pooling import (
 )
 from jendhub.bench.queries import summary
 from jendhub.lab.learned import train_all
+from jendhub.lab.pipelines import DEPLOYED
 from jendhub.search.ranking import MODEL
 
 DEFAULT_DEPTH = 10
@@ -72,7 +73,8 @@ async def pool_pipelines(benchmark: Benchmark, names: list[str], depth: int) -> 
 async def train_model(benchmark: Benchmark) -> None:
     resources = benchmark.resources
     vectors = await resources.graded_vectors()
-    train_all(await resources.features(), resources.graded, vectors).save_model(MODEL)
+    features = await resources.features(DEPLOYED)
+    train_all(features, resources.graded, vectors).save_model(MODEL)
     sys.stdout.write(f"wrote {MODEL} from {len(resources.graded)} queries\n")
 
 

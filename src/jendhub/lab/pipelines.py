@@ -16,7 +16,7 @@ from jendhub.lab.documents import (
     text_summary_documents,
 )
 from jendhub.lab.facts import Facts
-from jendhub.lab.features import Features
+from jendhub.lab.features import Features, Setup
 from jendhub.lab.fusion import ReciprocalRankFusion
 from jendhub.lab.learned import GradedQuery, LearnedRank, train_folds
 from jendhub.lab.names import NameMatch
@@ -24,10 +24,34 @@ from jendhub.lab.pipeline import Pipeline, Scorer
 from jendhub.lab.rerank import LinearRerank, MaxNormalized
 from jendhub.lab.roles import ApiRole
 from jendhub.search.documents import name_document, origin_document
-from jendhub.search.engine import TASK_INSTRUCTION
-from jendhub.search.ranking import Model, Trees
+from jendhub.search.engine import POOL, TASK_INSTRUCTION
+from jendhub.search.ranking import FEATURES, Model, Trees
 from jendhub.vectors.index import PRODUCTION
 
+DEPLOYED = Setup(PRODUCTION, POOL, FEATURES)
+LEAN_FEATURES = (
+    "code",
+    "name",
+    "signature",
+    "unused",
+    "log_users",
+    "external",
+    "documented",
+    "helper",
+    "type",
+    "law",
+    "base",
+    "last_length",
+    "depth",
+    "log_length",
+    "module_gap",
+    "package_gap",
+    "module_count",
+    "parent_gap",
+    "children_gap",
+    "log_children",
+)
+LEAN = Setup(PRODUCTION, 50, LEAN_FEATURES)
 NAME_WEIGHT = 1.0
 DENSE_NAME_WEIGHT = 0.1
 METADATA_WEIGHT = 1.0
@@ -49,14 +73,14 @@ class Resources:
     async def dense(self, documents: list[tuple[str, str]]) -> Dense:
         return await Dense.build(self.embedder, documents, INSTRUCTION)
 
-    async def features(self) -> Features:
+    async def features(self, setup: Setup) -> Features:
         embed = self.embedder.embed
         return Features(
             self.definitions,
             self.facts,
             await embed([origin_document(definition) for definition in self.definitions]),
             await embed([name_document(definition) for definition in self.definitions]),
-            PRODUCTION,
+            setup,
         )
 
     async def graded_vectors(self) -> Vectors:
@@ -142,11 +166,19 @@ async def dense_text_metadata_name_rerank(resources: Resources) -> Pipeline:
     return LinearRerank(text, features)
 
 
-async def dense_origin_name_lambdamart(resources: Resources) -> Pipeline:
-    features = await resources.features()
+async def learned_rank(resources: Resources, setup: Setup) -> Pipeline:
+    features = await resources.features(setup)
     boosters = train_folds(features, resources.graded, await resources.graded_vectors())
     models: list[Model] = [Trees(booster) for booster in boosters]
     return LearnedRank(features, models, TASK_INSTRUCTION)
+
+
+async def dense_origin_name_lambdamart(resources: Resources) -> Pipeline:
+    return await learned_rank(resources, DEPLOYED)
+
+
+async def dense_origin_name_lambdamart_lean(resources: Resources) -> Pipeline:
+    return await learned_rank(resources, LEAN)
 
 
 PIPELINES: dict[str, PipelineBuilder] = {
@@ -162,4 +194,5 @@ PIPELINES: dict[str, PipelineBuilder] = {
     "dense-text+metadata+name-rerank": dense_text_metadata_name_rerank,
     "dense-enriched+text+bm25-enriched+role+name-rerank": dense_enriched_hybrid_rerank,
     "dense-origin+name+lambdamart": dense_origin_name_lambdamart,
+    "dense-origin+name+lambdamart-lean": dense_origin_name_lambdamart_lean,
 }
