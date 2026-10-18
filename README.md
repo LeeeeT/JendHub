@@ -332,14 +332,11 @@ refuses to start without a live index. `up --fresh` lets the server build its
 own index. Set `JENDHUB_DEPLOY_TARGET` (default `root@195.63.145.165`) and
 `JENDHUB_DEPLOY_DIRECTORY` (default `/opt/jendhub`) for another server.
 
-Prometheus scrapes the metrics port of each service every 30 s, keeps 30 days,
-and evaluates the rules in `deploy/prometheus/alerts.yml`: a service that does
-not answer, a syncer with no cycle in an hour, failed index jobs, embeddings
-that cost more than 1 USD a day, server errors, and slow searches. Nothing
-sends the alerts yet. Prometheus listens only on the server's loopback address:
+Prometheus scrapes the metrics port of each service every 30 s and keeps 30
+days. It has no alert rules. It listens only on the server's loopback address:
 
 ```bash
-ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:9090/alerts
+ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:9090
 ```
 
 ## Data
