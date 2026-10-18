@@ -5,7 +5,7 @@ use std::{
     path::Path,
 };
 
-use bend2_lsp::frontend::{Disk, Env, Load, LoadedFile, Meaning, load};
+use bend2_lsp::frontend::{Disk, Env, ErrorText, Load, LoadedFile, Meaning, load};
 use serde::{Deserialize, Serialize};
 
 /// Which files to load: each entry as the compiler loads the file it checks,
@@ -25,9 +25,19 @@ struct Response {
 #[derive(Serialize)]
 struct Entry {
     path: String,
-    error: Option<String>,
+    error: Option<Failure>,
     declarations: BTreeSet<String>,
     uses: BTreeSet<Use>,
+}
+
+/// Why a load stopped: what the loader expected, what it observed, and the
+/// canonical path and the 1-based line of the file where it stopped.
+#[derive(Debug, Eq, PartialEq, Serialize)]
+struct Failure {
+    expected: String,
+    observed: Option<String>,
+    file: Option<String>,
+    line: Option<usize>,
 }
 
 /// A declaration of the entry that uses another declaration.
@@ -129,6 +139,39 @@ fn entry_declarations(loaded: &Load) -> BTreeSet<String> {
         .unwrap_or_default()
 }
 
+fn line_at(source: &str, offset: usize) -> usize {
+    1 + source
+        .encode_utf16()
+        .take(offset)
+        .filter(|unit| *unit == u16::from(b'\n'))
+        .count()
+}
+
+fn failure(loaded: &Load) -> Option<Failure> {
+    let error = loaded.error.as_ref()?;
+    let place = error
+        .at
+        .as_ref()
+        .zip(loaded.error_text)
+        .and_then(|((_, beg, _), text)| match text {
+            ErrorText::Parsed(index) => loaded
+                .files
+                .get(index)
+                .map(|file| (file.real.clone(), line_at(&file.source, file.source_offset(*beg)))),
+            ErrorText::Source(index) => loaded
+                .reading
+                .get(index)
+                .map(|file| (file.real.clone(), line_at(&file.source, *beg))),
+        });
+    let (file, line) = place.unzip();
+    Some(Failure {
+        expected: error.exp.clone(),
+        observed: error.obs.clone(),
+        file,
+        line,
+    })
+}
+
 fn real(path: &str) -> String {
     std::fs::canonicalize(Path::new(path)).map_or_else(
         |_| path.to_owned(),
@@ -148,12 +191,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut entries = Vec::with_capacity(request.entries.len());
     for entry in request.entries {
         let loaded = load(&Disk, &env, &entry);
-        let error = loaded.error.as_ref().map(|error| error.exp.clone());
         entries.push(Entry {
             declarations: entry_declarations(&loaded),
             uses: uses(&loaded),
+            error: failure(&loaded),
             path: entry,
-            error,
         });
     }
     let mut output = io::stdout().lock();
@@ -188,15 +230,17 @@ mod tests {
             real(&path.to_string_lossy())
         }
 
-        fn uses(&self, entry: &str) -> Vec<(String, String, String, String)> {
-            let lib = self.root.join("lib").to_string_lossy().into_owned();
+        fn load(&self, entry: &str) -> Load {
             let env = Env {
-                lib: lib.clone(),
+                lib: self.root.join("lib").to_string_lossy().into_owned(),
                 base: self.write("base.bend", BASE),
                 hub: String::new(),
             };
-            let loaded = load(&Disk, &env, entry);
-            uses(&loaded)
+            load(&Disk, &env, entry)
+        }
+
+        fn uses(&self, entry: &str) -> Vec<(String, String, String, String)> {
+            uses(&self.load(entry))
                 .into_iter()
                 .map(|found| {
                     (
@@ -276,19 +320,51 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_names_the_import_line_that_stops_the_load() {
+        let fixture = Fixture::new("missing");
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\nimport ./missing.bend as M\n\ndef root(x: Nat) -> Nat:\n  x\n",
+        );
+        let found = failure(&fixture.load(&main));
+        assert_eq!(found.as_ref().and_then(|found| found.file.clone()), Some(main));
+        assert_eq!(found.and_then(|found| found.line), Some(2));
+    }
+
+    #[test]
+    fn a_failure_names_the_imported_file_that_does_not_parse() {
+        let fixture = Fixture::new("broken");
+        let broken = fixture.write(
+            "lib/0xaa/broken.bend",
+            "import Base\n\ntype A is Data:\n  Wait{}\n\ntype B is Data:\n  Wait{}\n",
+        );
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\nimport ./broken.bend as X\n\ndef root(x: Nat) -> Nat:\n  x\n",
+        );
+        let found = failure(&fixture.load(&main));
+        assert_eq!(found.as_ref().and_then(|found| found.file.clone()), Some(broken));
+        assert_eq!(found.and_then(|found| found.line), Some(7));
+    }
+
+    #[test]
+    fn a_load_without_an_error_has_no_failure() {
+        let fixture = Fixture::new("fine");
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\n\ndef root(x: Nat) -> Nat:\n  x\n",
+        );
+        assert_eq!(failure(&fixture.load(&main)), None);
+    }
+
+    #[test]
     fn declarations_name_the_top_level_declarations_of_the_entry() {
         let fixture = Fixture::new("declarations");
         let main = fixture.write(
             "lib/0xaa/main.bend",
             "import Base\n\ntype Shape is Data:\n  Circle{radius: Nat}\n\ndef area(s: Shape) -> Nat:\n  Zero{}\n",
         );
-        let lib = fixture.root.join("lib").to_string_lossy().into_owned();
-        let env = Env {
-            lib,
-            base: fixture.write("base.bend", BASE),
-            hub: String::new(),
-        };
-        let found = entry_declarations(&load(&Disk, &env, &main));
+        let found = entry_declarations(&fixture.load(&main));
         assert_eq!(found, ["Shape".to_owned(), "area".to_owned()].into());
     }
 

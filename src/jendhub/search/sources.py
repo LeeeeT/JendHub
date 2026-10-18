@@ -1,3 +1,4 @@
+import itertools
 import posixpath
 import re
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from jendhub.hub.api import HASH, Release, valid_release
 
 BASE = "Base"
 BASE_FILE = "base.bend"
+BASE_RELEASE = "base"
 BASE_IMPORT = "import Base"
 
 HASH_TARGET = re.compile(rf"^({HASH.pattern})/(.+)$")
@@ -29,6 +31,7 @@ class ReleaseFiles:
     release: str
     hash: str | None
     paths: list[str]
+    definitions: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -204,10 +207,40 @@ async def read_file(pool: Pool, generation: int, release: str, path: str) -> Sou
         return await read_source(connection, generation, release, path)
 
 
-async def read_release_files(pool: Pool, release: str) -> ReleaseFiles | None:
-    if release == BASE:
-        return ReleaseFiles(BASE, None, [BASE_FILE])
+@dataclass(frozen=True)
+class Declared:
+    id: str
+    name: str
+    line: int
+
+
+def declared_line(first_line: int, head: str) -> int:
+    comments = len(list(itertools.takewhile(lambda line: line.startswith("#"), head.split("\n"))))
+    return first_line + comments + 1
+
+
+async def read_declared(pool: Pool, generation: int, file: SourceFile) -> list[Declared]:
+    release = BASE_RELEASE if file.hash is None else file.hash
+    module = "" if file.hash is None else file.path.removesuffix(".bend")
     async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT id, name, first_line, head FROM definitions"
+            " WHERE generation = %s AND release = %s AND module = %s ORDER BY first_line",
+            (generation, release, module),
+        )
+        rows = await cursor.fetchall()
+    return [Declared(id_, name, declared_line(first, head)) for id_, name, first, head in rows]
+
+
+async def read_release_files(pool: Pool, generation: int, release: str) -> ReleaseFiles | None:
+    async with pool.connection() as connection:
+        if release == BASE:
+            cursor = await connection.execute(
+                "SELECT count(*) FROM definitions WHERE generation = %s AND package IS NULL",
+                (generation,),
+            )
+            row = await cursor.fetchone()
+            return ReleaseFiles(BASE, None, [BASE_FILE], {BASE_FILE: 0 if row is None else row[0]})
         stored = await stored_release(connection, release)
         if stored is None:
             return None
@@ -215,4 +248,10 @@ async def read_release_files(pool: Pool, release: str) -> ReleaseFiles | None:
             "SELECT path FROM package_files WHERE hash = %s ORDER BY path", (stored.hash,)
         )
         paths = [path for (path,) in await cursor.fetchall()]
-    return ReleaseFiles(stored.label, stored.hash, paths)
+        cursor = await connection.execute(
+            "SELECT module || '.bend', count(*) FROM definitions"
+            " WHERE generation = %s AND release = %s GROUP BY module",
+            (generation, stored.hash),
+        )
+        definitions: dict[str, int] = dict(await cursor.fetchall())
+    return ReleaseFiles(stored.label, stored.hash, paths, definitions)

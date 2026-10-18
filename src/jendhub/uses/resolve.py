@@ -26,9 +26,17 @@ class Use:
 
 
 @dataclass(frozen=True)
+class Failure:
+    expected: str
+    observed: str | None
+    file: Path | None
+    line: int | None
+
+
+@dataclass(frozen=True)
 class ResolvedFile:
     path: Path
-    error: str | None
+    error: Failure | None
     declarations: frozenset[str]
     uses: list[Use]
 
@@ -49,16 +57,33 @@ def resolved_use(found: Json) -> Use:
             raise UsesError(f"{INDEXER} returned an invalid use: {found!r}")
 
 
+def failure(found: Json) -> Failure | None:
+    match found:
+        case None:
+            return None
+        case {
+            "expected": str() as expected,
+            "observed": str() | None as observed,
+            "file": str() | None as file,
+            "line": int() | None as line,
+        }:
+            return Failure(expected, observed, None if file is None else Path(file), line)
+        case _:
+            raise UsesError(f"{INDEXER} returned an invalid error: {found!r}")
+
+
 def resolved_file(found: Json) -> ResolvedFile:
     match found:
         case {
             "path": str() as path,
-            "error": str() | None as error,
+            "error": error,
             "declarations": list() as declarations,
             "uses": list() as uses,
         } if all(isinstance(name, str) for name in declarations):
             names = frozenset(name for name in declarations if isinstance(name, str))
-            return ResolvedFile(Path(path), error, names, [resolved_use(use) for use in uses])
+            return ResolvedFile(
+                Path(path), failure(error), names, [resolved_use(use) for use in uses]
+            )
         case _:
             raise UsesError(f"{INDEXER} returned an invalid entry: {found!r}")
 

@@ -1,9 +1,11 @@
 from dataclasses import dataclass, field
 from urllib.parse import quote, urlencode
 
+from jendhub.indexing.failures import Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease
-from jendhub.search.packages import ReleaseDetail
+from jendhub.search.packages import PackageSummary, ReleaseDetail
 from jendhub.search.sources import ReleaseFiles, id_source, usage
+from jendhub.services.site.pages import counted
 from jendhub.services.site.views import DefinitionView, PackageView, Result, Results, StatusView
 
 INDENT = "   "
@@ -71,13 +73,27 @@ def render_definition(view: DefinitionView, links: Links) -> str:
         f"{code}\n\n"
         + heading("Uses", len(detail.uses), len(detail.uses), 0)
         + "".join(f"  {links.definition(id_)}\n" for id_ in detail.uses)
+        + "\n"
+        + heading("Used by", len(detail.users), detail.users_total, 0)
+        + "".join(f"  {links.definition(id_)}\n" for id_ in detail.users)
     )
 
 
+def render_problem(problem: Problem, links: Links) -> str:
+    places = ", ".join(f"{links.source(place.file)} line {place.line}" for place in problem.places)
+    where = f"At {places}.\n" if places else ""
+    files = ", ".join(problem.files)
+    return f"{problem.message}\n{where}Files that do not load: {files}.\n"
+
+
+def render_problems(problems: list[Problem], links: Links) -> str:
+    return "".join(indented(render_problem(problem, links)) for problem in problems)
+
+
 def render_release(name: str, release: ReleaseDetail, links: Links) -> str:
-    files = links.release(f"{name}@{release.version}")
-    line = f"  {release.version}  {release.hash}  {release.state}  {files}\n"
-    return line if release.reason is None else line + indented(release.reason)
+    label = f"{name}@{release.version}"
+    line = f"  {release.version}  {release.hash}  {release.state}  {links.release(label)}\n"
+    return line + render_problems(release.problems, links)
 
 
 def render_package(view: PackageView, links: Links) -> str:
@@ -116,11 +132,10 @@ def render_generation(generation: GenerationStatus) -> str:
     )
 
 
-def render_invalid(release: InvalidRelease) -> str:
-    name = release.hash if release.name is None else f"{release.name}@{release.version}"
+def render_invalid(release: InvalidRelease, links: Links) -> str:
     return (
-        f"  {name} ({release.hash}), Base {release.base_tag}, {release.found_at:%Y-%m-%d}\n"
-        + indented(release.reason)
+        f"  {release.label} ({release.hash}), Base {release.base_tag},"
+        f" {release.found_at:%Y-%m-%d}\n" + render_problems(release.problems, links)
     )
 
 
@@ -130,8 +145,16 @@ def render_status(view: StatusView, links: Links) -> str:
         (generations or "No generation.\n")
         + "\n"
         + heading("Invalid releases", len(view.invalid), view.invalid_total, view.offset)
-        + "".join(render_invalid(release) for release in view.invalid)
+        + "".join(render_invalid(release, links) for release in view.invalid)
         + links.next("invalid_releases_offset", view.offset, len(view.invalid), view.invalid_total)
+    )
+
+
+def render_packages(packages: list[PackageSummary], links: Links) -> str:
+    return heading("Packages", len(packages), len(packages), 0) + "".join(
+        f"  {package.name}@{package.version}, {counted(package.definitions, 'definition')}"
+        f" ({links.origin}/packages/{quote(package.name, safe='')}.txt)\n"
+        for package in packages
     )
 
 

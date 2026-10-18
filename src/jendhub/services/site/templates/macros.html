@@ -1,6 +1,6 @@
 {% macro search_form(query="", large=False) -%}
 <form class="search-form{% if large %} large{% endif %}" method="get" action="/search" role="search">
-<input type="search" name="q" value="{{ query }}" maxlength="1000" required placeholder="a task or a name" aria-label="Search Bend definitions">
+<input type="search" name="q" value="{{ query }}" maxlength="1000" required placeholder="a task or a name" aria-label="Search Bend definitions"{% if large %} autofocus{% endif %}>
 <button type="submit">search</button>
 </form>
 {%- endmacro %}
@@ -15,10 +15,39 @@
 {% endif %}
 {%- endmacro %}
 
-{% macro release_state(state) -%}
-<span class="state-{{ state }}">{{ state }}</span>
+{% macro badge(state) -%}
+<span class="badge {{ state }}">{{ state }}</span>
 {%- endmacro %}
 
-{% macro where(package, version, module) -%}
-{% if package is none %}Base{% else %}<a href="{{ package_href(package) }}">{{ package }}</a>@{{ version }} · {{ module }}.bend{% endif %}
+{% macro release(package, version) -%}
+{% if package is none %}<a href="{{ release_href('Base') }}">Base</a>{% else %}<a href="{{ package_href(package) }}">{{ package }}</a>@<a href="{{ release_href(package ~ '@' ~ version) }}">{{ version }}</a>{% endif %}
+{%- endmacro %}
+
+{% macro refs(ids) -%}
+<dl class="refs">
+{% for group in by_file(ids) %}
+<dt><a href="{{ file_href(group.file) }}">{{ group.where }}</a></dt>
+<dd>{% for found in group.found %}<a href="{{ definition_href(found.id) }}">{{ found.name }}</a>{{ ", " if not loop.last }}{% endfor %}</dd>
+{% endfor %}
+</dl>
+{%- endmacro %}
+
+{% macro import_line(usage) -%}
+<div class="import"><code title="Click to select the import line">{{ usage.import_line }}</code></div>
+{%- endmacro %}
+
+{% macro problems(found, label) -%}
+{% for problem in found %}
+<div class="problem">
+<p>{{ problem.message }}</p>
+{% if problem.places %}<p class="meta">at {% for place in problem.places %}<a href="{{ file_href(place.file) }}#L{{ place.line }}">{{ place.file.removeprefix(label ~ '/') }}:{{ place.line }}</a>{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
+{% if problem.files | length == 1 %}
+<p class="meta">{{ problem.files[0] }} does not load</p>
+{% else %}
+<details><summary>{{ problem.files | length }} files do not load</summary>
+<ul>{% for file in problem.files %}<li><a href="{{ file_href(label ~ '/' ~ file) }}">{{ file }}</a></li>{% endfor %}</ul>
+</details>
+{% endif %}
+</div>
+{% endfor %}
 {%- endmacro %}

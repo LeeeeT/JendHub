@@ -63,13 +63,14 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 
 | For agents (plain text) | For people (HTML) | Answer |
 |---|---|---|
-| `GET /llms.txt` | `GET /` | How to use JendHub. |
+| `GET /llms.txt` | `GET /` | How to use JendHub. The home page also shows the size of the live index. |
 | `GET /search.txt?q=<query>&limit=10&offset=0` | `GET /search?q=<query>&offset=0` | The best definitions with their import line and the name to call. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
-| `GET /src/<release>/<path>?def=<name>` | `GET /definitions/<id>` | A definition with the import lines that its code uses, and the definitions that it uses. |
-| `GET /src/<release>/<path>` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. |
-| `GET /src/<release>/` | `GET /files/<release>` | The files of a release. |
-| `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with the reason, or `unindexed`), and one page of the definitions of the indexed release. |
-| `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases, newest first. |
+| `GET /src/<release>/<path>?def=<name>` | `GET /definitions/<id>` | A definition with the import lines that its code uses, the definitions that it uses, and the first 100 definitions that use it. |
+| `GET /src/<release>/<path>` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. The page links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
+| `GET /src/<release>/` | `GET /files/<release>` | The files of a release. The page also shows the number of indexed definitions in each file. |
+| `GET /packages.txt` | `GET /packages` | Each indexed package with the release that search uses and its number of definitions. |
+| `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
+| `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
 
 A text answer is plain text, also an error. Its links are full URLs, and a
 paged answer ends with the URL of the next page:
@@ -113,7 +114,12 @@ the live generation from Postgres.
   generation. Search sees the change at once. An older release never replaces
   a newer one.
 - **An invalid release:** if a file of the release does not load, the worker
-  writes nothing for it, and records it in `invalid_releases` with the reason.
+  writes nothing for it, and records it in `invalid_releases` with the load
+  error of each file that does not load. A load error is what the loader
+  expected and the file and line where the load stopped. That file can be in
+  the release, in another package or in Base. Often many files stop at one
+  line of a module that they all import, so the pages show each error once,
+  with the places where the loads stopped and the files that do not load.
   The worker then queues the next older valid release of the same name, and
   the syncer never queues the invalid one again.
 - **A new Base release, a new `INDEXER_VERSION`, or a new vector setting
@@ -338,7 +344,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 |---|---|
 | Postgres `packages`, `package_files`, `rejected_packages`, `base_releases` | The mirror of BendHub and of each Base release. |
 | Postgres `generations`, `index_jobs` | The index generations with their vector settings, and the job queue. |
-| Postgres `invalid_releases` | The releases that never go into the index, with the reason. |
+| Postgres `invalid_releases` | The releases that never go into the index, with the load error of each file that does not load. |
 | Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |

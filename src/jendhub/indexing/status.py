@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from jendhub.db.pool import Pool
+from jendhub.indexing.failures import Problem, parse_errors, problems
 from jendhub.indexing.store import GenerationState
 from jendhub.vectors.index import VectorConfig
 
@@ -36,8 +37,12 @@ class InvalidRelease:
     version: str | None
     hash: str
     base_tag: str
-    reason: str
+    problems: list[Problem]
     found_at: datetime
+
+    @property
+    def label(self) -> str:
+        return self.hash if self.name is None else f"{self.name}@{self.version}"
 
 
 async def generation_statuses(pool: Pool, corpus: str | None) -> list[GenerationStatus]:
@@ -96,10 +101,13 @@ async def invalid_releases(pool: Pool, offset: int, limit: int) -> tuple[list[In
         cursor = await connection.execute("SELECT count(*) FROM invalid_releases")
         total_row = await cursor.fetchone()
         cursor = await connection.execute(
-            "SELECT p.name, p.version, i.hash, i.base_tag, i.reason, i.found_at"
+            "SELECT p.name, p.version, i.hash, i.base_tag, i.errors, i.found_at"
             " FROM invalid_releases i JOIN packages p ON p.hash = i.hash"
-            " ORDER BY i.found_at DESC, i.hash OFFSET %s LIMIT %s",
+            " ORDER BY i.found_at DESC, p.name, p.version_order DESC OFFSET %s LIMIT %s",
             (offset, limit),
         )
-        found = [InvalidRelease(*row) for row in await cursor.fetchall()]
+        found = [
+            InvalidRelease(name, version, hash_, base_tag, problems(parse_errors(errors)), found_at)
+            for name, version, hash_, base_tag, errors, found_at in await cursor.fetchall()
+        ]
     return found, 0 if total_row is None else total_row[0]

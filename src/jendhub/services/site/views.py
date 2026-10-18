@@ -21,13 +21,15 @@ from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.remote.openrouter import open_openrouter
 from jendhub.search.definitions import DefinitionDetail, read_definition
 from jendhub.search.engine import Hit, SearchEngine, Target
-from jendhub.search.packages import PackageDetail, read_package
+from jendhub.search.packages import PackageDetail, PackageSummary, read_package, read_packages
 from jendhub.search.ranking import Model, load_model
 from jendhub.search.searches import Client, Search, record_search
 from jendhub.search.sources import (
+    Declared,
     ReleaseFiles,
     SourceFile,
     Usage,
+    read_declared,
     read_file,
     read_release_files,
     usage,
@@ -117,6 +119,12 @@ class PackageView:
 
 
 @dataclass(frozen=True)
+class FileView:
+    file: SourceFile
+    declared: list[Declared]
+
+
+@dataclass(frozen=True)
 class StatusView:
     generations: list[GenerationStatus]
     invalid: list[InvalidRelease]
@@ -184,18 +192,29 @@ class Site:
             raise HTTPException(404, f"BendHub has no package {name}.")
         return PackageView(found, offset)
 
+    async def packages(self) -> list[PackageSummary]:
+        return await read_packages(self.pool, self.target().generation)
+
     async def status(self, offset: int, limit: int) -> StatusView:
         found, total = await invalid_releases(self.pool, offset, limit)
         return StatusView(await self.generations.get(), found, total, offset)
 
+    async def overview(self) -> GenerationStatus | None:
+        found = [found for found in await self.generations.get() if found.state == "live"]
+        return found[0] if found else None
+
     async def files(self, release: str) -> ReleaseFiles:
-        found = await read_release_files(self.pool, release)
+        found = await read_release_files(self.pool, self.target().generation, release)
         if found is None:
             raise HTTPException(404, f"The store has no release {release}.")
         return found
 
-    async def file(self, release: str, path: str) -> SourceFile:
+    async def source(self, release: str, path: str) -> SourceFile:
         found = await read_file(self.pool, self.target().generation, release, path)
         if found is None:
             raise HTTPException(404, f"The store has no file {release}/{path}.")
         return found
+
+    async def file(self, release: str, path: str) -> FileView:
+        found = await self.source(release, path)
+        return FileView(found, await read_declared(self.pool, self.target().generation, found))

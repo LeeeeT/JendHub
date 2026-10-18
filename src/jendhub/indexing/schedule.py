@@ -5,8 +5,8 @@ from datetime import timedelta
 
 from jendhub.hub.api import PackageRelease
 from jendhub.hub.store import PackageStore
-from jendhub.indexing.artifacts import BASE_RELEASE
 from jendhub.indexing.store import INDEXER_VERSION, LIVE, Generation, IndexStore
+from jendhub.search.sources import BASE_RELEASE
 from jendhub.vectors.index import PRODUCTION, VectorConfig, VectorIndex
 
 RETIREMENT_GRACE = timedelta(minutes=10)

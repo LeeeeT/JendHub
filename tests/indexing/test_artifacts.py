@@ -4,7 +4,9 @@ import pytest
 
 from jendhub.hub.api import Release
 from jendhub.hub.library import Library
-from jendhub.indexing.artifacts import BASE_RELEASE, Artifacts, IndexedDefinition, build
+from jendhub.indexing.artifacts import Artifacts, IndexedDefinition, build
+from jendhub.indexing.failures import Place
+from jendhub.search.sources import BASE_RELEASE
 from jendhub.uses import resolve
 from jendhub.uses.resolve import UsesError
 from tests.indexing.library_fixture import BOX, LIB, LIB_HASH, OTHER, OTHER_HASH, TAG, library
@@ -99,10 +101,30 @@ async def test_features_describe_each_definition(tmp_path: Path) -> None:
     assert indexed["lib@1.0.0.0/main:put"].document.startswith("lib main\ndef put")
 
 
-async def test_a_file_that_does_not_load_is_reported(tmp_path: Path) -> None:
-    broken = "import Base\n\ntype Nat is Data:\n  Zero{}\n"
-    found = await artifacts(library(tmp_path, {LIB: (LIB_HASH, {"main.bend": broken})}), LIB_HASH)
-    assert found.errors == {"lib@1.0.0.0/main": "a fresh name (duplicate declaration: Nat)"}
+BROKEN = "import Base\n\ntype Nat is Data:\n  Zero{}\n"
+
+
+async def test_a_file_that_does_not_load_is_reported_with_its_line(tmp_path: Path) -> None:
+    found = await artifacts(library(tmp_path, {LIB: (LIB_HASH, {"main.bend": BROKEN})}), LIB_HASH)
+    error = found.errors["main.bend"]
+    assert error.expected == "a fresh name (duplicate declaration: Nat)"
+    assert error.place == Place("lib@1.0.0.0/main.bend", 3)
+
+
+async def test_a_file_that_imports_a_broken_file_names_that_file(tmp_path: Path) -> None:
+    main = "import Base\nimport other@1.0.0.0/broken.bend as B\n\ndef root(x: Nat) -> Nat:\n  x\n"
+    found = await artifacts(
+        library(
+            tmp_path,
+            {
+                LIB: (LIB_HASH, {"main.bend": main, "box.bend": BOX}),
+                OTHER: (OTHER_HASH, {"broken.bend": BROKEN}),
+            },
+        ),
+        LIB_HASH,
+    )
+    assert list(found.errors) == ["main.bend"]
+    assert found.errors["main.bend"].place == Place("other@1.0.0.0/broken.bend", 3)
 
 
 async def test_a_missing_indexer_is_an_error(

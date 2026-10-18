@@ -19,7 +19,6 @@ from jendhub.enrich.store import EnrichmentStore
 from jendhub.enrich.windows import corpus_windows
 from jendhub.hub.library import Library
 from jendhub.hub.store import PackageStore
-from jendhub.indexing.artifacts import BASE_RELEASE
 from jendhub.indexing.schedule import (
     GenerationSpec,
     corpus_name,
@@ -33,6 +32,7 @@ from jendhub.lab.pipelines import PIPELINES, Resources
 from jendhub.remote.openrouter import OpenRouter, open_openrouter
 from jendhub.search.engine import PRODUCTION, SearchEngine, Target
 from jendhub.search.ranking import load_model
+from jendhub.search.sources import BASE_RELEASE
 from jendhub.settings import (
     DatabaseSettings,
     OpenRouterSettings,

@@ -30,15 +30,17 @@ from jendhub.services.site.pages import (
     EXAMPLES,
     STYLE,
     Span,
+    marked_lines,
     page,
     pages,
-    source_line,
+    source_lines,
 )
 from jendhub.services.site.text import (
     Links,
     render_definition,
     render_files,
     render_package,
+    render_packages,
     render_results,
     render_status,
 )
@@ -53,6 +55,7 @@ from jendhub.settings import load_settings
 
 WEB_RESULTS = 20
 QUIET = frozenset({"/healthz", "/readyz", "/style.css"})
+ASSET_CACHE = {"cache-control": "public, max-age=31536000, immutable"}
 SEARCHES = frozenset({"/search", "/search.txt"})
 
 type Guard = Callable[[Request], Awaitable[None]]
@@ -94,7 +97,7 @@ def failure(
     return response
 
 
-def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
+def guide_routes(running: Running[Site], limited: Guard) -> APIRouter:
     router = APIRouter(default_response_class=PlainTextResponse, dependencies=[Depends(limited)])
 
     @router.get("/llms.txt")
@@ -104,6 +107,12 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
     @router.get("/robots.txt")
     async def robots() -> str:
         return ROBOTS
+
+    return router
+
+
+def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
+    router = APIRouter(default_response_class=PlainTextResponse, dependencies=[Depends(limited)])
 
     @router.get("/search.txt")
     async def search(
@@ -133,11 +142,16 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
         site = running.get()
         wanted = request.query_params.get("def")
         if wanted is None:
-            return (await site.file(release, path)).text
+            return (await site.source(release, path)).text
         id_ = await source_id(site.pool, release, path, wanted)
         if id_ is None:
             raise HTTPException(404, f"The index has no definition {wanted} in {release}/{path}.")
         return render_definition(await site.definition(id_), links(site, request))
+
+    @router.get("/packages.txt")
+    async def packages(request: Request) -> str:
+        site = running.get()
+        return render_packages(await site.packages(), links(site, request))
 
     @router.get("/packages/{name}.txt")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> str:
@@ -160,13 +174,18 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
 
     @router.get("/")
     async def home() -> Response:
-        return page("home.html", home=True, examples=EXAMPLES, origin=running.get().origin)
+        site = running.get()
+        return page(
+            "home.html",
+            home=True,
+            examples=EXAMPLES,
+            origin=site.origin,
+            live=await site.overview(),
+        )
 
     @router.get("/style.css")
     async def style() -> Response:
-        return Response(
-            STYLE, media_type="text/css", headers={"cache-control": "public, max-age=3600"}
-        )
+        return Response(STYLE, media_type="text/css", headers=ASSET_CACHE)
 
     @router.get("/search")
     async def search(
@@ -203,6 +222,11 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
 def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
     router = APIRouter(dependencies=[Depends(limited)])
 
+    @router.get("/packages")
+    async def packages() -> Response:
+        found = await running.get().packages()
+        return page("packages.html", found=found, section="packages", alternate="/packages.txt")
+
     @router.get("/packages/{name}")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> Response:
         view = await running.get().package(name, definitions_offset, PAGE)
@@ -214,6 +238,7 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
                 request, "definitions_offset", Span(definitions_offset, shown, total), PAGE
             ),
             alternate=f"/packages/{quote(name, safe='')}.txt",
+            section="packages",
         )
 
     @router.get("/files/{release}")
@@ -222,11 +247,17 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
         return page("files.html", files=found, alternate=f"/src/{quote(release, safe='@')}/")
 
     @router.get("/files/{release}/{path:path}")
-    async def file(release: str, path: str) -> Response:
-        found = await running.get().file(release, path)
-        lines = [source_line(line) for line in found.text.split("\n")]
+    async def file(release: str, path: str, lines: str | None = None) -> Response:
+        view = await running.get().file(release, path)
+        found = view.file
         alternate = f"/src/{quote(f'{found.release}/{found.path}', safe='/@')}"
-        return page("file.html", file=found, lines=lines, alternate=alternate)
+        return page(
+            "file.html",
+            view=view,
+            lines=source_lines(found.text, view.declared),
+            marked=marked_lines(lines),
+            alternate=alternate,
+        )
 
     @router.get("/status")
     async def status(request: Request, invalid_releases_offset: Offset = 0) -> Response:
@@ -242,6 +273,7 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
                 PAGE,
             ),
             alternate="/status.txt",
+            section="status",
         )
 
     return router
@@ -305,6 +337,7 @@ def create_app(resources: OpenResources | None = None) -> FastAPI:
                 429, f"Too many requests. Try again in {retry} s.", {"retry-after": retry}
             )
 
+    app.include_router(guide_routes(running, limited))
     app.include_router(agent_routes(running, limited))
     app.include_router(page_routes(running, limited))
     app.include_router(index_routes(running, limited))

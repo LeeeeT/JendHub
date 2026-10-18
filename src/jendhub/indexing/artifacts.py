@@ -7,12 +7,12 @@ from pathlib import Path
 from jendhub.corpus.definitions import BASE, Definition, Origin, SourceFile, extract
 from jendhub.hub.api import Release
 from jendhub.hub.library import Library
+from jendhub.indexing.failures import LoadError, Place
 from jendhub.search.documents import name_document, origin_document
 from jendhub.search.signatures import Signature, head_signature
+from jendhub.search.sources import BASE_FILE, file_path
 from jendhub.uses.graph import UseGraph, reached
-from jendhub.uses.resolve import Declaration, resolve
-
-BASE_RELEASE = "base"
+from jendhub.uses.resolve import Declaration, ResolvedFile, resolve
 
 type Owners = Callable[[list[str]], Awaitable[dict[str, Release | None]]]
 
@@ -43,7 +43,7 @@ class Artifacts:
     package: Release | None
     definitions: list[IndexedDefinition]
     uses: list[tuple[str, str]]
-    errors: dict[str, str]
+    errors: dict[str, LoadError]
     mismatches: dict[str, Mismatch]
 
 
@@ -105,6 +105,46 @@ def package_hash(library: Path, file: Path) -> str | None:
     return file.relative_to(library).parts[0] if file.is_relative_to(library) else None
 
 
+def file_name(origin: Origin) -> str:
+    return BASE_FILE if origin.release is None else f"{origin.module}.bend"
+
+
+async def load_errors(
+    resolved: list[ResolvedFile],
+    files: dict[Path, SourceFile],
+    library: Path,
+    base: Path,
+    owners: Owners,
+) -> dict[str, LoadError]:
+    failed = [(file.path, file.error) for file in resolved if file.error is not None]
+    if not failed:
+        return {}
+    hashes = {
+        hash_
+        for _, error in failed
+        if error.file is not None and (hash_ := package_hash(library, error.file)) is not None
+    }
+    found = await owners(sorted(hashes))
+
+    def place(file: Path | None, line: int | None) -> Place | None:
+        if file is None or line is None:
+            return None
+        if file == base:
+            return Place(file_path(None, None, ""), line)
+        if (hash_ := package_hash(library, file)) is None:
+            return None
+        owner = found.get(hash_)
+        path = file.relative_to(library / hash_).as_posix()
+        return Place(f"{hash_ if owner is None else owner}/{path}", line)
+
+    return {
+        file_name(files[path].origin): LoadError(
+            error.expected, error.observed, place(error.file, error.line)
+        )
+        for path, error in failed
+    }
+
+
 async def build(
     library: Library, base: Path, release: str, package: Release | None, owners: Owners
 ) -> Artifacts:
@@ -120,9 +160,8 @@ async def build(
         for use in file.uses
         if (hash_ := package_hash(lib, use.target.file)) is not None
     }
-    found_targets = Targets(
-        lib, await asyncio.to_thread(base.resolve), await owners(sorted(targets))
-    )
+    real_base = await asyncio.to_thread(base.resolve)
+    found_targets = Targets(lib, real_base, await owners(sorted(targets)))
     edges: list[tuple[str, str]] = []
     external: defaultdict[str, set[str]] = defaultdict(set)
     for file in resolved:
@@ -155,7 +194,7 @@ async def build(
         )
         for definition in definitions
     ]
-    errors = {files[file.path].origin.label: file.error for file in resolved if file.error}
+    errors = await load_errors(resolved, files, lib, real_base, owners)
     extracted: defaultdict[Path, set[str]] = defaultdict(set)
     for definition in definitions:
         extracted[paths[definition.origin]].add(definition.name)

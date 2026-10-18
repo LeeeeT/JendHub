@@ -135,7 +135,8 @@ async def test_a_definition_gives_its_import_lines_and_its_uses(site: httpx.Asyn
         f"File: {SITE_URL}/src/app@1.0.0.0/main.bend\n\n"
         "import Base\nimport kit@1.0.0.0/main.bend as K\n\n"
         "def quadruple(n: Nat) -> Nat:\n  K.double(K.double(n))\n\n"
-        f"Uses (2):\n  {SITE_URL}/src/Base/base.bend?def=Nat\n  {DOUBLE_SOURCE}\n"
+        f"Uses (2):\n  {SITE_URL}/src/Base/base.bend?def=Nat\n  {DOUBLE_SOURCE}\n\n"
+        "Used by (0):\n"
     )
 
 
@@ -190,6 +191,10 @@ async def test_agents_get_a_package_and_the_status_as_text(site: httpx.AsyncClie
     status = (await site.get("/status.txt")).text
     assert "  Jobs: 0 queued, 0 running, 4 finished, 0 failed\n" in status
     assert f"Invalid releases (1):\n  kit@2.0.0.0 ({KIT_V2})" in status
+    assert f"   At {SITE_URL}/src/kit@2.0.0.0/main.bend line 2.\n" in status
+    assert "   Files that do not load: main.bend.\n" in status
+    packages = (await site.get("/packages.txt")).text
+    assert f"  kit@1.0.0.0, 1 definition ({SITE_URL}/packages/kit.txt)\n" in packages
 
 
 async def test_agents_read_the_guide_and_robots_allow_them(site: httpx.AsyncClient) -> None:
@@ -218,33 +223,47 @@ async def test_an_empty_search_goes_home(site: httpx.AsyncClient) -> None:
 
 async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.AsyncClient) -> None:
     html = (await site.get(f"/definitions/{QUADRUPLE}")).text
-    assert 'data-line="5"' in html
+    assert 'href="/files/app@1.0.0.0/main.bend#L5"' in html
     assert f'href="/definitions/{DOUBLE}"' in html
-    assert 'href="/files/app@1.0.0.0/main.bend#L4"' in html
+    assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert "App.quadruple" in html
     assert 'href="/src/app@1.0.0.0/main.bend?def=quadruple"' in html
+    assert "No indexed definition uses this definition." in html
+    used = (await site.get(f"/definitions/{DOUBLE}")).text
+    assert f'href="/definitions/{QUADRUPLE}"' in used
 
 
 async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient) -> None:
     package = (await site.get("/packages/kit")).text
-    assert "Search uses release 1.0.0.0." in package
-    assert 'href="/files/kit@1.0.0.0"' in package
-    assert 'class="state-invalid"' in package
+    assert 'Search uses release <a href="/files/kit@1.0.0.0">1.0.0.0</a>' in package
+    assert 'class="badge invalid"' in package
+    assert 'href="/files/kit@2.0.0.0/main.bend#L2">main.bend:2</a>' in package
+    assert f'href="/definitions/{DOUBLE}">double</a>' in package
+    assert "Doubles a number." in package
     files = (await site.get("/files/kit@1.0.0.0")).text
     assert 'href="/files/kit@1.0.0.0/main.bend"' in files
-    file = (await site.get("/files/app@1.0.0.0/main.bend")).text
-    assert 'id="L5"' in file
+    assert "1 definition<" in files
+    file = (await site.get("/files/app@1.0.0.0/main.bend", params={"lines": "4-5"})).text
+    assert '<span class="line marked" id="L5">' in file
+    assert '<span class="line" id="L3">' in file
     assert 'href="/files/kit@1.0.0.0/main.bend"' in file
     assert 'href="/files/Base/base.bend"' in file
+    assert f'href="/definitions/{QUADRUPLE}">quadruple</a>' in file
+    packages = (await site.get("/packages")).text
+    assert 'href="/packages/kit"' in packages
+    assert 'href="/packages/kit" aria-current="page"' not in packages
 
 
 async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) -> None:
     status = (await site.get("/status")).text
-    assert "Finished" in status
+    assert "Indexed" in status
     assert PRODUCTION.label in status
+    assert 'href="/files/kit@2.0.0.0/main.bend#L2">main.bend:2</a>' in status
     home = (await site.get("/")).text
     assert 'href="/search?q=decompress+gzip+data"' in home
-    assert f"GET {SITE_URL}/search.txt?q=" in home
+    assert f'href="/llms.txt">{SITE_URL}/llms.txt</a>' in home
+    assert "search.txt" not in home
+    assert 'href="/packages">2 packages</a>' in home
 
 
 async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> None:

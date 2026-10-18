@@ -11,6 +11,7 @@ from jendhub.embedding.model import digest
 from jendhub.errors import JendHubError
 from jendhub.hub.api import Release
 from jendhub.indexing.artifacts import Artifacts
+from jendhub.indexing.failures import LoadError, errors_json, summary
 from jendhub.vectors.index import Quantization, VectorConfig, collection_name
 
 INDEXER_VERSION = 3
@@ -165,17 +166,19 @@ class IndexStore:
             )
             return await cursor.fetchone() is not None
 
-    async def mark_invalid(self, job: Job, base_tag: str, reason: str) -> str | None:
+    async def mark_invalid(
+        self, job: Job, base_tag: str, errors: dict[str, LoadError]
+    ) -> str | None:
         async with self.pool.connection() as connection, connection.transaction():
             await connection.execute(
-                "INSERT INTO invalid_releases (hash, base_tag, reason) VALUES (%s, %s, %s)"
+                "INSERT INTO invalid_releases (hash, base_tag, errors) VALUES (%s, %s, %s)"
                 " ON CONFLICT DO NOTHING",
-                (job.release, base_tag, reason),
+                (job.release, base_tag, Jsonb(errors_json(errors))),
             )
             await connection.execute(
                 "UPDATE index_jobs SET state = 'invalid', finished_at = now(), error = %s,"
                 " lease_until = NULL WHERE generation = %s AND release = %s",
-                (reason, job.generation, job.release),
+                (summary(errors), job.generation, job.release),
             )
             cursor = await connection.execute(
                 "SELECT p.hash FROM packages p JOIN packages own ON own.hash = %s"

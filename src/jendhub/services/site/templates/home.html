@@ -5,26 +5,25 @@
 <div class="hero">
 <h1>JendHub</h1>
 <p class="sub">a <b>search engine</b> for <b>Bend</b> definitions</p>
-<p class="tag"><b>Base</b> · every <b>BendHub</b> package · by <b>task</b> or by <b>name</b></p>
+<p class="tag">{% if live %}<b>{{ "{:,}".format(live.definitions) }}</b> definitions · <b>Base</b> and <a href="/packages">{{ live.releases - 1 }} packages</a> from <b>BendHub</b>{% else %}<b>Base</b> · every <b>BendHub</b> package · by <b>task</b> or by <b>name</b>{% endif %}</p>
 </div>
 {{ macros.search_form(large=True) }}
 <p class="examples muted">Try {% for example in examples %}<a href="{{ search_href(example) }}">{{ example }}</a>{{ ", " if not loop.last else "." }}{% endfor %}</p>
 
+<div class="home">
 <section id="agents">
 <h2><span>1.</span> For agents.</h2>
-<p>Tell your agent to read <a href="/llms.txt">{{ origin }}/llms.txt</a>. Agents get plain text, with full URLs to the next steps.</p>
-<pre><code><span class="muted"># the best definitions for a query</span>
-GET {{ origin }}/search.txt?q=&lt;query&gt;
-
-<span class="muted"># a whole file, with each import at an exact release</span>
-GET {{ origin }}/src/&lt;name@version&gt;/&lt;path&gt;
-
-<span class="muted"># one definition with the imports that its code uses</span>
-GET {{ origin }}/src/&lt;name@version&gt;/&lt;path&gt;?def=&lt;name&gt;</code></pre>
+<p>Tell your agent to read <a href="/llms.txt">{{ origin }}/llms.txt</a>. That file tells the agent how to search, how to import a result and how to read its source, all as plain text.</p>
 </section>
 
 <section>
 <h2><span>2.</span> What it indexes.</h2>
 <p>JendHub indexes <b>Base</b> and the latest valid release of every package on <b>BendHub</b>. A release is invalid when one of its files does not load. The <a href="/status">status</a> page shows the index and the invalid releases.</p>
 </section>
+
+<section>
+<h2><span>3.</span> How it ranks.</h2>
+<p>A query and each definition become vectors. JendHub takes the nearest definitions and orders them with a learned ranker. The ranker also uses the names, the signatures, the documentation and how often other code uses each definition.</p>
+</section>
+</div>
 {% endblock %}

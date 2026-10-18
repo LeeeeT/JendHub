@@ -1,15 +1,22 @@
 from datetime import UTC, datetime
 
+from jendhub.indexing.failures import Place, Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease, JobCounts
 from jendhub.search.definitions import DefinitionDetail
 from jendhub.search.engine import Hit
-from jendhub.search.packages import DefinitionSummary, PackageDetail, ReleaseDetail
+from jendhub.search.packages import (
+    DefinitionSummary,
+    PackageDetail,
+    PackageSummary,
+    ReleaseDetail,
+)
 from jendhub.search.sources import ReleaseFiles, usage
 from jendhub.services.site.text import (
     Links,
     render_definition,
     render_files,
     render_package,
+    render_packages,
     render_results,
     render_status,
 )
@@ -24,6 +31,17 @@ from jendhub.services.site.views import (
 ORIGIN = "https://jend.test"
 LINKS = Links(ORIGIN)
 KIT_MAP = f"{ORIGIN}/src/kit@1.0.0.0/main.bend?def=map"
+PROBLEM = Problem(
+    "a fresh name (duplicate declaration: Nat)",
+    "'Nat'",
+    [Place("kit@2.0.0.0/nat.bend", 3)],
+    ["main.bend", "nat.bend"],
+)
+PROBLEM_TEXT = (
+    "   expected a fresh name (duplicate declaration: Nat)\n"
+    f"   At {ORIGIN}/src/kit@2.0.0.0/nat.bend line 3.\n"
+    "   Files that do not load: main.bend, nat.bend.\n"
+)
 
 
 def result(id_: str, package: str | None) -> Result:
@@ -76,6 +94,8 @@ def test_a_definition_shows_how_to_use_it_and_its_uses() -> None:
         4,
         6,
         ["List", "kit@1.0.0.0/deep/odd:a?b"],
+        ["kit@1.0.0.0/main:root"],
+        3,
     )
     view = DefinitionView(detail, usage("map", "kit", "1.0.0.0", "main"))
     assert render_definition(view, LINKS) == (
@@ -85,7 +105,9 @@ def test_a_definition_shows_how_to_use_it_and_its_uses() -> None:
         "import Base\n\ndef map(xs):\n  xs\n\n"
         "Uses (2):\n"
         f"  {ORIGIN}/src/Base/base.bend?def=List\n"
-        f"  {ORIGIN}/src/kit@1.0.0.0/deep/odd.bend?def=a%3Fb\n"
+        f"  {ORIGIN}/src/kit@1.0.0.0/deep/odd.bend?def=a%3Fb\n\n"
+        "Used by (3, 1 to 1 shown):\n"
+        f"  {ORIGIN}/src/kit@1.0.0.0/main.bend?def=root\n"
     )
 
 
@@ -93,15 +115,15 @@ def test_a_package_shows_its_releases_and_a_page_of_definitions() -> None:
     package = PackageDetail(
         "kit",
         [
-            ReleaseDetail("2.0.0.0", "0x2", "invalid", "no load"),
-            ReleaseDetail("1.0.0.0", "0x1", "indexed", None),
+            ReleaseDetail("2.0.0.0", "0x2", "invalid", [PROBLEM]),
+            ReleaseDetail("1.0.0.0", "0x1", "indexed", []),
         ],
         [DefinitionSummary("kit@1.0.0.0/main:map", "def", "map", "main", "def map:")],
         3,
     )
     assert render_package(PackageView(package, 2), LINKS) == (
         "kit\n\n"
-        f"Releases (2):\n  2.0.0.0  0x2  invalid  {ORIGIN}/src/kit@2.0.0.0/\n   no load\n"
+        f"Releases (2):\n  2.0.0.0  0x2  invalid  {ORIGIN}/src/kit@2.0.0.0/\n{PROBLEM_TEXT}"
         f"  1.0.0.0  0x1  indexed  {ORIGIN}/src/kit@1.0.0.0/\n\n"
         f"Definitions (3, 3 to 3 shown):\n  Kit.map ({KIT_MAP})\n   def map:\n"
     )
@@ -121,13 +143,13 @@ def test_the_status_shows_each_generation_and_the_invalid_releases() -> None:
         JobCounts(queued=0, running=0, done=107, superseded=2, invalid=10, failed=0),
     )
     invalid = InvalidRelease(
-        None, None, "0x9", "0.1.2", "no load", datetime(2026, 10, 15, tzinfo=UTC)
+        "kit", "2.0.0.0", "0x9", "0.1.2", [PROBLEM], datetime(2026, 10, 15, tzinfo=UTC)
     )
     assert render_status(StatusView([generation], [invalid], 1, 0), LINKS) == (
         "Generation 3 (live): Base 0.1.2, vectors d2048-binary, indexer 2, 107 releases,"
         " 56650 definitions\n"
         "  Jobs: 0 queued, 0 running, 119 finished, 0 failed\n\n"
-        "Invalid releases (1):\n  0x9 (0x9), Base 0.1.2, 2026-10-15\n   no load\n"
+        f"Invalid releases (1):\n  kit@2.0.0.0 (0x9), Base 0.1.2, 2026-10-15\n{PROBLEM_TEXT}"
     )
 
 
@@ -137,8 +159,17 @@ def test_a_status_with_no_generation_says_so() -> None:
 
 
 def test_the_files_of_a_release_are_full_urls() -> None:
-    files = ReleaseFiles("kit@1.0.0.0", "0x1", ["main.bend", "src/a.bend"])
+    files = ReleaseFiles("kit@1.0.0.0", "0x1", ["main.bend", "src/a.bend"], {"main.bend": 2})
     assert render_files(files, LINKS) == (
         "kit@1.0.0.0\n\n"
         f"  {ORIGIN}/src/kit@1.0.0.0/main.bend\n  {ORIGIN}/src/kit@1.0.0.0/src/a.bend\n"
+    )
+
+
+def test_the_packages_link_to_their_pages() -> None:
+    found = [PackageSummary("kit", "1.0.0.0", 12), PackageSummary("a b", "0.1.0.0", 1)]
+    assert render_packages(found, LINKS) == (
+        "Packages (2):\n"
+        f"  kit@1.0.0.0, 12 definitions ({ORIGIN}/packages/kit.txt)\n"
+        f"  a b@0.1.0.0, 1 definition ({ORIGIN}/packages/a%20b.txt)\n"
     )

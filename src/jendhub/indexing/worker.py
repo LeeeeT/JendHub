@@ -10,8 +10,10 @@ from jendhub.embedding.embedder import Embedder
 from jendhub.errors import JendHubError
 from jendhub.hub.library import Library, ensure_base, refresh
 from jendhub.hub.store import PackageStore
-from jendhub.indexing.artifacts import BASE_RELEASE, build
+from jendhub.indexing.artifacts import build
+from jendhub.indexing.failures import LoadError, summary
 from jendhub.indexing.store import LIVE, Generation, IndexStore, Job, Superseded
+from jendhub.search.sources import BASE_RELEASE
 from jendhub.vectors.index import Projected, VectorIndex
 
 LEASE = timedelta(minutes=15)
@@ -99,13 +101,10 @@ class Worker:
             len(artifacts.definitions),
         )
 
-    async def drop(self, job: Job, generation: Generation, errors: dict[str, str]) -> None:
-        reason = "; ".join(
-            f"{label} does not load: {error}" for label, error in sorted(errors.items())
-        )
-        older = await self.index.mark_invalid(job, generation.base_tag, reason)
+    async def drop(self, job: Job, generation: Generation, errors: dict[str, LoadError]) -> None:
+        older = await self.index.mark_invalid(job, generation.base_tag, errors)
         JOBS.labels("invalid").inc()
-        logger.warning("%s is invalid and never indexed: %s", job.release, reason)
+        logger.warning("%s is invalid and never indexed: %s", job.release, summary(errors))
         if older is not None and generation.corpus == LIVE:
             await self.index.enqueue(generation.id, [(older, job.name)])
             logger.info("queued %s, the next older release of %s", older, job.name)
