@@ -47,8 +47,8 @@ class ReadArguments(BaseModel):
         int,
         Field(
             ge=0,
-            description="The line number to start reading from. Only provide if the file is"
-            " too large to read at once",
+            description="The number of lines to skip before reading. Only provide if the file"
+            " is too large to read at once",
         ),
     ] = 0
     limit: Annotated[
@@ -225,8 +225,8 @@ GREP = ToolSpec(
     "grep",
     described(
         "Content search built on ripgrep, in the files of one release.",
-        r'Full regex syntax (e.g. "log.*Error", "function\s+\w+"). Ripgrep, not grep —'
-        r" escape literal braces (`interface\{\}`).",
+        r'Full regex syntax (e.g. "def parse", "type \w+ is Data"). Ripgrep, not grep —'
+        r" escape literal braces (`Box\{value: Nat\}`).",
         'Filter with `glob` (e.g. "**/*.bend").',
         '`output_mode`: "content" (matching lines), "files_with_matches" (paths only,'
         ' default), or "count".',
