@@ -559,8 +559,31 @@ name, so the word features help them. The lean top 10 has more definitions
 without a grade (judged@10 0.931 against 0.973), so the value at 10 can be a
 little too low. At 5 and at 3, judged is 0.995 or more.
 
-When the variant removes only the larger pool, the reached gain and the two
-query features, the score does not change: +0.0001 [-0.0035, +0.0035].
+`dense-origin+name+lambdamart-trim` removes only the larger pool, the reached
+gain and the two query features, and keeps 34 features. On 3 seeds, the score
+did not change: +0.0001 [-0.0035, +0.0035]. `jendhub bench compare` gives a
+loss:
+
+| Cutoff | Full | Trim | Change |
+|---|---|---|---|
+| 10 | 0.848 | 0.841 | -0.007 [-0.011, -0.003] |
+| 5 | 0.817 | 0.814 | -0.003 [-0.009, +0.002] |
+| 3 | 0.812 | 0.802 | -0.010 [-0.018, -0.003] |
+
+The interval of `bench compare` includes the noise of the queries only. Each
+pipeline trains with one fold split and one seed, and the noise of training is
+of the same size as these changes. 10 random fold splits measured it, with the
+mean of the three cutoffs:
+
+| Variant against full | Mean change | Standard deviation | Range |
+|---|---|---|---|
+| Full, other bagging seeds | -0.0011 | 0.0019 | -0.0039 to +0.0019 |
+| Trim | -0.0022 | 0.0030 | -0.0079 to +0.0011 |
+| Lean | -0.0046 | 0.0025 | -0.0089 to -0.0011 |
+
+Thus the trim variant costs about 0.002, near the noise of training. The
+comparison above came from an unlucky split. The lean variant costs about 0.005 on each split.
+A comparison of two learned rankers must use many splits, not one.
 
 ### In production
 

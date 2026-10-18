@@ -52,6 +52,10 @@ LEAN_FEATURES = (
     "log_children",
 )
 LEAN = Setup(PRODUCTION, 50, LEAN_FEATURES)
+TRIM_FEATURES = tuple(
+    feature for feature in FEATURES if feature not in {"reached_gain", "query_words", "query_best"}
+)
+TRIM = Setup(PRODUCTION, 50, TRIM_FEATURES)
 NAME_WEIGHT = 1.0
 DENSE_NAME_WEIGHT = 0.1
 METADATA_WEIGHT = 1.0
@@ -181,6 +185,10 @@ async def dense_origin_name_lambdamart_lean(resources: Resources) -> Pipeline:
     return await learned_rank(resources, LEAN)
 
 
+async def dense_origin_name_lambdamart_trim(resources: Resources) -> Pipeline:
+    return await learned_rank(resources, TRIM)
+
+
 PIPELINES: dict[str, PipelineBuilder] = {
     "bm25": bm25,
     "bm25-head-package": bm25_head_package,
@@ -195,4 +203,5 @@ PIPELINES: dict[str, PipelineBuilder] = {
     "dense-enriched+text+bm25-enriched+role+name-rerank": dense_enriched_hybrid_rerank,
     "dense-origin+name+lambdamart": dense_origin_name_lambdamart,
     "dense-origin+name+lambdamart-lean": dense_origin_name_lambdamart_lean,
+    "dense-origin+name+lambdamart-trim": dense_origin_name_lambdamart_trim,
 }
