@@ -51,7 +51,7 @@ services:
     image: qdrant/qdrant:v1.18.2
     restart: unless-stopped
     logging: *logging
-    mem_limit: 256m
+    mem_limit: 1g
     environment:
       QDRANT__TELEMETRY_DISABLED: "true"
     volumes:
