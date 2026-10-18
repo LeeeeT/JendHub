@@ -7,6 +7,7 @@
 <title>{% block title %}JendHub{% endblock %}</title>
 {% block head %}{% endblock %}
 {% if alternate %}<link rel="alternate" type="text/plain" href="{{ alternate }}">{% endif %}
+<link rel="search" type="application/opensearchdescription+xml" title="JendHub" href="/opensearch.xml">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cstyle%3Erect%7Bfill:%23000%7D@media(prefers-color-scheme:dark)%7Brect%7Bfill:%23fff%7D%7D%3C/style%3E%3Crect x='4' y='1' width='8' height='14'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css?v={{ assets }}">
 </head>

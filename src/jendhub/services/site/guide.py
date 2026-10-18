@@ -1,6 +1,9 @@
+from xml.sax.saxutils import quoteattr
+
 from jendhub.hub.api import HUB
 
 ROBOTS = "User-agent: *\nDisallow: /search?\n"
+OPENSEARCH_TYPE = "application/opensearchdescription+xml"
 
 
 def llms_text(origin: str) -> str:
@@ -31,3 +34,16 @@ To read a whole file, follow its import line:
 
 GET {origin}/src/<name@version>/<path>
 """
+
+
+def opensearch(origin: str) -> str:
+    template = quoteattr(f"{origin}/search?q={{searchTerms}}")
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">\n'
+        "<ShortName>JendHub</ShortName>\n"
+        "<Description>Search Bend definitions by task or by name</Description>\n"
+        "<InputEncoding>UTF-8</InputEncoding>\n"
+        f'<Url type="text/html" method="get" template={template}/>\n'
+        "</OpenSearchDescription>\n"
+    )

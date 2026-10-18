@@ -202,6 +202,14 @@ async def test_agents_read_the_guide_and_robots_allow_them(site: httpx.AsyncClie
     assert (await site.get("/robots.txt")).text == "User-agent: *\nDisallow: /search?\n"
 
 
+async def test_browsers_get_a_search_description(site: httpx.AsyncClient) -> None:
+    response = await site.get("/opensearch.xml")
+    assert response.headers["content-type"].startswith("application/opensearchdescription+xml")
+    assert f'template="{SITE_URL}/search?q={{searchTerms}}"' in response.text
+    home = (await site.get("/")).text
+    assert '<link rel="search" type="application/opensearchdescription+xml"' in home
+
+
 async def test_people_get_the_results_as_a_page(site: httpx.AsyncClient) -> None:
     response = await site.get("/search", params={"q": "double a number"})
     assert response.headers["content-type"].startswith("text/html")

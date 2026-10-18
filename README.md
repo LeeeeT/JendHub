@@ -70,6 +70,7 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 | `GET /src/<release>/` | `GET /files/<release>` | The files of a release. The page also shows the number of indexed definitions in each file. |
 | `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
+| | `GET /opensearch.xml` | The OpenSearch description, so that a browser can search JendHub from its address bar. Each page links to it. |
 
 A text answer is plain text, also an error. Its links are full URLs, and a
 paged answer ends with the URL of the next page. Each answer stays short,

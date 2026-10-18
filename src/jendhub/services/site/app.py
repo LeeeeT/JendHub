@@ -24,7 +24,7 @@ from jendhub.services.parameters import (
     QueryText,
     SearchOffset,
 )
-from jendhub.services.site.guide import ROBOTS, llms_text
+from jendhub.services.site.guide import OPENSEARCH_TYPE, ROBOTS, llms_text, opensearch
 from jendhub.services.site.limits import RateLimit, client_address
 from jendhub.services.site.pages import (
     COUNTS,
@@ -109,6 +109,10 @@ def guide_routes(running: Running[Site], limited: Guard) -> APIRouter:
     @router.get("/robots.txt")
     async def robots() -> str:
         return ROBOTS
+
+    @router.get("/opensearch.xml")
+    async def search_description() -> Response:
+        return Response(opensearch(running.get().origin), media_type=OPENSEARCH_TYPE)
 
     return router
 
