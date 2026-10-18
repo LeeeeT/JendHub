@@ -75,7 +75,7 @@ services:
   worker:
     <<: *jendhub
     command: [worker, --host, 0.0.0.0, --port, "8000", --metrics-port, "9000"]
-    mem_limit: 512m
+    mem_limit: 1g
     environment:
       <<: *environment
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
