@@ -632,7 +632,10 @@ keep the 470 MB of code vectors: the first search of a query took 1.2 to
 use int8 quantization in RAM, about 117 MB each for the live index, and
 Qdrant scores with the int8 vectors only. With the 37 features and the
 1,000 nearest, a search on the server without the query embedding took 58 ms
-(median) and 144 ms (p95), against 2 to 3 s with binary quantization.
+(median) and 144 ms (p95), against 2 to 3 s with binary quantization. With
+the trim variant and the 50 nearest, four passes took 54 to 75 ms (median) and
+133 to 187 ms (p95). The smaller pool gives no clear gain there: the name
+scores take the most time, and the server also runs other services.
 
 ## Limits
 

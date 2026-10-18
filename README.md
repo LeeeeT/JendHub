@@ -183,10 +183,12 @@ fail the search. The row holds the whole ranking, not only the page, and no
 IP address.
 
 The first live index holds 56,650 definitions: Base and the latest valid
-release of 106 packages. On the server, the engine answers a query in 58 ms
-(median) and 144 ms (p95) when its embedding is in the cache of the site,
-measured on 30 benchmark queries with a warm cache. The name scores are the
-largest part, about 80 ms, and they run in parallel with the Postgres read. A
+release of 106 packages. On the server, the engine answers a query in 54 to
+75 ms (median) and 133 to 187 ms (p95) when its embedding is in the cache of
+the site, measured in four passes over 30 benchmark queries. The server also
+runs other services and uses swap, so the values change from pass to pass. The
+name scores are the largest part, about 90 ms, and they run in parallel with
+the Postgres read. A
 new query waits 0.8 to 4 s for the embedding from OpenRouter, which is the
 largest part of the latency.
 
