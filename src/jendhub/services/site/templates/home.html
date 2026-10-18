@@ -33,8 +33,8 @@
 </section>
 
 <section>
-<h2><span>3.</span> How it ranks.</h2>
-<p>A query and each definition become vectors. JendHub takes the nearest definitions and orders them with a learned ranker. The ranker also uses the names, the signatures, the documentation and how often other code uses each definition.</p>
+<h2><span>3.</span> What you can search by.</h2>
+<p>Search by the task in your own words, such as <a href="{{ search_href('decompress gzip data') }}">decompress gzip data</a>, by a name, such as <a href="{{ search_href('List.map') }}">List.map</a>, or by a type, such as <a href="{{ search_href('(A -> B), List<A> -> List<B>') }}">(A -&gt; B), List&lt;A&gt; -&gt; List&lt;B&gt;</a>. JendHub compares your words with the code, the names, the types and the doc comments of each definition. It also prefers definitions that a lot of other code uses.</p>
 </section>
 </div>
 {% endblock %}
