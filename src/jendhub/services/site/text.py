@@ -1,4 +1,6 @@
+import json
 from dataclasses import dataclass, field
+from typing import Protocol
 from urllib.parse import quote, urlencode
 
 from jendhub.indexing.failures import Problem
@@ -10,10 +12,46 @@ from jendhub.services.site.views import DefinitionView, PackageView, Result, Res
 
 INDENT = "   "
 NAMED_FILES = 5
+SOURCE_TOOL = "source"
+
+
+class Links(Protocol):
+    def source(self, file: str) -> str: ...
+
+    def definition(self, id_: str) -> str: ...
+
+    def next(self, parameter: str, offset: int, shown: int, total: int) -> str: ...
+
+
+def more(offset: int, shown: int, total: int) -> bool:
+    return shown > 0 and offset + shown < total
+
+
+def call(tool: str, arguments: dict[str, str | int]) -> str:
+    given = ", ".join(f"{name}={json.dumps(value)}" for name, value in arguments.items())
+    return f"{tool}({given})"
 
 
 @dataclass(frozen=True)
-class Links:
+class ToolLinks:
+    tool: str
+    arguments: dict[str, str | int] = field(default_factory=dict[str, str | int])
+
+    def source(self, file: str) -> str:
+        return call(SOURCE_TOOL, {"path": file})
+
+    def definition(self, id_: str) -> str:
+        file, name = id_source(id_)
+        return call(SOURCE_TOOL, {"path": file, "definition": name})
+
+    def next(self, parameter: str, offset: int, shown: int, total: int) -> str:
+        if not more(offset, shown, total):
+            return ""
+        return f"More: {call(self.tool, self.arguments | {parameter: offset + shown})}\n"
+
+
+@dataclass(frozen=True)
+class UrlLinks:
     origin: str
     path: str = "/"
     query: dict[str, str] = field(default_factory=dict[str, str])
@@ -29,7 +67,7 @@ class Links:
         return f"{self.source(release)}/"
 
     def next(self, parameter: str, offset: int, shown: int, total: int) -> str:
-        if shown == 0 or offset + shown >= total:
+        if not more(offset, shown, total):
             return ""
         query = urlencode(self.query | {parameter: str(offset + shown)})
         return f"More: {self.origin}{self.path}?{query}\n"
@@ -93,13 +131,13 @@ def render_problems(problems: list[Problem], links: Links) -> str:
     return "".join(indented(render_problem(problem, links)) for problem in problems)
 
 
-def render_release(name: str, release: ReleaseDetail, links: Links) -> str:
+def render_release(name: str, release: ReleaseDetail, links: UrlLinks) -> str:
     label = f"{name}@{release.version}"
     line = f"  {release.version}  {release.hash}  {release.state}  {links.release(label)}\n"
     return line + render_problems(release.problems, links)
 
 
-def render_package(view: PackageView, links: Links) -> str:
+def render_package(view: PackageView, links: UrlLinks) -> str:
     package = view.package
     definitions = "".join(
         f"  {call_name(package.name, definition.id, definition.name, definition.module)}"

@@ -32,6 +32,7 @@ from jendhub.search.sources import (
     read_declared,
     read_file,
     read_release_files,
+    source_id,
     usage,
 )
 from jendhub.services.parameters import MAX_LIMIT
@@ -39,6 +40,8 @@ from jendhub.settings import DatabaseSettings, OpenRouterSettings, QdrantSetting
 from jendhub.vectors.index import VectorIndex, open_vector_index
 
 logger = logging.getLogger(__name__)
+
+EMBEDDING_FAILED = "The embedding service did not answer. Try again."
 
 
 @dataclass
@@ -185,6 +188,12 @@ class Site:
         if found is None:
             raise HTTPException(404, f"The index has no definition {id_}.")
         return DefinitionView(found, usage(found.name, found.package, found.version, found.module))
+
+    async def named(self, release: str, path: str, name: str) -> DefinitionView:
+        id_ = await source_id(self.pool, release, path, name)
+        if id_ is None:
+            raise HTTPException(404, f"The index has no definition {name} in {release}/{path}.")
+        return await self.definition(id_)
 
     async def package(self, name: str, offset: int, limit: int) -> PackageView:
         found = await read_package(self.pool, self.target().generation, name, offset, limit)

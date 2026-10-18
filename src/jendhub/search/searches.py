@@ -3,7 +3,7 @@ from typing import Literal
 
 from jendhub.db.pool import Pool
 
-type Client = Literal["agents", "web"]
+type Client = Literal["agents", "web", "mcp"]
 
 
 @dataclass(frozen=True)

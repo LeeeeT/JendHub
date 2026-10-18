@@ -11,7 +11,7 @@ from jendhub.search.packages import (
 )
 from jendhub.search.sources import ReleaseFiles, usage
 from jendhub.services.site.text import (
-    Links,
+    UrlLinks,
     render_definition,
     render_files,
     render_package,
@@ -27,7 +27,7 @@ from jendhub.services.site.views import (
 )
 
 ORIGIN = "https://jend.test"
-LINKS = Links(ORIGIN)
+LINKS = UrlLinks(ORIGIN)
 KIT_MAP = f"{ORIGIN}/src/kit@1.0.0.0/main.bend?def=map"
 PROBLEM = Problem(
     "a fresh name (duplicate declaration: Nat)",
@@ -69,7 +69,7 @@ def test_results_show_how_to_use_each_definition() -> None:
 
 def test_results_link_to_the_next_results() -> None:
     found = Results("map", [result("List.map", None)], 5, 2)
-    links = Links(ORIGIN, "/search.txt", {"q": "map", "limit": "1", "offset": "2"})
+    links = UrlLinks(ORIGIN, "/search.txt", {"q": "map", "limit": "1", "offset": "2"})
     text = render_results(found, links)
     assert text.startswith("3. List.map (")
     assert text.endswith(f"\nMore: {ORIGIN}/search.txt?q=map&limit=1&offset=3\n")

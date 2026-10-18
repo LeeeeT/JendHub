@@ -1,6 +1,6 @@
 import asyncio
 import math
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from urllib.parse import quote, urlencode
@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException
 
 from jendhub.errors import JendHubError
 from jendhub.indexing.store import IndexStore
-from jendhub.search.sources import id_source, source_id
+from jendhub.search.sources import id_source
 from jendhub.services.app import Running, service_app
 from jendhub.services.background import every
 from jendhub.services.parameters import (
@@ -37,14 +37,16 @@ from jendhub.services.site.pages import (
     source_lines,
 )
 from jendhub.services.site.text import (
-    Links,
+    UrlLinks,
     render_definition,
     render_files,
     render_package,
     render_results,
     render_status,
 )
+from jendhub.services.site.tools import MCP_PATH, Guard, tool_route, tool_server
 from jendhub.services.site.views import (
+    EMBEDDING_FAILED,
     Generations,
     LiveTarget,
     OpenResources,
@@ -57,8 +59,6 @@ WEB_RESULTS = 20
 QUIET = frozenset({"/healthz", "/readyz", "/style.css"})
 ASSET_CACHE = {"cache-control": "public, max-age=31536000, immutable"}
 SEARCHES = frozenset({"/search", "/search.txt"})
-
-type Guard = Callable[[Request], Awaitable[None]]
 
 
 class SiteSettings(BaseSettings):
@@ -76,11 +76,11 @@ class SiteSettings(BaseSettings):
 
 
 def for_agents(path: str) -> bool:
-    return path.endswith(".txt") or path.startswith("/src/")
+    return path.endswith(".txt") or path.startswith("/src/") or path == MCP_PATH
 
 
-def links(site: Site, request: Request) -> Links:
-    return Links(site.origin, request.url.path, dict(request.query_params))
+def links(site: Site, request: Request) -> UrlLinks:
+    return UrlLinks(site.origin, request.url.path, dict(request.query_params))
 
 
 def text(body: str, status: int = 200, headers: dict[str, str] | None = None) -> Response:
@@ -97,6 +97,18 @@ def failure(
     )
     response.headers.update(headers or {})
     return response
+
+
+def guard(limit: RateLimit, client_ip_header: str | None) -> Guard:
+    async def take(request: Request) -> None:
+        wait = limit.take(client_address(request, client_ip_header))
+        if wait:
+            retry = str(math.ceil(wait))
+            raise HTTPException(
+                429, f"Too many requests. Try again in {retry} s.", {"retry-after": retry}
+            )
+
+    return take
 
 
 def guide_routes(running: Running[Site], limited: Guard) -> APIRouter:
@@ -149,10 +161,7 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
         wanted = request.query_params.get("def")
         if wanted is None:
             return (await site.source(release, path)).text
-        id_ = await source_id(site.pool, release, path, wanted)
-        if id_ is None:
-            raise HTTPException(404, f"The index has no definition {wanted} in {release}/{path}.")
-        return render_definition(await site.definition(id_), links(site, request))
+        return render_definition(await site.named(release, path, wanted), links(site, request))
 
     @router.get("/packages/{name}.txt")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> str:
@@ -277,13 +286,15 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
 def create_app(resources: OpenResources | None = None) -> FastAPI:
     settings = load_settings(SiteSettings)
     running: Running[Site] = Running()
-    requests = RateLimit(settings.requests_per_minute, settings.request_burst)
-    searches = RateLimit(settings.searches_per_minute, settings.search_burst)
+    header = settings.client_ip_header
+    requested = guard(RateLimit(settings.requests_per_minute, settings.request_burst), header)
+    searching = guard(RateLimit(settings.searches_per_minute, settings.search_burst), header)
+    tools = tool_server(running, searching)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
         opener = resources or (lambda: open_resources(settings.query_cache_size))
-        async with opener() as opened:
+        async with opener() as opened, tools.session_manager.run():
             live = LiveTarget(IndexStore(opened.pool))
             await live.refresh()
             stop = asyncio.Event()
@@ -316,24 +327,19 @@ def create_app(resources: OpenResources | None = None) -> FastAPI:
 
     @app.exception_handler(JendHubError)
     async def upstream(request: Request, _: JendHubError) -> Response:
-        return failure(request, 502, "The embedding service did not answer. Try again.")
+        return failure(request, 502, EMBEDDING_FAILED)
 
     async def limited(request: Request) -> None:
         path = request.url.path
         if path in QUIET:
             return
-        client = client_address(request, settings.client_ip_header)
-        wait = requests.take(client)
-        if not wait and path in SEARCHES:
-            wait = searches.take(client)
-        if wait:
-            retry = str(math.ceil(wait))
-            raise HTTPException(
-                429, f"Too many requests. Try again in {retry} s.", {"retry-after": retry}
-            )
+        await requested(request)
+        if path in SEARCHES:
+            await searching(request)
 
     app.include_router(guide_routes(running, limited))
     app.include_router(agent_routes(running, limited))
     app.include_router(page_routes(running, limited))
     app.include_router(index_routes(running, limited))
+    app.router.routes.append(tool_route(tools, requested))
     return app

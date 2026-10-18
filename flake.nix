@@ -12,6 +12,7 @@
         ps.httpx
         ps.jinja2
         ps.lightgbm
+        ps.mcp
         ps.numpy
         ps.prometheus-client
         ps.psycopg

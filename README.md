@@ -11,6 +11,14 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   they read text more easily than JSON, and most fetch tools cannot ask for a
   format. People get the same data as HTML pages with no JavaScript. One
   service serves both forms, because they are one product with one life cycle.
+- **MCP:** the site is also an MCP server, so that an agent can add JendHub
+  with one command and sees its tools in every session. It has only two tools,
+  `search` and `source`, because each tool description stays in the context of
+  the agent. `source` takes the path of an import line, which each result
+  already gives. The answers are the text answers, with tool calls in place of
+  URLs, so that an agent without a fetch tool can follow them. The server uses
+  the official `mcp` SDK in stateless HTTP mode with JSON answers: it keeps no
+  sessions, and plain request and answer is what most clients support.
 - **Corpus:** the store keeps every version of every package, because packages
   import each other by hash. Search uses only the latest valid version of each
   named package, as if other versions do not exist.
@@ -72,6 +80,20 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
 | | `GET /opensearch.xml` | The OpenSearch description, so that a browser can search JendHub from its address bar. Each page links to it. |
 
+`POST /mcp` is the MCP server. Add it to Claude Code with:
+
+```bash
+claude mcp add --transport http jendhub https://jend.leeeet.dev/mcp
+```
+
+| Tool | Answer |
+|---|---|
+| `search(query, limit=10, offset=0)` | The same as `/search.txt`. |
+| `source(path, definition=None)` | The same as `/src/<path>?def=<definition>`, or the whole file without `definition`. `path` is the path of an import line, for example `kit@1.0.0.0/json.bend`, or `Base/base.bend`. |
+
+In tool answers, each link is the tool call that opens it, for example
+`source(path="kit@1.0.0.0/json.bend", definition="parse")`.
+
 A text answer is plain text, also an error. Its links are full URLs, and a
 paged answer ends with the URL of the next page. Each answer stays short,
 because it goes into the context of an agent: a head of more than 12 lines
@@ -92,7 +114,9 @@ to its text form with `<link rel="alternate" type="text/plain">`.
 
 Each client IP gets at most 30 searches and 600 requests a minute, with a
 burst of 10 searches and 120 requests. More get `429 Too Many Requests` with
-`Retry-After`. Behind the Cloudflare Tunnel, the client IP is the
+`Retry-After`. Each MCP request counts as a request, and each call of the
+search tool counts as a search. A tool call over the limit gets a tool error.
+Behind the Cloudflare Tunnel, the client IP is the
 `CF-Connecting-IP` header.
 
 Every service has `/healthz` (the process runs) and `/readyz` (it can do its
@@ -350,7 +374,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
-| Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages), the caller's User-Agent, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
+| Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
 | Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
 | `data/library` | The worker's copy of the package files in the `BEND_LIB` layout, for the Rust indexer. |
 

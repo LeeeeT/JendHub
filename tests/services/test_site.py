@@ -1,3 +1,5 @@
+import asyncio
+from asyncio import FIRST_COMPLETED
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
@@ -36,11 +38,25 @@ def opener(database: DatabaseSettings, qdrant: QdrantSettings) -> Opener:
 
 @asynccontextmanager
 async def running(app: FastAPI) -> AsyncGenerator[httpx.AsyncClient]:
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url=SITE_URL) as client,
-    ):
-        yield client
+    started, stop = asyncio.Event(), asyncio.Event()
+
+    async def serve() -> None:
+        async with app.router.lifespan_context(app):
+            started.set()
+            await stop.wait()
+
+    server = asyncio.create_task(serve())
+    await asyncio.wait([server, asyncio.create_task(started.wait())], return_when=FIRST_COMPLETED)
+    if server.done():
+        server.result()
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url=SITE_URL
+        ) as client:
+            yield client
+    finally:
+        stop.set()
+        await server
 
 
 @pytest.fixture(autouse=True)
@@ -78,6 +94,30 @@ async def empty_site(
 ) -> AsyncGenerator[httpx.AsyncClient]:
     async with running(create_app(opener(database, qdrant_settings))) as client:
         yield client
+
+
+MCP_ACCEPT = {"accept": "application/json, text/event-stream"}
+
+
+async def rpc(
+    client: httpx.AsyncClient,
+    method: str,
+    params: dict[str, object],
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    return await client.post("/mcp", json=body, headers=MCP_ACCEPT | (headers or {}))
+
+
+async def call_tool(
+    client: httpx.AsyncClient,
+    name: str,
+    arguments: dict[str, object],
+    headers: dict[str, str] | None = None,
+) -> tuple[bool, str]:
+    response = await rpc(client, "tools/call", {"name": name, "arguments": arguments}, headers)
+    result = response.json()["result"]
+    return result["isError"], result["content"][0]["text"]
 
 
 type StoredSearch = tuple[str, str | None, str, int, int, list[str]]
@@ -199,7 +239,77 @@ async def test_agents_read_the_guide_and_robots_allow_them(site: httpx.AsyncClie
     assert f"GET {SITE_URL}/search.txt?q=<query>" in guide
     assert f"GET {SITE_URL}/src/<name@version>/<path>" in guide
     assert "packages.txt" not in guide
+    assert f"MCP server at {SITE_URL}/mcp" in guide
     assert (await site.get("/robots.txt")).text == "User-agent: *\nDisallow: /search?\n"
+
+
+async def test_mcp_clients_get_two_read_only_tools(site: httpx.AsyncClient) -> None:
+    response = await rpc(site, "tools/list", {})
+    tools = response.json()["result"]["tools"]
+    assert [tool["name"] for tool in tools] == ["search", "source"]
+    assert all(tool["annotations"]["readOnlyHint"] for tool in tools)
+    initialized = await rpc(
+        site,
+        "initialize",
+        {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1"},
+        },
+    )
+    assert "use the search tool" in initialized.json()["result"]["instructions"]
+
+
+async def test_mcp_search_gives_source_calls_and_is_stored(
+    site: httpx.AsyncClient, pool: Pool
+) -> None:
+    failed, text = await call_tool(
+        site, "search", {"query": "double a number", "limit": 1}, {"user-agent": "c/3"}
+    )
+    assert not failed
+    assert text.startswith(
+        '1. Kit.double (source(path="kit@1.0.0.0/main.bend", definition="double"))\n'
+        "   import kit@1.0.0.0/main.bend as Kit\n"
+    )
+    assert text.endswith('More: search(query="double a number", limit=1, offset=1)\n')
+    [stored] = await stored_searches(pool)
+    assert stored[:5] == ("mcp", "c/3", "double a number", 0, 1)
+
+
+async def test_mcp_source_gives_a_definition_or_a_file(site: httpx.AsyncClient) -> None:
+    arguments: dict[str, object] = {"path": "app@1.0.0.0/main.bend", "definition": "quadruple"}
+    failed, text = await call_tool(site, "source", arguments)
+    assert not failed
+    assert text.startswith("App.quadruple (def, app@1.0.0.0, lines 4-5)\n")
+    assert 'File: source(path="app@1.0.0.0/main.bend")\n' in text
+    assert text.endswith(
+        'Uses (2):\n  source(path="Base/base.bend", definition="Nat")\n'
+        '  source(path="kit@1.0.0.0/main.bend", definition="double")\n'
+    )
+    assert await call_tool(site, "source", {"path": "kit@2.0.0.0/main.bend"}) == (
+        False,
+        FIXED_BROKEN,
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments", "message"),
+    [
+        (
+            "source",
+            {"path": "kit@1.0.0.0/main.bend", "definition": "nothing"},
+            "The index has no definition kit@1.0.0.0/main:nothing.",
+        ),
+        ("source", {"path": "kit"}, "kit is not a file of a release"),
+        ("search", {"query": "double", "limit": 0}, "limit"),
+    ],
+)
+async def test_mcp_tools_explain_a_failure(
+    site: httpx.AsyncClient, name: str, arguments: dict[str, object], message: str
+) -> None:
+    failed, text = await call_tool(site, name, arguments)
+    assert failed
+    assert message in text
 
 
 async def test_browsers_get_a_search_description(site: httpx.AsyncClient) -> None:
@@ -264,6 +374,7 @@ async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) 
     home = (await site.get("/")).text
     assert 'href="/search?q=decompress+gzip+data"' in home
     assert f'href="/llms.txt">{SITE_URL}/llms.txt</a>' in home
+    assert f"claude mcp add --transport http jendhub {SITE_URL}/mcp" in home
     assert "search.txt" not in home
     assert 'href="https://github.com/LeeeeT/JendHub"' in home
     assert "<b>2</b> packages" in home
@@ -303,6 +414,11 @@ async def test_searches_from_one_client_are_limited(
         second = await client.get("/search.txt?q=double", headers={"cf-connecting-ip": "1.1.1.1"})
         other = await client.get("/search.txt?q=double", headers={"cf-connecting-ip": "2.2.2.2"})
         page = await client.get("/search?q=double", headers={"cf-connecting-ip": "1.1.1.1"})
+        tool = await call_tool(
+            client, "search", {"query": "double"}, {"cf-connecting-ip": "1.1.1.1"}
+        )
+    assert tool[0]
+    assert "Too many requests. Try again in " in tool[1]
     assert first.status_code == httpx.codes.OK
     assert second.status_code == httpx.codes.TOO_MANY_REQUESTS
     assert second.text.startswith("Too many requests. Try again in ")
