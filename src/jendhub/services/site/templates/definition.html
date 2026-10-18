@@ -4,7 +4,7 @@
 {% block title %}{{ detail.name }} · {{ reference(detail.id).where }} · JendHub{% endblock %}
 {% block head %}<meta name="description" content="The Bend {{ detail.kind }} {{ detail.id }}, its code and what it uses.">{% endblock %}
 {% block main %}
-<h1 class="id">{{ detail.name }} <span>{{ detail.kind }}</span></h1>
+<h1 class="id"><span>{{ detail.kind }}</span> {{ detail.name }}</h1>
 <p class="meta">{{ macros.release(detail.package, detail.version) }} · <a href="{{ lines_href(file, detail.first_line + 1, detail.end_line) }}">{{ file.split('/', 1)[1] }}:{{ detail.first_line + 1 }}</a></p>
 {{ macros.import_line(view.usage) }}
 <p class="use">Then call <code>{{ view.usage.call_name }}</code>.</p>

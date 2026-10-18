@@ -27,7 +27,7 @@
 <h3 class="module"><a href="{{ file_href(package.name ~ '@' ~ indexed.version ~ '/' ~ module ~ '.bend') }}">{{ module }}.bend</a></h3>
 <ul class="defs">
 {% for definition in definitions %}
-<li><a href="{{ definition_href(definition.id) }}">{{ definition.name }}</a> <span class="muted">{{ definition.kind }}</span>{% if definition.summary %}<span class="summary">{{ definition.summary }}</span>{% endif %}</li>
+<li><span class="muted">{{ definition.kind }}</span> <a href="{{ definition_href(definition.id) }}">{{ definition.name }}</a>{% if definition.summary %}<span class="summary">{{ definition.summary }}</span>{% endif %}</li>
 {% endfor %}
 </ul>
 {% endfor %}
