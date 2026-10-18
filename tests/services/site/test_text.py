@@ -92,8 +92,6 @@ def test_a_definition_shows_how_to_use_it_and_its_uses() -> None:
         4,
         6,
         ["List", "kit@1.0.0.0/deep/odd:a?b"],
-        ["kit@1.0.0.0/main:root"],
-        3,
     )
     view = DefinitionView(detail, usage("map", "kit", "1.0.0.0", "main"))
     assert render_definition(view, LINKS) == (
@@ -103,9 +101,7 @@ def test_a_definition_shows_how_to_use_it_and_its_uses() -> None:
         "import Base\n\ndef map(xs):\n  xs\n\n"
         "Uses (2):\n"
         f"  {ORIGIN}/src/Base/base.bend?def=List\n"
-        f"  {ORIGIN}/src/kit@1.0.0.0/deep/odd.bend?def=a%3Fb\n\n"
-        "Used by (3, 1 to 1 shown):\n"
-        f"  {ORIGIN}/src/kit@1.0.0.0/main.bend?def=root\n"
+        f"  {ORIGIN}/src/kit@1.0.0.0/deep/odd.bend?def=a%3Fb\n"
     )
 
 

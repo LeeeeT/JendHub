@@ -135,8 +135,7 @@ async def test_a_definition_gives_its_import_lines_and_its_uses(site: httpx.Asyn
         f"File: {SITE_URL}/src/app@1.0.0.0/main.bend\n\n"
         "import Base\nimport kit@1.0.0.0/main.bend as K\n\n"
         "def quadruple(n: Nat) -> Nat:\n  K.double(K.double(n))\n\n"
-        f"Uses (2):\n  {SITE_URL}/src/Base/base.bend?def=Nat\n  {DOUBLE_SOURCE}\n\n"
-        "Used by (0):\n"
+        f"Uses (2):\n  {SITE_URL}/src/Base/base.bend?def=Nat\n  {DOUBLE_SOURCE}\n"
     )
 
 
@@ -227,9 +226,7 @@ async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.Async
     assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert "App.quadruple" in html
     assert 'href="/src/app@1.0.0.0/main.bend?def=quadruple"' in html
-    assert "No indexed definition uses this definition." in html
-    used = (await site.get(f"/definitions/{DOUBLE}")).text
-    assert f'href="/definitions/{QUADRUPLE}"' in used
+    assert "Used by" not in html
 
 
 async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient) -> None:

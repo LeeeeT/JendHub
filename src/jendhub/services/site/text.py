@@ -9,7 +9,6 @@ from jendhub.services.site.pages import shortened
 from jendhub.services.site.views import DefinitionView, PackageView, Result, Results, StatusView
 
 INDENT = "   "
-USERS = 10
 NAMED_FILES = 5
 
 
@@ -75,9 +74,6 @@ def render_definition(view: DefinitionView, links: Links) -> str:
         f"{code}\n\n"
         + heading("Uses", len(detail.uses), len(detail.uses), 0)
         + "".join(f"  {links.definition(id_)}\n" for id_ in detail.uses)
-        + "\n"
-        + heading("Used by", len(detail.users[:USERS]), detail.users_total, 0)
-        + "".join(f"  {links.definition(id_)}\n" for id_ in detail.users[:USERS])
     )
 
 
