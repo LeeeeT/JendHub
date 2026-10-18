@@ -131,6 +131,7 @@ button {
 pre {
 	margin: 1em 0;
 	padding: 0.8em 1.2ch;
+	font-size: 0.87em;
 	overflow-x: auto;
 	line-height: 1.5;
 	tab-size: 2;
@@ -702,10 +703,6 @@ td:last-child {
 
 	h1 {
 		font-size: 1.35em;
-	}
-
-	pre {
-		font-size: 0.93em;
 	}
 
 	.hero {
