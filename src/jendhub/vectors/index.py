@@ -18,6 +18,7 @@ MODULE = "module"
 HNSW_M = 16
 HNSW_EF_CONSTRUCT = 128
 OVERSAMPLING = 2.0
+SEARCH_EF = 200
 UPSERT_BATCH = 64
 TIMEOUT_SECONDS = 120
 
@@ -183,7 +184,7 @@ class VectorIndex:
             name,
             query=config.project(vector.reshape(1, -1))[0].tolist(),
             using=CODE,
-            search_params=config.search_params(limit),
+            search_params=config.search_params(max(limit, SEARCH_EF)),
             limit=limit,
             with_payload=[RELEASE, MODULE],
         )

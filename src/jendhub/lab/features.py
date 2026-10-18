@@ -27,7 +27,6 @@ def best_by(
 @dataclass(frozen=True)
 class Setup:
     vectors: VectorConfig
-    pool: int
     columns: tuple[str, ...]
 
 
@@ -41,19 +40,14 @@ class Features:
         setup: Setup,
     ) -> None:
         self.definitions = definitions
-        self.pool = setup.pool
         self.columns = [FEATURES.index(column) for column in setup.columns]
         self.ids = [definition.id for definition in definitions]
         self.facts = [facts[id_] for id_ in self.ids]
         self.config = setup.vectors
         self.code = self.config.project(code)
         self.names = self.config.project(names)
-        positions = {id_: index for index, id_ in enumerate(self.ids)}
         self.modules: list[Hashable] = [definition.origin for definition in definitions]
         self.releases: list[Hashable] = [definition.origin.release for definition in definitions]
-        self.reached = [
-            [positions[id_] for id_ in fact.reached if id_ in positions] for fact in self.facts
-        ]
         named = {
             (definition.origin, definition.name): index
             for index, definition in enumerate(definitions)
@@ -72,19 +66,11 @@ class Features:
     def matrix(self, text: str, vector: Vectors) -> tuple[list[str], Matrix]:
         query = self.config.project(vector.reshape(1, -1))[0]
         similarities = self.code @ query
-        pool = np.argsort(-similarities, kind="stable")[: self.pool]
-        candidates = [int(index) for index in pool[:DEPTH]]
-        floor = float(similarities[pool[-1]])
-        pooled = set(pool.tolist())
-        modules = best_by(self.modules, pool, similarities)
-        packages = best_by(self.releases, pool, similarities)
+        nearest = np.argsort(-similarities, kind="stable")[:DEPTH]
+        candidates = [int(index) for index in nearest]
+        modules = best_by(self.modules, nearest, similarities)
+        packages = best_by(self.releases, nearest, similarities)
         names = self.names[candidates] @ query
-
-        def reached(index: int) -> float | None:
-            if not self.reached[index]:
-                return None
-            known = [float(similarities[point]) for point in self.reached[index] if point in pooled]
-            return max(known) if known else floor
 
         def signals(index: int, name_similarity: float) -> Signals:
             definition = self.definitions[index]
@@ -103,7 +89,6 @@ class Features:
                 self.modules[index],
                 float(similarities[index]),
                 name_similarity,
-                reached(index),
                 modules[self.modules[index]],
                 packages[self.releases[index]],
                 None if parent is None else float(similarities[parent]),

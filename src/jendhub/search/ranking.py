@@ -35,7 +35,6 @@ FEATURES = (
     "code",
     "code_z",
     *(f"{base}{suffix}" for base in RELATIVE for suffix in ("", "_gap", "_z")),
-    "reached_gain",
     "unused",
     "log_users",
     "external",
@@ -53,8 +52,6 @@ FEATURES = (
     "parent_gap",
     "children_gap",
     "log_children",
-    "query_words",
-    "query_best",
 )
 
 type Matrix = npt.NDArray[np.float64]
@@ -74,7 +71,6 @@ class Signals:
     module: Hashable
     code: float
     name_similarity: float
-    reached: float | None
     module_best: float
     package_best: float
     parent: float | None
@@ -144,9 +140,6 @@ def feature_matrix(text: str, candidates: list[Signals]) -> Matrix:
             return 0.0
         return similarity(signature, found.signature)
 
-    def reached_gain(found: Signals) -> float:
-        return 0.0 if found.reached is None else found.reached - found.code
-
     def parent_gap(found: Signals) -> float:
         return math.nan if found.parent is None else found.parent - found.code
 
@@ -165,7 +158,6 @@ def feature_matrix(text: str, candidates: list[Signals]) -> Matrix:
     for values in relative:
         columns += [values, values - values.max(), standardized(values)]
     columns += [
-        column(reached_gain),
         column(lambda found: float(found.users == 0)),
         column(lambda found: math.log1p(found.users)),
         column(lambda found: float(found.external)),
@@ -183,7 +175,5 @@ def feature_matrix(text: str, candidates: list[Signals]) -> Matrix:
         column(parent_gap),
         column(children_gap),
         column(lambda found: math.log1p(len(found.children))),
-        np.full(len(candidates), len(text.split()), dtype=np.float64),
-        np.full(len(candidates), code.max(), dtype=np.float64),
     ]
     return np.column_stack(columns)

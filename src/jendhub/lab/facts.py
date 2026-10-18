@@ -11,15 +11,13 @@ class Facts:
     helper: bool
     users: int
     external: bool
-    reached: list[str]
 
 
 async def load_facts(pool: Pool, generation: int) -> dict[str, Facts]:
     async with pool.connection() as connection:
         cursor = await connection.execute(
-            "SELECT d.id, d.parameters, d.result, d.documented, d.helper, d.users, d.external,"
-            " ARRAY(SELECT r.id FROM definitions r WHERE r.point = ANY(d.reached) ORDER BY r.id)"
-            " FROM definitions d WHERE d.generation = %s",
+            "SELECT id, parameters, result, documented, helper, users, external"
+            " FROM definitions WHERE generation = %s",
             (generation,),
         )
         rows = await cursor.fetchall()
@@ -30,7 +28,6 @@ async def load_facts(pool: Pool, generation: int) -> dict[str, Facts]:
             helper,
             users,
             external,
-            list(reached),
         )
-        for id_, parameters, result, documented, helper, users, external, reached in rows
+        for id_, parameters, result, documented, helper, users, external in rows
     }

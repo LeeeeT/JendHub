@@ -428,7 +428,6 @@ async def insert(
             indexed.documented,
             indexed.helper,
             indexed.users,
-            sorted(by_id[id_] for id_ in indexed.reached),
             None if indexed.parent is None else by_id[indexed.parent],
             sorted(children.get(indexed.definition.id, [])),
         )
@@ -438,9 +437,9 @@ async def insert(
         await many.executemany(
             "INSERT INTO definitions (point, generation, release, id, key, kind, name, package,"
             " version, module, text, head, first_line, end_line, document_digest, name_digest,"
-            " parameters, result, documented, helper, users, reached, parent, children)"
+            " parameters, result, documented, helper, users, parent, children)"
             " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
-            " %s, %s, %s, %s, %s, %s)",
+            " %s, %s, %s, %s, %s)",
             rows,
         )
         await many.executemany(

@@ -17,7 +17,6 @@ TASK_INSTRUCTION = (
     " that a programmer calls to do it"
 )
 DEPTH = 50
-POOL = 1000
 CONCURRENCY = 8
 
 
@@ -44,7 +43,6 @@ class Candidate:
     helper: bool
     users: int
     external: bool
-    reached: list[int]
     parent: int | None
     children: list[int]
 
@@ -121,15 +119,13 @@ class SearchEngine:
 
     async def search_one(self, text: str, vector: Vectors, limit: int) -> list[Hit]:
         target = self.target
-        neighbors = await self.vectors.search(target.collection, target.config, vector, POOL)
+        neighbors = await self.vectors.search(target.collection, target.config, vector, DEPTH)
         if not neighbors:
             return []
         similarities = {neighbor.point: neighbor.score for neighbor in neighbors}
-        floor = neighbors[-1].score
         modules = best_by(neighbors, map(module_key, neighbors))
         packages = best_by(neighbors, (neighbor.release for neighbor in neighbors))
-        top = neighbors[:DEPTH]
-        points = [neighbor.point for neighbor in top]
+        points = list(similarities)
         candidates, names = await asyncio.gather(
             self.candidates(points), self.scores(vector, points, NAME)
         )
@@ -140,12 +136,6 @@ class SearchEngine:
             if point not in similarities
         }
         known = similarities | await self.scores(vector, sorted(related), CODE)
-
-        def reached(candidate: Candidate) -> float | None:
-            if not candidate.reached:
-                return None
-            found = [similarities[point] for point in candidate.reached if point in similarities]
-            return max(found) if found else floor
 
         def signals(neighbor: Neighbor, candidate: Candidate) -> Signals:
             return Signals(
@@ -161,7 +151,6 @@ class SearchEngine:
                 module_key(neighbor),
                 neighbor.score,
                 names[neighbor.point],
-                reached(candidate),
                 modules[module_key(neighbor)],
                 packages[neighbor.release],
                 None if candidate.parent is None else known.get(candidate.parent),
@@ -170,7 +159,7 @@ class SearchEngine:
 
         ranked = [
             (neighbor, candidate)
-            for neighbor in top
+            for neighbor in neighbors
             if (candidate := candidates.get(neighbor.point)) is not None and neighbor.point in names
         ]
         if not ranked:
@@ -190,8 +179,8 @@ class SearchEngine:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
                 "SELECT point, id, kind, name, package, version, module, head, length(text),"
-                " parameters, result, documented, helper, users, external, reached, parent,"
-                " children FROM definitions WHERE point = ANY(%s)",
+                " parameters, result, documented, helper, users, external, parent, children"
+                " FROM definitions WHERE point = ANY(%s)",
                 (points,),
             )
             rows = await cursor.fetchall()
@@ -211,9 +200,8 @@ class SearchEngine:
                 row[12],
                 row[13],
                 row[14],
-                list(row[15]),
-                row[16],
-                list(row[17]),
+                row[15],
+                list(row[16]),
             )
             for row in rows
         }

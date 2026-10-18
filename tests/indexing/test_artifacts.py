@@ -40,10 +40,6 @@ async def test_uses_cross_the_modules_of_a_package(tmp_path: Path) -> None:
     indexed = by_id(found)
     assert indexed["lib@1.0.0.0/box:Box"].users == 2
     assert indexed["lib@1.0.0.0/main:root"].users == 0
-    assert indexed["lib@1.0.0.0/main:root"].reached == {
-        "lib@1.0.0.0/box:Box",
-        "lib@1.0.0.0/box:open",
-    }
     assert indexed["lib@1.0.0.0/box:open"].external_targets == {"Nat"}
     assert found.errors == {}
     assert found.mismatches == {}

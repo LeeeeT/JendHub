@@ -22,7 +22,6 @@ def signals(name: str, code: float, **changes: object) -> Signals:
             module="Base",
             code=code,
             name_similarity=code,
-            reached=None,
             module_best=code,
             package_best=code,
             parent=None,
@@ -55,17 +54,15 @@ def test_feature_matrix_measures_relative_values_inside_the_query() -> None:
     matrix = feature_matrix("map a list", [signals("List.map", 0.9), signals("Nat.add", 0.5)])
     assert column(matrix, "name_gap") == pytest.approx([0.0, -0.4])
     assert column(matrix, "code_z") == pytest.approx([1.0, -1.0], abs=1e-4)
-    assert column(matrix, "query_best") == pytest.approx([0.9, 0.9])
 
 
-def test_feature_matrix_compares_with_the_parent_children_and_reached() -> None:
-    found = signals("List.map", 0.8, parent=0.6, children=[0.7, 0.9], reached=0.85)
+def test_feature_matrix_compares_with_the_parent_and_the_children() -> None:
+    found = signals("List.map", 0.8, parent=0.6, children=[0.7, 0.9])
     lonely = signals("Nat.add", 0.5)
     matrix = feature_matrix("map", [found, lonely])
     assert column(matrix, "parent_gap")[0] == pytest.approx(-0.2)
     assert column(matrix, "children_gap")[0] == pytest.approx(0.1)
     assert column(matrix, "log_children")[0] == pytest.approx(math.log1p(2))
-    assert column(matrix, "reached_gain") == pytest.approx([0.05, 0.0])
     assert math.isnan(column(matrix, "parent_gap")[1])
     assert math.isnan(column(matrix, "children_gap")[1])
 

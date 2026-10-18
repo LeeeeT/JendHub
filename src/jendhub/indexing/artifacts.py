@@ -28,7 +28,6 @@ class IndexedDefinition:
     documented: bool
     helper: bool
     users: int
-    reached: frozenset[str]
     external_targets: frozenset[str]
 
 
@@ -152,7 +151,6 @@ async def build(
             definition.text.startswith("#"),
             is_helper(definition, graph, by_id),
             len(graph.users.get(definition.id, frozenset())),
-            frozenset(reached(definition.id, graph.used)),
             frozenset(external[definition.id]),
         )
         for definition in definitions

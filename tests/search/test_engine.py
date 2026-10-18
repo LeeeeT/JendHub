@@ -18,7 +18,6 @@ def candidate(parent: int | None, children: list[int]) -> Candidate:
         helper=False,
         users=1,
         external=False,
-        reached=[],
         parent=parent,
         children=children,
     )

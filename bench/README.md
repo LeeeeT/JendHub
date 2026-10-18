@@ -528,7 +528,11 @@ folds and 3 seeds.
   role of a Bend definition. It took 4.2 s for each query on a GTX 1050 Ti. A
   larger reranker costs too much for a public search with high throughput.
 
-### The lean variant
+### The lean and trim variants
+
+The 37 features above came first. Two simpler variants followed, and
+production now uses the trim variant. `dense-origin+name+lambdamart` is now
+the trim variant, and the 37 features are gone from the code.
 
 `dense-origin+name+lambdamart-lean` tests a simpler ranker. Each of its
 removals had no significant effect alone (the mean of the three cutoffs, 3
@@ -559,8 +563,8 @@ name, so the word features help them. The lean top 10 has more definitions
 without a grade (judged@10 0.931 against 0.973), so the value at 10 can be a
 little too low. At 5 and at 3, judged is 0.995 or more.
 
-`dense-origin+name+lambdamart-trim` removes only the larger pool, the reached
-gain and the two query features, and keeps 34 features. On 3 seeds, the score
+The trim variant removes only the larger pool, the reached gain and the two
+query features, and keeps 34 features. On 3 seeds, the score
 did not change: +0.0001 [-0.0035, +0.0035]. `jendhub bench compare` gives a
 loss:
 
@@ -582,8 +586,15 @@ mean of the three cutoffs:
 | Lean | -0.0046 | 0.0025 | -0.0089 to -0.0011 |
 
 Thus the trim variant costs about 0.002, near the noise of training. The
-comparison above came from an unlucky split. The lean variant costs about 0.005 on each split.
-A comparison of two learned rankers must use many splits, not one.
+comparison above came from an unlucky split. The lean variant costs about
+0.005 on each split, and most on the queries that contain the words of the
+name. A comparison of two learned rankers must use many splits, not one.
+
+The trim variant went to production because it is simpler at no real cost.
+Qdrant returns 50 points in place of 1,000, and the `reached` column and the
+index code that fills it are gone. The lean variant removes only about 40
+lines of word matching, which take microseconds for each query, and it loses
+on phrase and exact-name queries.
 
 ### In production
 
@@ -594,31 +605,34 @@ pipeline and the engine compute the features with the same code,
 reads them from Postgres and Qdrant. `jendhub bench train` trains one model on
 all 500 queries, with the same parameters, and writes `search/ranker.txt`.
 
-With the same model, the engine and the lab code give the same top 10 for each
-of the 500 queries. The benchmark runs the engine as `production`. Its scores
-are too high, because its model learned from the same queries: 0.907 at 10,
-0.897 at 5 and 0.900 at 3, with judged@10 0.984. The cross-validated scores of
-the lab pipeline, 0.848, 0.817 and 0.812, are the estimate for new queries.
+The benchmark runs the engine as `production`. Its scores are too high,
+because its model learned from the same queries: 0.899 at 10, 0.889 at 5 and
+0.893 at 3, with judged@10 0.978. The cross-validated scores of the lab
+pipeline, 0.841, 0.814 and 0.802, are the estimate for new queries. The 37
+features scored 0.907, 0.897 and 0.900 in the same way.
 
-On the dev corpus in WSL, a search without the query embedding takes 80 ms
-(median), against 38 ms before. A Qdrant request costs about 11 ms there even
-when it does nearly nothing, and the engine now sends two or three requests:
-the 1,000 nearest definitions with their modules, the name scores of the 50
-candidates, and the code scores of parents and children outside the 1,000. The
-features and the model take about 6 ms. Qdrant computes the name scores, so no
-vector goes over the network.
+The engine scores with int8 vectors, and the lab with full vectors. With the
+same model, they give the same first result for 98.2% of the queries, and
+97.9% of the top 10 of the two is the same. Where both have a candidate, its
+features agree. The rest of the differences come from candidates near rank 50
+that the int8 scores put in a different order.
+
+The engine sends two or three requests to Qdrant: the 50 nearest definitions
+with their modules, the name scores of the 50, and the code scores of parents
+and children outside the 50. A Qdrant request costs about 11 ms in WSL even
+when it does nearly nothing. The features and the model take about 6 ms.
+Qdrant computes the name scores, so no vector goes over the network. The
+search uses an `hnsw_ef` of 200. With an `hnsw_ef` of 50, the HNSW graph
+missed some of the 50 nearest, and the engine scored 0.001 less at 5 and at 3.
 
 On the server, binary quantization made the search slow. Qdrant rescored
 2,000 candidates with their full vectors on disk, and its page cache did not
 keep the 470 MB of code vectors: the first search of a query took 1.2 to
 1.7 s, and the same search without rescoring 12 to 27 ms. Both vectors now
 use int8 quantization in RAM, about 117 MB each for the live index, and
-Qdrant scores with the int8 vectors only. On the dev benchmark, the engine
-then scores 0.905, 0.894 and 0.897 at 10, 5 and 3, against 0.907, 0.897 and
-0.900 with exact scores. It gives the same first result as the lab code for
-98.8% of the queries, and 98.3% of the same top 10. On the server, a search
-without the query embedding now takes 58 ms (median) and 144 ms (p95), against
-2 to 3 s with binary quantization.
+Qdrant scores with the int8 vectors only. With the 37 features and the
+1,000 nearest, a search on the server without the query embedding took 58 ms
+(median) and 144 ms (p95), against 2 to 3 s with binary quantization.
 
 ## Limits
 

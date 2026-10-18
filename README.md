@@ -147,15 +147,15 @@ package name and the module path, then the name, for example
 `bend-time-lib date` and `Date.add_days`. It tells apart the functions of one
 module, which share most of their code vocabulary.
 
-1. Qdrant returns the 1,000 nearest definitions by the code vector, with the
+1. Qdrant returns the 50 nearest definitions by the code vector, with the
    release and the module of each. Both vectors have 2,048 dimensions with
    int8 quantization in RAM, and Qdrant scores with the int8 vectors only. The
    full vectors stay on disk for a rebuild. The name vectors have no HNSW
    graph, because the engine only scores the candidates with them.
-2. The engine reads the top 50 from Postgres, and asks Qdrant for their name
+2. The engine reads the 50 from Postgres, and asks Qdrant for their name
    scores and for the code scores of their parents and children outside the
-   1,000.
-3. It computes 37 features for each of the 50 and sorts them with a LambdaMART
+   50.
+3. It computes 34 features for each of the 50 and sorts them with a LambdaMART
    model (LightGBM). `search/ranking.py` defines the features. The model is
    `search/ranker.txt`.
 
@@ -164,10 +164,9 @@ module, which share most of their code vocabulary.
 | Embeddings | The cosine of the code vector and of the name vector. |
 | Words | The share of the words that the query and the name have in common, in three forms. |
 | Signature | The share of the parameter and result types that the query and the head have in common. |
-| Uses | The best similarity among the definitions that the definition reaches, minus its own; the users in its release; the use by another release; the doc comment; the helper flag. A helper is a definition that a definition of its module reaches, when that name followed by `.` starts its name, as `Map.put.go` under `Map.put`. |
+| Uses | The users in its release; the use by another release; the doc comment; the helper flag. A helper is a definition that a definition of its module reaches, when that name followed by `.` starts its name, as `Map.put.go` under `Map.put`. |
 | Shape | Type, law, Base, the length of the name and of the code. |
-| Neighbors | The best similarity in the same module and in the same package among the 1,000, the similarity of the parent (`Date` for `Date.add_days`) and of the children, each minus its own. |
-| Query | The number of words and the best similarity. |
+| Neighbors | The best similarity in the same module and in the same package among the 50, the similarity of the parent (`Date` for `Date.add_days`) and of the children, each minus its own. |
 
 The embeddings, the words and the signature also give two values relative to
 the 50 candidates: the value minus the best value, and the z-score.
