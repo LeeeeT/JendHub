@@ -147,15 +147,6 @@ class Lines:
 class Matches:
     mode: OutputMode
     entries: list[str]
-    offset: int
-    total: int
-    more: bool
-
-
-@dataclass(frozen=True)
-class Paths:
-    paths: list[str]
-    offset: int
     total: int
 
 
@@ -254,7 +245,7 @@ async def grep_files(place: Place, given: GrepArguments) -> Matches:
         raise HTTPException(404, f"The store has no file or directory {place.path}.")
     target = f"{HERE}{place.inner}" if place.inner else "."
     end = given.offset + given.head_limit
-    wanted = end + 1 if given.output_mode == "content" else None
+    wanted = end if given.output_mode == "content" else None
     process = await asyncio.create_subprocess_exec(
         *ripgrep_command(given, target), cwd=place.root, stdin=DEVNULL, stdout=PIPE, stderr=PIPE
     )
@@ -271,25 +262,18 @@ async def grep_files(place: Place, given: GrepArguments) -> Matches:
         await process.wait()
     if error and not entries:
         raise HTTPException(400, f"Invalid grep: {error.removeprefix('rg: ').strip()}")
-    return Matches(
-        given.output_mode,
-        entries[given.offset : end],
-        given.offset,
-        len(entries),
-        len(entries) > end,
-    )
+    return Matches(given.output_mode, entries[given.offset : end], len(entries))
 
 
 def matching_paths(directory: Path, pattern: str) -> list[str]:
     return [path for path in file_paths(directory) if PurePosixPath(path).full_match(pattern)]
 
 
-async def glob_files(place: Place, pattern: str, offset: int) -> Paths:
+async def glob_files(place: Place, pattern: str, offset: int) -> list[str]:
     target = place.target
     if not target.is_dir():
         if target.exists():
             raise HTTPException(400, f"{place.path} is a file. Use read to read it.")
         raise HTTPException(404, f"The store has no directory {place.path}.")
     matched = await asyncio.to_thread(matching_paths, target, pattern)
-    found = [f"{place.path}/{path}" for path in matched]
-    return Paths(found[offset : offset + MAX_PATHS], offset, len(found))
+    return [f"{place.path}/{path}" for path in matched[offset : offset + MAX_PATHS]]

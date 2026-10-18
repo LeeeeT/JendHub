@@ -138,10 +138,6 @@ def client_name(ctx: Context) -> str | None:
     return f"{info.name} {info.version}".strip()
 
 
-def tool_links(tool: str, given: BaseModel) -> ToolLinks:
-    return ToolLinks(tool, given.model_dump(by_alias=True, exclude_unset=True, exclude_none=True))
-
-
 def answer(text: str, *, failed: bool = False) -> CallToolResult:
     return CallToolResult(content=[TextContent(text=text)], is_error=failed)
 
@@ -160,15 +156,15 @@ def tool_server(running: Running[Site], searching: Guard, version: str) -> Serve
 
     async def read(_: Context, arguments: dict[str, Any]) -> str:
         given = ReadArguments.model_validate(arguments)
-        return render_lines(await running.get().read(given), tool_links(READ_TOOL, given))
+        return render_lines(await running.get().read(given))
 
     async def grep(_: Context, arguments: dict[str, Any]) -> str:
         given = GrepArguments.model_validate(arguments)
-        return render_matches(await running.get().grep(given), tool_links(GREP_TOOL, given))
+        return render_matches(await running.get().grep(given))
 
     async def glob(_: Context, arguments: dict[str, Any]) -> str:
         given = GlobArguments.model_validate(arguments)
-        return render_paths(await running.get().glob(given), tool_links(GLOB_TOOL, given))
+        return render_paths(await running.get().glob(given))
 
     answers: dict[str, Answer] = {
         SEARCH_TOOL: search,

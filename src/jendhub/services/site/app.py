@@ -153,19 +153,16 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
         return render_results(found, links(site, request))
 
     @router.get("/read.txt")
-    async def read(request: Request, given: Annotated[ReadArguments, Query()]) -> str:
-        site = running.get()
-        return render_lines(await site.read(given), links(site, request))
+    async def read(given: Annotated[ReadArguments, Query()]) -> str:
+        return render_lines(await running.get().read(given))
 
     @router.get("/grep.txt")
-    async def grep(request: Request, given: Annotated[GrepArguments, Query()]) -> str:
-        site = running.get()
-        return render_matches(await site.grep(given), links(site, request))
+    async def grep(given: Annotated[GrepArguments, Query()]) -> str:
+        return render_matches(await running.get().grep(given))
 
     @router.get("/glob.txt")
-    async def glob(request: Request, given: Annotated[GlobArguments, Query()]) -> str:
-        site = running.get()
-        return render_paths(await site.glob(given), links(site, request))
+    async def glob(given: Annotated[GlobArguments, Query()]) -> str:
+        return render_paths(await running.get().glob(given))
 
     @router.get("/packages/{name}.txt")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> str:

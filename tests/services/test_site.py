@@ -215,10 +215,7 @@ async def test_agents_read_each_file_as_it_is_stored(site: httpx.AsyncClient) ->
     by_hash = await site.get("/read.txt", params={"file_path": f"{APP}/main.bend"})
     assert by_hash.text == numbered(APP_SOURCE)
     base = await site.get("/read.txt", params={"file_path": "Base/base.bend", "limit": 1})
-    assert base.text == (
-        "1\ttype Nat is Data:\n"
-        f"More: {SITE_URL}/read.txt?file_path=Base/base.bend&limit=1&offset=2\n"
-    )
+    assert base.text == "1\ttype Nat is Data:\n"
 
 
 async def test_agents_find_code_in_one_release(site: httpx.AsyncClient) -> None:
@@ -325,10 +322,7 @@ async def test_mcp_read_grep_and_glob_work_on_the_stored_files(site: httpx.Async
     read: dict[str, object] = {"file_path": "app@1.0.0.0/main.bend", "offset": 2, "limit": 2}
     assert await call_tool(site, "read", read) == (
         False,
-        (
-            "2\timport kit@1.0.0.0/main.bend as K\n3\t\n"
-            'More: read(file_path="app@1.0.0.0/main.bend", offset=4, limit=2)\n'
-        ),
+        "2\timport kit@1.0.0.0/main.bend as K\n3\t\n",
     )
     grep: dict[str, object] = {
         "pattern": "def",

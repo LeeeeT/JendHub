@@ -34,9 +34,10 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   differences are for the size of an answer and for the CPU of the server:
   `grep` and `glob` take one release, a `read` gives at most 2000 lines and cuts
   a line at 2000 characters, `grep` gives at most 1000 entries (250 by
-  default), and `glob` gives at most 1000 paths. A cut answer ends with the
-  call or URL of the next part. `grep` has no `type` parameter, because the
-  store keeps only `.bend` files.
+  default), and `glob` gives at most 1000 paths. As with the Read, Grep and
+  Glob tools, an answer does not tell where the next part starts: the agent
+  asks for it with `offset`. `grep` has no `type` parameter, because the store
+  keeps only `.bend` files.
 - **ripgrep:** `grep` runs `rg` itself on the stored files, so its regular
   expressions, its options and its output are those of the Grep tool. The
   regex engine of `rg` runs in linear time, so a pattern cannot block the

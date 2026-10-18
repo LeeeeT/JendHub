@@ -8,7 +8,7 @@ from jendhub.indexing.failures import Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease
 from jendhub.search.packages import ReleaseDetail
 from jendhub.search.sources import id_source, usage
-from jendhub.services.site.files import MAX_COLUMNS, Lines, Matches, Paths
+from jendhub.services.site.files import MAX_COLUMNS, Lines, Matches
 from jendhub.services.site.pages import counted, shortened
 from jendhub.services.site.views import PackageView, Result, Results, StatusView
 
@@ -109,33 +109,25 @@ def render_results(found: Results, links: Links) -> str:
     return "\n".join([*blocks, next_page] if next_page else blocks)
 
 
-def render_lines(found: Lines, links: Links) -> str:
+def render_lines(found: Lines) -> str:
     if not found.total:
         return f"{found.path} is empty.\n"
-    numbered = "".join(
+    return "".join(
         f"{number}\t{line[:MAX_COLUMNS]}\n"
         for number, line in enumerate(found.lines, start=found.offset)
     )
-    end = found.offset + len(found.lines)
-    return numbered + (links.next("offset", end) if end <= found.total else "")
 
 
-def render_matches(found: Matches, links: Links) -> str:
+def render_matches(found: Matches) -> str:
     files = found.mode == "files_with_matches"
     if not found.entries:
         return "No files found\n" if files else "No matches found\n"
     head = f"Found {counted(found.total, 'file')}\n" if files else ""
-    body = "".join(f"{entry}\n" for entry in found.entries)
-    end = found.offset + len(found.entries)
-    return head + body + (links.next("offset", end) if found.more else "")
+    return head + "".join(f"{entry}\n" for entry in found.entries)
 
 
-def render_paths(found: Paths, links: Links) -> str:
-    if not found.paths:
-        return "No files found\n"
-    return "".join(f"{path}\n" for path in found.paths) + following(
-        links, "offset", found.offset, len(found.paths), found.total
-    )
+def render_paths(paths: list[str]) -> str:
+    return "".join(f"{path}\n" for path in paths) if paths else "No files found\n"
 
 
 def render_problem(problem: Problem, links: Links) -> str:

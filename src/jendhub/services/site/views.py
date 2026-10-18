@@ -42,7 +42,6 @@ from jendhub.services.site.files import (
     GrepArguments,
     Lines,
     Matches,
-    Paths,
     Place,
     ReadArguments,
     glob_files,
@@ -230,7 +229,7 @@ class Site:
         async with self.greps:
             return await grep_files(place, given)
 
-    async def glob(self, given: GlobArguments) -> Paths:
+    async def glob(self, given: GlobArguments) -> list[str]:
         return await glob_files(await self.locate(given.path), given.pattern, given.offset)
 
     async def package(self, name: str, offset: int, limit: int) -> PackageView:

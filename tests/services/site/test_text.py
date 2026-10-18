@@ -9,7 +9,7 @@ from jendhub.search.packages import (
     ReleaseDetail,
 )
 from jendhub.search.sources import usage
-from jendhub.services.site.files import Lines, Matches, Paths
+from jendhub.services.site.files import Lines, Matches
 from jendhub.services.site.text import (
     ToolLinks,
     UrlLinks,
@@ -87,38 +87,22 @@ def test_no_results_say_so() -> None:
     assert render_results(Results("x", [], 0, 0), LINKS) == "No results.\n"
 
 
-def test_lines_are_numbered_and_tell_where_the_file_continues() -> None:
-    links = ToolLinks("read", {"file_path": "kit@1.0.0.0/main.bend", "limit": 2})
+def test_lines_are_numbered_and_cut_at_2000_characters() -> None:
     found = Lines("kit@1.0.0.0/main.bend", 3, ["def f:", "x" * 2001], 9)
-    assert render_lines(found, links) == (
-        f"3\tdef f:\n4\t{'x' * 2000}\n"
-        'More: read(file_path="kit@1.0.0.0/main.bend", limit=2, offset=5)\n'
-    )
-    assert render_lines(Lines("kit@1.0.0.0/main.bend", 8, ["a", "b"], 9), links) == "8\ta\n9\tb\n"
-    assert render_lines(Lines("kit@1.0.0.0/e.bend", 1, [], 0), links) == (
-        "kit@1.0.0.0/e.bend is empty.\n"
-    )
+    assert render_lines(found) == f"3\tdef f:\n4\t{'x' * 2000}\n"
+    assert render_lines(Lines("kit@1.0.0.0/e.bend", 1, [], 0)) == "kit@1.0.0.0/e.bend is empty.\n"
 
 
-def test_grep_files_give_the_count_and_the_next_page() -> None:
-    links = UrlLinks(ORIGIN, "/grep.txt", {"pattern": "f", "path": "kit@1.0.0.0"})
-    found = Matches("files_with_matches", ["kit@1.0.0.0/a.bend"], 0, 2, more=True)
-    assert render_matches(found, links) == (
-        "Found 2 files\nkit@1.0.0.0/a.bend\n"
-        f"More: {ORIGIN}/grep.txt?pattern=f&path=kit@1.0.0.0&offset=1\n"
-    )
-    assert render_matches(Matches("files_with_matches", [], 0, 0, more=False), links) == (
-        "No files found\n"
-    )
-    assert render_matches(Matches("content", [], 0, 0, more=False), links) == "No matches found\n"
+def test_grep_files_give_the_count() -> None:
+    found = Matches("files_with_matches", ["kit@1.0.0.0/a.bend"], 2)
+    assert render_matches(found) == "Found 2 files\nkit@1.0.0.0/a.bend\n"
+    assert render_matches(Matches("files_with_matches", [], 0)) == "No files found\n"
+    assert render_matches(Matches("content", [], 0)) == "No matches found\n"
 
 
-def test_glob_paths_give_the_next_page() -> None:
-    links = UrlLinks(ORIGIN, "/glob.txt", {"pattern": "**", "path": "kit@1.0.0.0"})
-    assert render_paths(Paths(["kit@1.0.0.0/a.bend"], 0, 2), links) == (
-        f"kit@1.0.0.0/a.bend\nMore: {ORIGIN}/glob.txt?pattern=**&path=kit@1.0.0.0&offset=1\n"
-    )
-    assert render_paths(Paths([], 0, 0), links) == "No files found\n"
+def test_glob_gives_one_path_on_each_line() -> None:
+    assert render_paths(["kit@1.0.0.0/a.bend"]) == "kit@1.0.0.0/a.bend\n"
+    assert render_paths([]) == "No files found\n"
 
 
 def test_a_package_shows_its_releases_and_a_page_of_definitions() -> None:

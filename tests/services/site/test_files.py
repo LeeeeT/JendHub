@@ -64,7 +64,7 @@ async def test_grep_gives_the_paths_that_read_takes(release: Place) -> None:
         f"{LABEL}/main.bend",
         f"{LABEL}/src/util.bend",
     ]
-    assert (found.total, found.more) == (3, False)
+    assert found.total == 3
     inner = await grep(inside(release, "src"), pattern="def", output_mode="content")
     assert inner.entries == [f"{LABEL}/src/util.bend:1:def g() -> Nat:"]
 
@@ -72,7 +72,6 @@ async def test_grep_gives_the_paths_that_read_takes(release: Place) -> None:
 async def test_grep_pages_through_the_matching_lines(release: Place) -> None:
     found = await grep(release, pattern="def", output_mode="content", head_limit=1, offset=1)
     assert found.entries == [f"{LABEL}/main.bend:3:def f() -> Nat:"]
-    assert found.more
 
 
 async def test_grep_follows_the_options_of_ripgrep(release: Place) -> None:
@@ -104,11 +103,13 @@ async def test_grep_explains_an_invalid_pattern(release: Place) -> None:
 
 
 async def test_glob_gives_the_matching_paths(release: Place) -> None:
-    assert (await glob_files(release, "*.bend", 0)).paths == [
+    assert await glob_files(release, "*.bend", 0) == [
         f"{LABEL}/.hidden.bend",
         f"{LABEL}/main.bend",
     ]
-    nested = await glob_files(release, "**/*.bend", 1)
-    assert (nested.paths, nested.total) == ([f"{LABEL}/main.bend", f"{LABEL}/src/util.bend"], 3)
+    assert await glob_files(release, "**/*.bend", 1) == [
+        f"{LABEL}/main.bend",
+        f"{LABEL}/src/util.bend",
+    ]
     with pytest.raises(HTTPException):
         await glob_files(inside(release, "main.bend"), "*", 0)
