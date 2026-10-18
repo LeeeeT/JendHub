@@ -13,9 +13,9 @@
 <div class="home">
 <section id="agents">
 <h2><span>1.</span> For agents.</h2>
-<p>Give your agent this prompt:</p>
-<div class="import"><code title="Click to select the prompt">When you write Bend, use {{ origin }}/llms.txt to search for Bend definitions.</code></div>
-<p>Alternatively, add JendHub to your agent as an MCP server. It gives the agent two tools: <b>search</b> finds definitions, and <b>source</b> reads their code.</p>
+<p>Tell your agent to read <a href="/llms.txt">{{ origin }}/llms.txt</a>.</p>
+<div class="import"><code title="Click to select the prompt">When using Bend, use {{ origin }}/llms.txt to search for Bend definitions.</code></div>
+<p>Alternatively, add JendHub to your agent as an MCP server.</p>
 <p class="use">In omp, in a session:</p>
 <div class="import"><code title="Click to select the command">/mcp add jendhub --scope user --url {{ origin }}/mcp --transport http</code></div>
 <p class="use">In Claude Code:</p>

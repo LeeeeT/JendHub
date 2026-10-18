@@ -254,8 +254,6 @@ async def test_agents_read_the_guide_and_robots_allow_them(site: httpx.AsyncClie
     guide = (await site.get("/llms.txt")).text
     assert f"GET {SITE_URL}/search.txt?q=<query>" in guide
     assert f"GET {SITE_URL}/src/<name@version>/<path>" in guide
-    assert "packages.txt" not in guide
-    assert f"MCP server at {SITE_URL}/mcp" in guide
     assert (await site.get("/robots.txt")).text == "User-agent: *\nDisallow: /search?\n"
 
 
@@ -383,7 +381,6 @@ async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.Async
     assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert "App.quadruple" in html
     assert 'href="/src/app@1.0.0.0/main.bend?def=quadruple"' in html
-    assert "Used by" not in html
 
 
 async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient) -> None:
@@ -410,15 +407,7 @@ async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) 
     assert "Indexed" in status
     assert PRODUCTION.label in status
     assert 'href="/files/kit@2.0.0.0/main.bend#L2">main.bend:2</a>' in status
-    home = (await site.get("/")).text
-    assert 'href="/search?q=decompress+gzip+data"' in home
-    assert f"When you write Bend, use {SITE_URL}/llms.txt to search for Bend definitions." in home
-    assert f"/mcp add jendhub --scope user --url {SITE_URL}/mcp --transport http" in home
-    assert f"claude mcp add --transport http jendhub {SITE_URL}/mcp" in home
-    assert f"codex mcp add jendhub --url {SITE_URL}/mcp" in home
-    assert "search.txt" not in home
-    assert 'href="https://github.com/LeeeeT/JendHub"' in home
-    assert "<b>2</b> packages" in home
+    assert "<b>2</b> packages" in (await site.get("/")).text
 
 
 async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> None:

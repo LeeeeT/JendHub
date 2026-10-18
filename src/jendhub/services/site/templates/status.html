@@ -4,8 +4,6 @@
 {% block main %}
 <h1>Index status</h1>
 <section>
-<h2>Generations</h2>
-<p class="muted">A generation is one complete build of the index. Search uses the live generation. A new generation replaces it when its build is complete.</p>
 {% if not view.generations %}
 <p class="muted">No index is built yet.</p>
 {% else %}
