@@ -193,15 +193,13 @@ async def test_agents_get_a_package_and_the_status_as_text(site: httpx.AsyncClie
     assert f"Invalid releases (1):\n  kit@2.0.0.0 ({KIT_V2})" in status
     assert f"   At {SITE_URL}/src/kit@2.0.0.0/main.bend line 2.\n" in status
     assert "   Files that do not load: main.bend.\n" in status
-    packages = (await site.get("/packages.txt")).text
-    assert f"  kit@1.0.0.0, 1 definition ({SITE_URL}/packages/kit.txt)\n" in packages
 
 
 async def test_agents_read_the_guide_and_robots_allow_them(site: httpx.AsyncClient) -> None:
     guide = (await site.get("/llms.txt")).text
     assert f"GET {SITE_URL}/search.txt?q=<query>" in guide
     assert f"GET {SITE_URL}/src/<name@version>/<path>" in guide
-    assert f"GET {SITE_URL}/packages.txt" in guide
+    assert "packages.txt" not in guide
     assert (await site.get("/robots.txt")).text == "User-agent: *\nDisallow: /search?\n"
 
 
@@ -252,6 +250,8 @@ async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient
     assert f'href="/definitions/{QUADRUPLE}">quadruple</a>' in file
     packages = (await site.get("/packages")).text
     assert 'href="/packages/kit"' in packages
+    assert "Packages <span>(2)</span>" in packages
+    assert (await site.get("/packages.txt")).status_code == httpx.codes.NOT_FOUND
     assert 'href="/packages/kit" aria-current="page"' not in packages
 
 

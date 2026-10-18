@@ -2,7 +2,7 @@
 {% block title %}Packages · JendHub{% endblock %}
 {% block head %}<meta name="description" content="The Bend packages from BendHub that JendHub searches.">{% endblock %}
 {% block main %}
-<h1>Packages <span>({{ found | length }})</span></h1>
+<h1>Packages <span>({{ "{:,}".format(total) }})</span></h1>
 <p class="meta">The release that search uses for each package on BendHub, and its definitions. <a href="{{ release_href('Base') }}">Base</a> is searched too.</p>
 <div class="table">
 <table class="packages">
@@ -14,4 +14,5 @@
 </tbody>
 </table>
 </div>
+{{ macros.pager(pages) }}
 {% endblock %}

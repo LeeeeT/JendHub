@@ -192,8 +192,8 @@ class Site:
             raise HTTPException(404, f"BendHub has no package {name}.")
         return PackageView(found, offset)
 
-    async def packages(self) -> list[PackageSummary]:
-        return await read_packages(self.pool, self.target().generation)
+    async def packages(self, offset: int, limit: int) -> tuple[list[PackageSummary], int]:
+        return await read_packages(self.pool, self.target().generation, offset, limit)
 
     async def status(self, offset: int, limit: int) -> StatusView:
         found, total = await invalid_releases(self.pool, offset, limit)

@@ -3,9 +3,8 @@ from urllib.parse import quote, urlencode
 
 from jendhub.indexing.failures import Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease
-from jendhub.search.packages import PackageSummary, ReleaseDetail
+from jendhub.search.packages import ReleaseDetail
 from jendhub.search.sources import ReleaseFiles, id_source, usage
-from jendhub.services.site.pages import counted
 from jendhub.services.site.views import DefinitionView, PackageView, Result, Results, StatusView
 
 INDENT = "   "
@@ -147,14 +146,6 @@ def render_status(view: StatusView, links: Links) -> str:
         + heading("Invalid releases", len(view.invalid), view.invalid_total, view.offset)
         + "".join(render_invalid(release, links) for release in view.invalid)
         + links.next("invalid_releases_offset", view.offset, len(view.invalid), view.invalid_total)
-    )
-
-
-def render_packages(packages: list[PackageSummary], links: Links) -> str:
-    return heading("Packages", len(packages), len(packages), 0) + "".join(
-        f"  {package.name}@{package.version}, {counted(package.definitions, 'definition')}"
-        f" ({links.origin}/packages/{quote(package.name, safe='')}.txt)\n"
-        for package in packages
     )
 
 

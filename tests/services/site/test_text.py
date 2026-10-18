@@ -7,7 +7,6 @@ from jendhub.search.engine import Hit
 from jendhub.search.packages import (
     DefinitionSummary,
     PackageDetail,
-    PackageSummary,
     ReleaseDetail,
 )
 from jendhub.search.sources import ReleaseFiles, usage
@@ -16,7 +15,6 @@ from jendhub.services.site.text import (
     render_definition,
     render_files,
     render_package,
-    render_packages,
     render_results,
     render_status,
 )
@@ -163,13 +161,4 @@ def test_the_files_of_a_release_are_full_urls() -> None:
     assert render_files(files, LINKS) == (
         "kit@1.0.0.0\n\n"
         f"  {ORIGIN}/src/kit@1.0.0.0/main.bend\n  {ORIGIN}/src/kit@1.0.0.0/src/a.bend\n"
-    )
-
-
-def test_the_packages_link_to_their_pages() -> None:
-    found = [PackageSummary("kit", "1.0.0.0", 12), PackageSummary("a b", "0.1.0.0", 1)]
-    assert render_packages(found, LINKS) == (
-        "Packages (2):\n"
-        f"  kit@1.0.0.0, 12 definitions ({ORIGIN}/packages/kit.txt)\n"
-        f"  a b@0.1.0.0, 1 definition ({ORIGIN}/packages/a%20b.txt)\n"
     )

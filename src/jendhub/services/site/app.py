@@ -41,7 +41,6 @@ from jendhub.services.site.text import (
     render_definition,
     render_files,
     render_package,
-    render_packages,
     render_results,
     render_status,
 )
@@ -151,11 +150,6 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
             raise HTTPException(404, f"The index has no definition {wanted} in {release}/{path}.")
         return render_definition(await site.definition(id_), links(site, request))
 
-    @router.get("/packages.txt")
-    async def packages(request: Request) -> str:
-        site = running.get()
-        return render_packages(await site.packages(), links(site, request))
-
     @router.get("/packages/{name}.txt")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> str:
         site = running.get()
@@ -226,9 +220,15 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
     router = APIRouter(dependencies=[Depends(limited)])
 
     @router.get("/packages")
-    async def packages() -> Response:
-        found = await running.get().packages()
-        return page("packages.html", found=found, section="packages", alternate="/packages.txt")
+    async def packages(request: Request, packages_offset: Offset = 0) -> Response:
+        found, total = await running.get().packages(packages_offset, PAGE)
+        return page(
+            "packages.html",
+            found=found,
+            total=total,
+            pages=pages(request, "packages_offset", Span(packages_offset, len(found), total), PAGE),
+            section="packages",
+        )
 
     @router.get("/packages/{name}")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> Response:
