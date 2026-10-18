@@ -412,6 +412,13 @@ this table. The tests in `tests` have the same layout.
 | Enrichment | `deepseek/deepseek-v4-flash-0731`, no reasoning | `deepinfra/fp8`, then `parasail/fp8` and `digitalocean` | Only for lab pipelines. |
 | Benchmark judge | `openai/gpt-6-luna`, medium reasoning | OpenAI, pinned | |
 
+The pin keeps the vectors of queries and definitions comparable. OpenRouter
+also offers DeepInfra and SiliconFlow (fp8) for this model. A test embedded the
+500 benchmark queries with each and ranked them against the Nebius index.
+SiliconFlow vectors have a cosine of 0.9999 to the Nebius vectors and lose
+0.001 nDCG. DeepInfra vectors have a cosine of 0.997 and lose 0.008, and only
+96% of the queries keep their first result.
+
 Queries get the Qwen3 instruction format: `Instruct: <task>\nQuery:<query>`.
 Documents get no instruction.
 
