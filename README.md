@@ -68,7 +68,6 @@ BendHub ──> syncer ──> Postgres <── worker ──> Qdrant
 | `GET /src/<release>/<path>?def=<name>` | `GET /definitions/<id>` | A definition with the import lines that its code uses, the definitions that it uses, and the first 100 definitions that use it. |
 | `GET /src/<release>/<path>` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one. `<release>` is `name@version`, the hash of the package, or `Base`. Each import line names an exact release, so the file loads from any project. The page links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | `GET /src/<release>/` | `GET /files/<release>` | The files of a release. The page also shows the number of indexed definitions in each file. |
-| | `GET /packages?packages_offset=0` | One page of 100 indexed packages, with the release that search uses and its number of definitions. Agents get no package list: search is how they find code. |
 | `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
 

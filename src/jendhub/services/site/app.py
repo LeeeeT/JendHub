@@ -219,17 +219,6 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
 def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
     router = APIRouter(dependencies=[Depends(limited)])
 
-    @router.get("/packages")
-    async def packages(request: Request, packages_offset: Offset = 0) -> Response:
-        found, total = await running.get().packages(packages_offset, PAGE)
-        return page(
-            "packages.html",
-            found=found,
-            total=total,
-            pages=pages(request, "packages_offset", Span(packages_offset, len(found), total), PAGE),
-            section="packages",
-        )
-
     @router.get("/packages/{name}")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> Response:
         view = await running.get().package(name, definitions_offset, PAGE)
@@ -241,7 +230,6 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
                 request, "definitions_offset", Span(definitions_offset, shown, total), PAGE
             ),
             alternate=f"/packages/{quote(name, safe='')}.txt",
-            section="packages",
         )
 
     @router.get("/files/{release}")

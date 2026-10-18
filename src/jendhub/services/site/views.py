@@ -21,7 +21,7 @@ from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.remote.openrouter import open_openrouter
 from jendhub.search.definitions import DefinitionDetail, read_definition
 from jendhub.search.engine import Hit, SearchEngine, Target
-from jendhub.search.packages import PackageDetail, PackageSummary, read_package, read_packages
+from jendhub.search.packages import PackageDetail, read_package
 from jendhub.search.ranking import Model, load_model
 from jendhub.search.searches import Client, Search, record_search
 from jendhub.search.sources import (
@@ -191,9 +191,6 @@ class Site:
         if found is None:
             raise HTTPException(404, f"BendHub has no package {name}.")
         return PackageView(found, offset)
-
-    async def packages(self, offset: int, limit: int) -> tuple[list[PackageSummary], int]:
-        return await read_packages(self.pool, self.target().generation, offset, limit)
 
     async def status(self, offset: int, limit: int) -> StatusView:
         found, total = await invalid_releases(self.pool, offset, limit)

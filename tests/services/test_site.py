@@ -248,11 +248,7 @@ async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient
     assert 'href="/files/kit@1.0.0.0/main.bend"' in file
     assert 'href="/files/Base/base.bend"' in file
     assert f'href="/definitions/{QUADRUPLE}">quadruple</a>' in file
-    packages = (await site.get("/packages")).text
-    assert 'href="/packages/kit"' in packages
-    assert "Packages <span>(2)</span>" in packages
-    assert (await site.get("/packages.txt")).status_code == httpx.codes.NOT_FOUND
-    assert 'href="/packages/kit" aria-current="page"' not in packages
+    assert (await site.get("/packages")).status_code == httpx.codes.NOT_FOUND
 
 
 async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) -> None:
@@ -264,7 +260,7 @@ async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) 
     assert 'href="/search?q=decompress+gzip+data"' in home
     assert f'href="/llms.txt">{SITE_URL}/llms.txt</a>' in home
     assert "search.txt" not in home
-    assert 'href="/packages">2 packages</a>' in home
+    assert "<b>2</b> packages" in home
 
 
 async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> None:

@@ -51,13 +51,6 @@ class PackageDetail:
     definitions_total: int
 
 
-@dataclass(frozen=True)
-class PackageSummary:
-    name: str
-    version: str
-    definitions: int
-
-
 def release_state(errors: Json, *, indexed: bool) -> ReleaseState:
     if errors is not None:
         return "invalid"
@@ -101,23 +94,3 @@ async def read_package(
         )
         definitions = [DefinitionSummary(*row) for row in await cursor.fetchall()]
     return PackageDetail(name, releases, definitions, 0 if total_row is None else total_row[0])
-
-
-async def read_packages(
-    pool: Pool, generation: int, offset: int, limit: int
-) -> tuple[list[PackageSummary], int]:
-    async with pool.connection() as connection:
-        cursor = await connection.execute(
-            "SELECT count(DISTINCT release) FROM definitions"
-            " WHERE generation = %s AND package IS NOT NULL",
-            (generation,),
-        )
-        total_row = await cursor.fetchone()
-        cursor = await connection.execute(
-            "SELECT package, version, count(*) FROM definitions"
-            " WHERE generation = %s AND package IS NOT NULL"
-            " GROUP BY package, version ORDER BY package OFFSET %s LIMIT %s",
-            (generation, offset, limit),
-        )
-        found = [PackageSummary(*row) for row in await cursor.fetchall()]
-    return found, 0 if total_row is None else total_row[0]

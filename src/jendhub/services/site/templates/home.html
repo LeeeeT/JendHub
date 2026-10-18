@@ -5,7 +5,7 @@
 <div class="hero">
 <h1>JendHub</h1>
 <p class="sub">a <b>search engine</b> for <b>Bend</b> definitions</p>
-<p class="tag">{% if live %}<b>{{ "{:,}".format(live.definitions) }}</b> definitions · <b>Base</b> and <a href="/packages">{{ live.releases - 1 }} packages</a> from <b>BendHub</b>{% else %}<b>Base</b> · every <b>BendHub</b> package · by <b>task</b> or by <b>name</b>{% endif %}</p>
+<p class="tag">{% if live %}<b>{{ "{:,}".format(live.definitions) }}</b> definitions · <b>Base</b> and <b>{{ "{:,}".format(live.releases - 1) }}</b> packages from <b>BendHub</b>{% else %}<b>Base</b> · every <b>BendHub</b> package · by <b>task</b> or by <b>name</b>{% endif %}</p>
 </div>
 {{ macros.search_form(large=True) }}
 <p class="examples muted">Try {% for example in examples %}<a href="{{ search_href(example) }}">{{ example }}</a>{{ ", " if not loop.last else "." }}{% endfor %}</p>
