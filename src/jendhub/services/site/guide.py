@@ -30,4 +30,8 @@ change it. You can read and copy all code on BendHub.
 To read a whole file, follow its import line:
 
 GET {origin}/src/<name@version>/<path>
+
+To see which packages and releases the search covers:
+
+GET {origin}/packages.txt
 """

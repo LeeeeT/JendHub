@@ -201,6 +201,7 @@ async def test_agents_read_the_guide_and_robots_allow_them(site: httpx.AsyncClie
     guide = (await site.get("/llms.txt")).text
     assert f"GET {SITE_URL}/search.txt?q=<query>" in guide
     assert f"GET {SITE_URL}/src/<name@version>/<path>" in guide
+    assert f"GET {SITE_URL}/packages.txt" in guide
     assert (await site.get("/robots.txt")).text == "User-agent: *\nDisallow: /search?\n"
 
 
@@ -271,6 +272,7 @@ async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> Non
     assert response.status_code == httpx.codes.NOT_FOUND
     assert response.headers["content-type"].startswith("text/html")
     assert "The index has no definition nothing." in response.text
+    assert "<title>Not Found · JendHub</title>" in response.text
 
 
 async def test_every_answer_has_the_security_headers(site: httpx.AsyncClient) -> None:

@@ -2,6 +2,7 @@ import asyncio
 import math
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from http import HTTPStatus
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Request, Response
@@ -92,7 +93,9 @@ def failure(
 ) -> Response:
     if for_agents(request.url.path):
         return text(f"{message}\n", status, headers)
-    response = page("error.html", code=status, status=status, message=message)
+    response = page(
+        "error.html", code=status, status=status, phrase=HTTPStatus(status).phrase, message=message
+    )
     response.headers.update(headers or {})
     return response
 
