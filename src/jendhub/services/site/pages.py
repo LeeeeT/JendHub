@@ -27,7 +27,6 @@ COUNTS: list[tuple[str, Callable[[GenerationStatus], int]]] = [
     ("Running", lambda generation: generation.jobs.running),
     ("Indexed", lambda generation: generation.jobs.done),
     ("Superseded", lambda generation: generation.jobs.superseded),
-    ("Invalid", lambda generation: generation.jobs.invalid),
     ("Failed", lambda generation: generation.jobs.failed),
 ]
 

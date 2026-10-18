@@ -244,7 +244,7 @@ async def test_agents_get_a_package_and_the_status_as_text(site: httpx.AsyncClie
     assert f"indexed  {SITE_URL}/src/kit@1.0.0.0/\n" in package
     assert f"  Kit.double ({DOUBLE_SOURCE})\n   # Doubles a number.\n" in package
     status = (await site.get("/status.txt")).text
-    assert "  Jobs: 0 queued, 0 running, 3 indexed, 0 superseded, 1 invalid, 0 failed\n" in status
+    assert "  Jobs: 0 queued, 0 running, 3 indexed, 0 superseded, 0 failed\n" in status
     assert f"Invalid releases (1):\n  kit@2.0.0.0 ({KIT_V2})" in status
     assert f"   At {SITE_URL}/src/kit@2.0.0.0/main.bend line 2.\n" in status
     assert "   Files that do not load: main.bend.\n" in status

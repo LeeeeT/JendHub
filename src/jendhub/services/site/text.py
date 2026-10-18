@@ -169,7 +169,7 @@ def render_generation(generation: GenerationStatus) -> str:
         f" vectors {generation.vectors}, indexer {generation.indexer_version},"
         f" {generation.releases} releases, {generation.definitions} definitions\n"
         f"  Jobs: {jobs.queued} queued, {jobs.running} running, {jobs.done} indexed,"
-        f" {jobs.superseded} superseded, {jobs.invalid} invalid, {jobs.failed} failed\n"
+        f" {jobs.superseded} superseded, {jobs.failed} failed\n"
     )
 
 
