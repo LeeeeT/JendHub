@@ -237,7 +237,7 @@ class Site:
         raise HTTPException(
             404,
             f"The index has no definitions of {place.path}. The index holds only Base and the"
-            " latest valid release of each package. read, grep and files work on every"
+            " latest valid release of each package. `read`, `grep` and `files` work on every"
             " release.",
         )
 

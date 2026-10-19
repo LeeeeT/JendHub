@@ -48,8 +48,7 @@ class SearchArguments(Arguments):
         Field(
             min_length=1,
             max_length=MAX_QUERY,
-            description="What you need in a few words, for example `decompress gzip data`,"
-            " or a name, for example `List.map`.",
+            description="What you need in a few words.",
         ),
     ]
     limit: Annotated[
@@ -180,20 +179,19 @@ class ToolSpec:
 
 SEARCH = ToolSpec(
     "search",
-    "Find the definitions (functions, types and laws) of Base and of the BendHub packages"
-    " that do a task, or that have a given name. The best results come first. Each result"
-    " gives the name to call, the import line, the head (doc comment and signature), and the"
-    " definition call that opens its code.",
+    "Find the definitions (functions, types and laws) of Base and of the BendHub packages."
+    " The best results come first. Each result gives the name to call, the import line,"
+    " the head (doc comment and signature), and the `definition` call that opens its code.",
     SearchArguments,
 )
 DEFINITION = ToolSpec(
     "definition",
     "Open one definition. The answer gives its code, the import lines that the code needs, and"
-    " the definitions that the code uses, each with the definition call that opens it. Each"
+    " the definitions that the code uses, each with the `definition` call that opens it. Each"
     " import line names an exact release, so you can copy the code and its import lines into"
-    " your project. The answer also gives the read call for the lines of the definition in its"
-    " file. definition opens only the definitions of Base and of the latest valid release of"
-    " each package, because only they are in the index. read, grep and files work on every"
+    " your project. The answer also gives the `read` call for the lines of the definition in its"
+    " file. `definition` opens only the definitions of Base and of the latest valid release of"
+    " each package, because only they are in the index. `read`, `grep` and `files` work on every"
     " release.",
     DefinitionArguments,
 )
@@ -202,26 +200,26 @@ READ = ToolSpec(
     "Read lines of a file of Base or of a release on BendHub. The answer gives each line as its"
     f" number, a tab and its text, and cuts a line after {MAX_COLUMNS} characters. If the"
     " answer stops before `end_line`, or before the end of the file when you give no"
-    " `end_line`, its last line gives the read call for the next lines. The file shows its"
+    " `end_line`, its last line gives the `read` call for the next lines. The file shows its"
     " imports as BendHub stores them: `./` and `../` name files of the same release. To copy"
-    " code, take its import lines from definition.",
+    " code, take its import lines from `definition`.",
     ReadArguments,
 )
 GREP = ToolSpec(
     "grep",
     "Find the lines of one release that match a regular expression, with ripgrep. In mode"
     " `lines`, a matching line comes as `path:line:text` and a context line as"
-    " `path-line-text`, with the path and the line number that read takes. A line `--`"
+    " `path-line-text`, with the path and the line number that `read` takes. A line `--`"
     " separates groups of lines that are not next to each other. Mode `files` gives one path"
     " on each line, and mode `counts` gives `path:count`. If more results exist, the last line"
-    " of the answer gives the grep call for the next page.",
+    " of the answer gives the `grep` call for the next page.",
     GrepArguments,
 )
 FILES = ToolSpec(
     "files",
-    "List the files of one release, or of a directory in it, with the paths that read, grep"
-    " and definition take. If more paths exist, the last line of the answer gives the files"
-    " call for the next page.",
+    "List the files of one release, or of a directory in it, with the paths that `read`,"
+    " `grep` and `definition` take. If more paths exist, the last line of the answer gives the"
+    " `files` call for the next page.",
     FilesArguments,
 )
 TOOLS = [SEARCH, DEFINITION, READ, GREP, FILES]

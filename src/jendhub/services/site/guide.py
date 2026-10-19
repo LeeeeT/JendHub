@@ -10,18 +10,17 @@ OPENSEARCH_TYPE = "application/opensearchdescription+xml"
 
 
 SUMMARY = (
-    "JendHub is a search engine for the definitions of Base, the standard library of Bend, and"
+    "JendHub is a search engine for the definitions of Base (the standard library of Bend) and"
     f" of the packages on BendHub ({HUB})."
 )
 SEARCH_FIRST = (
-    "Before you write a Bend function or type, use search to find one that exists. Tell what"
+    "Before you write a Bend function or type, use `search` to find one that exists. Tell what"
     " you need in a few words: the task, some keywords or a short description, for example"
-    " `decompress gzip data`, `base64 encode` or `sha256 hash of bytes`. A name, such as"
-    " `List.map`, also works."
+    " `decompress gzip data`, `base64 encode` or `sha256 hash of bytes`."
 )
 EXPLORE = (
-    "Each result gives the definition call that opens its code. Use read to see more of a"
-    " file, grep to find code in one release, and files to list the files of a release. A"
+    "Each result gives the `definition` call that opens its code. Use `read` to see more of a"
+    " file, `grep` to find code in one release, and `files` to list the files of a release. A"
     " path names a release as `name@version` and then a file in it, for example"
     " `kit@1.0.0.0/json.bend`. Base is `Base/base.bend`."
 )
@@ -33,14 +32,14 @@ IMPORTS = (
 )
 COPY = (
     "When a result is close to what you need, copy its code and the import lines that"
-    " definition gives into your project, and change it. You can read and copy all code on"
+    " `definition` gives into your project, and change it. You can read and copy all code on"
     " BendHub."
 )
 TOOLS_INTRO = (
-    "Each tool is a GET path that takes its parameters in the query string. Encode each value"
+    "Each tool is a `GET` path that takes its parameters in the query string. Encode each value"
     " for a URL: for example, `+` is `%2B`, `#` is `%23`, `&` is `%26` and a space is `%20`."
     " Each tool answers with plain text, also for an error. In an answer, a call to a tool is"
-    " a full URL that you can GET."
+    " a full URL that you can `GET`."
 )
 
 INSTRUCTIONS = f"{SUMMARY}\n\n{SEARCH_FIRST}\n\n{EXPLORE}\n\n{IMPORTS}\n\n{COPY}"
@@ -102,7 +101,7 @@ def tool_section(origin: str, spec: ToolSpec) -> str:
     )
     return f"""### {spec.name}
 
-GET {origin}/{spec.name}.txt?{query}
+`GET {origin}/{spec.name}.txt?{query}`
 
 {spec.description}
 

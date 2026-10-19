@@ -108,7 +108,7 @@ def split_lines(text: str) -> list[str]:
 
 async def read_lines(place: Place, start_line: int, end_line: int | None) -> Lines:
     if place.target.is_dir():
-        raise HTTPException(400, f"{place.path} is a directory. Use files to list its files.")
+        raise HTTPException(400, f"{place.path} is a directory. Use `files` to list its files.")
     text = await asyncio.to_thread(read_text, place.target)
     if text is None:
         raise HTTPException(404, f"The store has no file {place.path}.")
@@ -216,7 +216,7 @@ async def grep_files(place: Place, given: GrepArguments) -> Page:
 async def list_files(place: Place, given: FilesArguments) -> Page:
     if not place.target.is_dir():
         if place.target.exists():
-            raise HTTPException(400, f"{place.path} is a file. Use read to read it.")
+            raise HTTPException(400, f"{place.path} is a file. Use `read` to read it.")
         raise HTTPException(404, f"The store has no directory {place.path}.")
     return await ripgrep(
         place, files_command(given, ripgrep_target(place)), given.limit, given.offset
