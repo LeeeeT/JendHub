@@ -135,7 +135,7 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
 | Service | Job | State |
 |---|---|---|
 | `syncer` | Stores the new packages of BendHub and each new Base release. Queues an index job for each new latest release. Promotes a finished generation and deletes retired ones. | none |
-| `worker` | Runs the index jobs: extracts the definitions of a release, resolves its uses with the Rust indexer, computes the rerank features, embeds the documents and writes Postgres and Qdrant. Scale it out with more replicas. | none |
+| `worker` | Runs the index jobs: extracts the definitions of a release, resolves its uses with the Rust indexer, computes the rerank features, embeds the documents and writes Postgres and Qdrant. Each job runs in a new child process, because Python keeps the memory of a large release after the job, and on a small server that memory goes to swap. Scale it out with more replicas. | none |
 | `site` | The public site. Runs the search (embeds the query, gets candidates from Qdrant, and reranks them), reads the library for `definition`, `read`, `grep` and `files`, and answers people with HTML pages and agents with plain text. | none |
 
 Postgres, the library and Qdrant are the only stores.
@@ -419,7 +419,7 @@ All settings come from the environment.
 | `JENDHUB_STATUS_SECONDS` | `site`: the time it keeps the sizes of the generations | 30 |
 | `JENDHUB_SYNC_INTERVAL_SECONDS` | `syncer` | 300 |
 | `JENDHUB_LIBRARY_PATH` | `syncer`, `worker`, `site`, the CLI: the directory of the library | `data/library` |
-| `JENDHUB_WORKER_CONCURRENCY` | `worker` | 2 |
+| `JENDHUB_WORKER_CONCURRENCY` | `worker`: the jobs that run at a time (`deploy/compose.yaml` sets 1, for a server with little memory) | 2 |
 
 ## Deployment
 

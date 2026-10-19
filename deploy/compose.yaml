@@ -80,6 +80,7 @@ services:
     environment:
       <<: *environment
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
+      JENDHUB_WORKER_CONCURRENCY: "1"
 
   site:
     <<: *jendhub

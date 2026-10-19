@@ -5,16 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from jendhub.db.pool import open_pool
-from jendhub.embedding.cache import CachedEmbedder, EmbeddingCache
-from jendhub.embedding.remote import RemoteEmbedder
-from jendhub.hub.store import package_store
-from jendhub.indexing.store import IndexStore
-from jendhub.indexing.worker import Worker
-from jendhub.remote.openrouter import open_openrouter
+from jendhub.indexing.child import open_worker
 from jendhub.services.app import service_app
-from jendhub.settings import DatabaseSettings, OpenRouterSettings, QdrantSettings, load_settings
-from jendhub.vectors.index import open_vector_index
+from jendhub.settings import load_settings
 
 
 class WorkerSettings(BaseSettings):
@@ -29,16 +22,11 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        async with (
-            open_pool(load_settings(DatabaseSettings)) as pool,
-            open_vector_index(load_settings(QdrantSettings)) as vectors,
-            open_openrouter(load_settings(OpenRouterSettings)) as openrouter,
-        ):
-            embedder = CachedEmbedder(EmbeddingCache(pool), RemoteEmbedder(openrouter))
-            worker = Worker(IndexStore(pool), package_store(pool), vectors, embedder)
+        async with open_worker() as worker:
             stop = asyncio.Event()
             tasks = [
-                asyncio.create_task(worker.serve(stop)) for _ in range(settings.worker_concurrency)
+                asyncio.create_task(worker.serve(stop, worker.attempt_in_child))
+                for _ in range(settings.worker_concurrency)
             ]
             started.set()
             try:
