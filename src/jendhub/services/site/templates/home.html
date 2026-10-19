@@ -35,7 +35,7 @@
 <section>
 <h2><span>3.</span> What you can search by.</h2>
 <p>Search by the task in your own words, such as <a href="{{ search_href('decompress gzip data') }}">decompress gzip data</a>, by a name, such as <a href="{{ search_href('List.map') }}">List.map</a>, or by a type, such as <a href="{{ search_href('(A -> B), List<A> -> List<B>') }}">(A -&gt; B), List&lt;A&gt; -&gt; List&lt;B&gt;</a>. JendHub compares your words with the code, the names, the types and the doc comments of each definition. It also prefers definitions that a lot of other code uses.</p>
-<p>Filters in the box narrow a search. <code>package=bend-kit-json</code> keeps the definitions of one package, <code>uses=bend-kit-json/json:parse.bytes</code> keeps the definitions that use a definition, and <code>used_in=bend-kit-json/json:parse.bytes</code> keeps the definitions that a definition uses. A definition of Base is its name, such as <code>uses=List.map</code>. You can give more than one filter, and each one narrows the search. With filters and no words, the most used definitions come first.</p>
+<p>Filters in the box narrow a search. <code>package=bend-kit-json</code> keeps the definitions of one package, <code>uses=bend-kit-json/json:parse.bytes</code> keeps the definitions that use a definition, and <code>used_by=bend-kit-json/json:parse.bytes</code> keeps the definitions that a definition uses. A definition of Base is its name, such as <code>uses=List.map</code>. You can give more than one filter, and each one narrows the search. With filters and no words, the most used definitions come first.</p>
 </section>
 </div>
 {% endblock %}

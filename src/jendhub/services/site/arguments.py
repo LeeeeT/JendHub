@@ -85,7 +85,7 @@ class SearchArguments(Arguments):
             f" {REPEAT}",
         ),
     ]
-    used_in: Annotated[
+    used_by: Annotated[
         Values,
         Field(
             default_factory=list,
@@ -108,7 +108,7 @@ class SearchArguments(Arguments):
 
     @property
     def filters(self) -> Filters:
-        return Filters(tuple(self.package), tuple(self.uses), tuple(self.used_in))
+        return Filters(tuple(self.package), tuple(self.uses), tuple(self.used_by))
 
 
 class DefinitionArguments(Arguments):

@@ -30,7 +30,7 @@ async def record_search(pool: Pool, search: Search) -> None:
     async with pool.connection() as connection:
         await connection.execute(
             "INSERT INTO searches (client, user_agent, client_name, query, packages, uses,"
-            " used_in, page_offset, page_limit, generation, results, seconds)"
+            " used_by, page_offset, page_limit, generation, results, seconds)"
             " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 search.caller.client,
@@ -39,7 +39,7 @@ async def record_search(pool: Pool, search: Search) -> None:
                 search.query,
                 list(search.filters.packages),
                 list(search.filters.uses),
-                list(search.filters.used_in),
+                list(search.filters.used_by),
                 search.offset,
                 search.limit,
                 search.generation,

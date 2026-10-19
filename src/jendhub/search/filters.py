@@ -11,16 +11,16 @@ from jendhub.search.sources import BASE
 class Filters:
     packages: tuple[str, ...] = ()
     uses: tuple[str, ...] = ()
-    used_in: tuple[str, ...] = ()
+    used_by: tuple[str, ...] = ()
 
     def __bool__(self) -> bool:
-        return bool(self.packages or self.uses or self.used_in)
+        return bool(self.packages or self.uses or self.used_by)
 
     def words(self) -> list[str]:
         return [
             *(f"package={package}" for package in self.packages),
             *(f"uses={key}" for key in self.uses),
-            *(f"used_in={key}" for key in self.used_in),
+            *(f"used_by={key}" for key in self.used_by),
         ]
 
 
@@ -89,6 +89,6 @@ async def filtered_points(pool: Pool, generation: int, filters: Filters) -> list
         found: list[set[int]] = [
             *[await package_points(connection, generation, name) for name in filters.packages],
             *[await user_points(connection, generation, key) for key in filters.uses],
-            *[await used_points(connection, generation, key) for key in filters.used_in],
+            *[await used_points(connection, generation, key) for key in filters.used_by],
         ]
     return sorted(found[0].intersection(*found[1:])) if found else []

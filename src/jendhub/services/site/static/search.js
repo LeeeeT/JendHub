@@ -1,4 +1,4 @@
-const FILTERS = ["package", "uses", "used_in"];
+const FILTERS = ["package", "uses", "used_by"];
 
 function readable(value) {
 	return encodeURIComponent(value).replace(/%2F/g, "/").replace(/%3A/g, ":").replace(/%40/g, "@");

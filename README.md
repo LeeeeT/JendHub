@@ -11,7 +11,7 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   they read text more easily than JSON, and most fetch tools cannot ask for a
   format. People get the same data as HTML pages. One service serves both
   forms, because they are one product with one life cycle.
-- **Search filters:** `package`, `uses` and `used_in` narrow a search to one
+- **Search filters:** `package`, `uses` and `used_by` narrow a search to one
   package, to the definitions that use a definition, or to the definitions
   that a definition uses. A filter names a definition by its key,
   `package/module:name` with no version, because the index holds one release
@@ -135,7 +135,7 @@ BendHub ──> syncer ──> Postgres, library <── worker ──> Qdrant
 | For agents (plain text) | For people (HTML) | Answer |
 |---|---|---|
 | `GET /llms.txt` | `GET /` | How to use JendHub. The home page also shows the size of the live index. |
-| `GET /search.txt?query=<query>&package=<package>&uses=<key>&used_in=<key>&limit=10&offset=0` | `GET /search?query=<query>&package=<package>&uses=<key>&used_in=<key>&offset=0` | The best definitions with their import line, the name to call and the definition URL. Each filter can repeat, and each one narrows the search. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
+| `GET /search.txt?query=<query>&package=<package>&uses=<key>&used_by=<key>&limit=10&offset=0` | `GET /search?query=<query>&package=<package>&uses=<key>&used_by=<key>&offset=0` | The best definitions with their import line, the name to call and the definition URL. Each filter can repeat, and each one narrows the search. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
 | `GET /definition.txt?path=<file>&name=<name>` | `GET /definitions/<id>` | A definition of the index: its code, the import lines that its code uses as exact releases, its lines in its file, and the definitions that it uses. |
 | `GET /read.txt?path=<file>&start_line=1&end_line=<line>` | `GET /files/<release>/<path>` | Lines of a file of any stored release, also an invalid or unindexed one, as `N<tab>text`. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | `GET /grep.txt?pattern=<regex>&path=<release>` | | The lines, paths or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters: `glob`, `mode` (`lines`, `files` or `counts`), `context`, `before`, `after`, `ignore_case`, `multiline`, `limit` (1 to 1000, 250) and `offset`. |
@@ -155,7 +155,7 @@ agent with one of these commands:
 
 | Tool | Answer |
 |---|---|
-| `search(query="", package=[], uses=[], used_in=[], limit=10, offset=0)` | The same as `/search.txt`. |
+| `search(query="", package=[], uses=[], used_by=[], limit=10, offset=0)` | The same as `/search.txt`. |
 | `definition(path, name)` | The same as `/definition.txt`. |
 | `read(path, start_line=1, end_line=None)` | The same as `/read.txt`. |
 | `grep(pattern, path, ...)` | The same as `/grep.txt`. |

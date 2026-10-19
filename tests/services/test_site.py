@@ -203,7 +203,7 @@ async def search_text(site: httpx.AsyncClient, params: list[tuple[str, str]]) ->
 
 async def test_agents_filter_a_search_by_package_and_uses(site: httpx.AsyncClient) -> None:
     assert call_names(await search_text(site, [("uses", "kit/main:double")])) == ["App.quadruple"]
-    assert sorted(call_names(await search_text(site, [("used_in", "app/main:quadruple")]))) == [
+    assert sorted(call_names(await search_text(site, [("used_by", "app/main:quadruple")]))) == [
         "Kit.double",
         "Nat",
     ]
@@ -217,16 +217,16 @@ async def test_agents_filter_a_search_by_package_and_uses(site: httpx.AsyncClien
 
 
 async def test_filtered_pages_keep_every_filter(site: httpx.AsyncClient) -> None:
-    params = [("used_in", "app/main:quadruple"), ("package", "Base"), ("limit", "1")]
+    params = [("used_by", "app/main:quadruple"), ("package", "Base"), ("limit", "1")]
     assert call_names(await search_text(site, params)) == ["Nat"]
-    assert (await search_text(site, [("used_in", "app/main:quadruple"), ("limit", "1")])).endswith(
-        f"More: {SITE_URL}/search.txt?used_in=app/main:quadruple&limit=1&offset=1\n"
+    assert (await search_text(site, [("used_by", "app/main:quadruple"), ("limit", "1")])).endswith(
+        f"More: {SITE_URL}/search.txt?used_by=app/main:quadruple&limit=1&offset=1\n"
     )
     failed, text = await call_tool(
-        site, "search", {"used_in": ["app/main:quadruple"], "uses": [], "limit": 1}
+        site, "search", {"used_by": ["app/main:quadruple"], "uses": [], "limit": 1}
     )
     assert not failed
-    assert text.endswith('More: search(used_in=["app/main:quadruple"], limit=1, offset=1)\n')
+    assert text.endswith('More: search(used_by=["app/main:quadruple"], limit=1, offset=1)\n')
 
 
 @pytest.mark.parametrize(
@@ -235,7 +235,7 @@ async def test_filtered_pages_keep_every_filter(site: httpx.AsyncClient) -> None
         ([], httpx.codes.BAD_REQUEST),
         ([("query", " "), ("uses", "")], httpx.codes.BAD_REQUEST),
         ([("uses", "kit/main:nothing")], httpx.codes.NOT_FOUND),
-        ([("used_in", "kit@1.0.0.0/main:double")], httpx.codes.NOT_FOUND),
+        ([("used_by", "kit@1.0.0.0/main:double")], httpx.codes.NOT_FOUND),
         ([("package", "nothing")], httpx.codes.NOT_FOUND),
     ],
 )
@@ -501,7 +501,7 @@ async def test_people_filter_a_search_and_see_the_filters_in_the_box(
     assert f'href="/definitions/{QUADRUPLE}"' in html
     assert 'href="/search.txt?uses=kit/main:double&amp;query=times%20four"' in html
     async with pool.connection() as connection:
-        cursor = await connection.execute("SELECT query, packages, uses, used_in FROM searches")
+        cursor = await connection.execute("SELECT query, packages, uses, used_by FROM searches")
         assert await cursor.fetchall() == [("times four", [], ["kit/main:double"], [])]
 
 
