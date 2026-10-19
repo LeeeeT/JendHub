@@ -24,12 +24,13 @@
 {%- endmacro %}
 
 {% macro preview(title, found, href, empty) -%}
-<h2>{{ title }} <span>({% if found.total %}<a href="{{ href }}">{{ found.total }}</a>{% else %}0{% endif %})</span></h2>
+<h2>{{ title }} <span>(<a href="{{ href }}">{{ found.total }}</a>)</span></h2>
 {% if found.total %}
 <ul class="ids">
 {% for id in found.ids %}
 <li><a href="{{ definition_href(id) }}">{{ id }}</a></li>
 {% endfor %}
+{% if found.total > found.ids | length %}<li><a href="{{ href }}">…</a></li>{% endif %}
 </ul>
 {% else %}
 <p class="muted">{{ empty }}</p>

@@ -519,6 +519,7 @@ async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.Async
     assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert 'href="/definition.txt?path=app@1.0.0.0/main.bend&amp;name=quadruple"' in html
     assert 'Uses <span>(<a href="/search?used_by=app/main:quadruple">2</a>)</span>' in html
+    assert 'Used by <span>(<a href="/search?uses=app/main:quadruple">0</a>)</span>' in html
     assert "No other definition uses this definition." in html
     double = (await site.get(f"/definitions/{DOUBLE}")).text
     assert f'href="/definitions/{QUADRUPLE}"' in double
