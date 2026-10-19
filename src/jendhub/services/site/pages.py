@@ -77,6 +77,10 @@ def search_href(query: str) -> str:
     return f"/search?{readable([('query', query)])}"
 
 
+def filter_href(name: str, value: str) -> str:
+    return f"/search?{readable([(name, value)])}"
+
+
 @dataclass(frozen=True)
 class Reference:
     id: str
@@ -205,6 +209,7 @@ def environment() -> Environment:
         file_href=file_href,
         lines_href=lines_href,
         search_href=search_href,
+        filter_href=filter_href,
         reference=reference,
         by_file=by_file,
         source_line=source_line,
