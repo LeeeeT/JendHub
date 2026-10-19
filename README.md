@@ -43,9 +43,11 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   few hundred files. `grep` has no `type` parameter, because the store
   keeps only `.bend` files. The `offset` of `read` is a true offset, unlike the
   line number of the Read tool: 0 starts at the first line, and 1 skips it.
-  This is the only change to the parameters. The descriptions copy those of
-  the three tools word for word, with changes only where JendHub works
-  differently, so they are not in ASD-STE100.
+  This is the only change to the parameters. The descriptions start from those
+  of the three tools, so they are not in ASD-STE100. They differ where JendHub
+  works differently, where the original is wrong (`cat -n` format, a count of
+  matches), and where it misleads (read `offset` and `limit` only for a large
+  file, glob examples that match every `.bend` file).
 - **ripgrep:** `grep` runs `rg` itself on the stored files, so its regular
   expressions, its options and its output are those of the Grep tool. The
   regex engine of `rg` runs in linear time, so a pattern cannot block the

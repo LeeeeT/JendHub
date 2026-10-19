@@ -72,6 +72,10 @@ async def test_grep_follows_the_options_of_ripgrep(release: Place) -> None:
     assert (await grep(release, pattern="DEF G", **{"-i": True}, glob="src/**")).entries == [
         f"{LABEL}/src/util.bend"
     ]
+    assert (await grep(release, pattern="def", glob="!src/**")).entries == [
+        f"{LABEL}/.hidden.bend",
+        f"{LABEL}/main.bend",
+    ]
     assert (await grep(release, pattern="e", output_mode="count")).entries == [
         f"{LABEL}/.hidden.bend:1",
         f"{LABEL}/main.bend:2",

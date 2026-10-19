@@ -40,26 +40,20 @@ class ReadArguments(BaseModel):
         str,
         Field(
             min_length=1,
-            description="The path to the file to read, for example `kit@1.0.0.0/json.bend`",
+            description="The path to the file to read, for example `kit@1.0.0.0/json.bend`.",
         ),
     ]
     offset: Annotated[
         int,
         Field(
             ge=0,
-            description="The number of lines to skip before reading. Only provide if the file"
-            " is too large to read at once",
+            description="The number of lines to skip before reading. Use it with limit to read"
+            " one part of a file, such as the lines that a search result gives.",
         ),
     ] = 0
-    limit: Annotated[
-        int,
-        Field(
-            ge=1,
-            le=MAX_LINES,
-            description="The number of lines to read. Only provide if the file is too large"
-            " to read at once.",
-        ),
-    ] = MAX_LINES
+    limit: Annotated[int, Field(ge=1, le=MAX_LINES, description="The number of lines to read.")] = (
+        MAX_LINES
+    )
 
 
 class GrepArguments(BaseModel):
@@ -83,7 +77,8 @@ class GrepArguments(BaseModel):
     glob: Annotated[
         str | None,
         Field(
-            description='Glob pattern to filter files (e.g. "*.bend", "src/**") - maps to rg --glob'
+            description='Glob pattern to filter files (e.g. "src/**", "!**/tests/**") - maps to'
+            " rg --glob"
         ),
     ] = None
     output_mode: Annotated[
@@ -91,7 +86,8 @@ class GrepArguments(BaseModel):
         Field(
             description='Output mode: "content" shows matching lines (supports -A/-B/-C'
             ' context, -n line numbers, head_limit), "files_with_matches" shows file paths'
-            ' (supports head_limit), "count" shows match counts (supports head_limit).'
+            ' (supports head_limit), "count" shows the number of matching lines in each file'
+            " (supports head_limit)."
         ),
     ] = "files_with_matches"
     before: Annotated[
@@ -208,7 +204,7 @@ READ = ToolSpec(
         f"Reads up to {MAX_LINES} lines by default.",
         "When you already know which part of the file you need, only read that part. This"
         " can be important for larger files.",
-        "Results are returned using cat -n format, with line numbers starting at 1",
+        "Each line is returned as its number, a tab and its text, with line numbers starting at 1.",
         "Reading a directory or a missing file returns an error rather than content.",
     ),
     ReadArguments,
@@ -219,7 +215,7 @@ GREP = ToolSpec(
         "Content search built on ripgrep, in the files of one release.",
         r'Full regex syntax (e.g. "def parse", "type \w+ is Data"). Ripgrep, not grep —'
         r" escape literal braces (`Box\{value: Nat\}`).",
-        'Filter with `glob` (e.g. "**/*.bend").',
+        'Filter with `glob` (e.g. "src/**").',
         '`output_mode`: "content" (matching lines), "files_with_matches" (paths only,'
         ' default), or "count".',
         "`multiline: true` for patterns that span lines.",
@@ -229,7 +225,8 @@ GREP = ToolSpec(
 GLOB = ToolSpec(
     "glob",
     'Fast file pattern matching in one release. Supports glob patterns like "**/*.bend" or'
-    ' "src/**/*.bend". Returns matching file paths sorted by path.',
+    ' "src/**/*.bend", which match the paths relative to `path`. Returns matching file paths'
+    " sorted by path.",
     GlobArguments,
 )
 TOOLS = [SEARCH, READ, GREP, GLOB]
