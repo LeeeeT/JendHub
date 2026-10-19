@@ -223,7 +223,12 @@ async def test_agents_read_each_file_as_it_is_stored(site: httpx.AsyncClient) ->
 
 
 async def test_agents_find_code_in_one_release(site: httpx.AsyncClient) -> None:
-    content = {"pattern": "double", "path": "app@1.0.0.0", "output_mode": "content", "-n": "false"}
+    content = {
+        "pattern": "double",
+        "path": "app@1.0.0.0",
+        "output_mode": "content",
+        "line_numbers": "false",
+    }
     assert (await site.get("/grep.txt", params=content)).text == (
         "app@1.0.0.0/main.bend:  K.double(K.double(n))\n"
     )
@@ -334,7 +339,7 @@ async def test_mcp_read_grep_and_glob_work_on_the_stored_files(site: httpx.Async
         "pattern": "def",
         "path": "app@1.0.0.0",
         "output_mode": "content",
-        "-A": 1,
+        "after": 1,
     }
     assert await call_tool(site, "grep", grep) == (
         False,
@@ -360,8 +365,8 @@ async def test_mcp_read_grep_and_glob_work_on_the_stored_files(site: httpx.Async
         ("read", {"file_path": "kit/main.bend"}, "The store has no release kit."),
         (
             "grep",
-            {"pattern": "x", "path": "kit@1.0.0.0", "-A": -1},
-            "Invalid parameter -A: Input should be greater than or equal to 0.",
+            {"pattern": "x", "path": "kit@1.0.0.0", "after": -1},
+            "Invalid parameter after: Input should be greater than or equal to 0.",
         ),
         (
             "search",

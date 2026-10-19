@@ -42,8 +42,12 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   part, and `glob`, like the Glob tool, has no paging: a release has at most a
   few hundred files. `grep` has no `type` parameter, because the store
   keeps only `.bend` files. The `offset` of `read` is a true offset, unlike the
-  line number of the Read tool: 0 starts at the first line, and 1 skips it.
-  This is the only change to the parameters. The descriptions start from those
+  line number of the Read tool: 0 starts at the first line, and 1 skips it. The
+  flags of the Grep tool (`-A`, `-B`, `-C`, `-n`, `-i`, `-o`) have names
+  (`after`, `before`, `context`, `line_numbers`, `ignore_case`,
+  `only_matching`), because the parameters go into URLs and MCP calls, not a
+  command line. `-C` was the same as `context`, so it is gone. These are the
+  only changes to the parameters. The descriptions start from those
   of the three tools, so they are not in ASD-STE100. They differ where JendHub
   works differently, where the original is wrong (`cat -n` format, a count of
   matches), and where it misleads (read `offset` and `limit` only for a large
@@ -124,7 +128,7 @@ BendHub ──> syncer ──> Postgres, library <── worker ──> Qdrant
 | `GET /search.txt?query=<query>&limit=10&offset=0` | `GET /search?q=<query>&offset=0` | The best definitions with their import line and the name to call. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
 | `GET /read.txt?file_path=<release>/<path>&offset=0&limit=2000` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one, as `N<tab>text` lines. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | | `GET /definitions/<id>` | A definition with the import lines that its code uses, and the definitions that it uses. Its text form is the `read.txt` of its lines. |
-| `GET /grep.txt?pattern=<regex>&path=<release>` | | The paths, lines or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters are those of the Grep tool: `glob`, `output_mode` (`files_with_matches`, `content` or `count`), `-A`, `-B`, `-C`, `context`, `-n`, `-i`, `-o`, `multiline`, `head_limit` (1 to 1000, 250) and `offset`. |
+| `GET /grep.txt?pattern=<regex>&path=<release>` | | The paths, lines or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters are those of the Grep tool, with names for its flags: `glob`, `output_mode` (`files_with_matches`, `content` or `count`), `before` (`-B`), `after` (`-A`), `context` (`-C`), `line_numbers` (`-n`), `ignore_case` (`-i`), `only_matching` (`-o`), `multiline`, `head_limit` (1 to 1000, 250) and `offset`. |
 | `GET /glob.txt?pattern=<glob>&path=<release>` | `GET /files/<release>` | The files of one release whose paths match a glob, such as `**/*.bend`. The page shows all files with the number of indexed definitions in each. |
 | `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |

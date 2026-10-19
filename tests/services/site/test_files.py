@@ -69,7 +69,7 @@ async def test_grep_pages_through_the_matching_lines(release: Place) -> None:
 
 
 async def test_grep_follows_the_options_of_ripgrep(release: Place) -> None:
-    assert (await grep(release, pattern="DEF G", **{"-i": True}, glob="src/**")).entries == [
+    assert (await grep(release, pattern="DEF G", ignore_case=True, glob="src/**")).entries == [
         f"{LABEL}/src/util.bend"
     ]
     assert (await grep(release, pattern="def", glob="!src/**")).entries == [
@@ -81,7 +81,7 @@ async def test_grep_follows_the_options_of_ripgrep(release: Place) -> None:
         f"{LABEL}/main.bend:2",
         f"{LABEL}/src/util.bend:1",
     ]
-    around = await grep(release, pattern="U.g", output_mode="content", **{"-B": 1})
+    around = await grep(release, pattern="U.g", output_mode="content", before=1)
     assert around.entries == [
         f"{LABEL}/main.bend-3-def f() -> Nat:",
         f"{LABEL}/main.bend:4:  U.g()",

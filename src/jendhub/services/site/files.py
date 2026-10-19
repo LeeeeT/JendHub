@@ -113,9 +113,8 @@ def ripgrep_command(given: GrepArguments, target: str) -> list[str]:
             command.append("--line-number" if given.line_numbers else "--no-line-number")
             if given.only_matching:
                 command.append("--only-matching")
-            around = given.context if given.around is None else given.around
             for flag, lines in [
-                ("--context", around),
+                ("--context", given.context),
                 ("--before-context", given.before),
                 ("--after-context", given.after),
             ]:

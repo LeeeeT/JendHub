@@ -84,16 +84,15 @@ class GrepArguments(BaseModel):
     output_mode: Annotated[
         OutputMode,
         Field(
-            description='Output mode: "content" shows matching lines (supports -A/-B/-C'
-            ' context, -n line numbers, head_limit), "files_with_matches" shows file paths'
-            ' (supports head_limit), "count" shows the number of matching lines in each file'
-            " (supports head_limit)."
+            description='Output mode: "content" shows matching lines (supports before, after'
+            ' and context lines, line_numbers, head_limit), "files_with_matches" shows file'
+            ' paths (supports head_limit), "count" shows the number of matching lines in each'
+            " file (supports head_limit)."
         ),
     ] = "files_with_matches"
     before: Annotated[
         int | None,
         Field(
-            alias="-B",
             ge=0,
             description=f"Number of lines to show before each match (rg -B). {CONTENT_ONLY}",
         ),
@@ -101,12 +100,10 @@ class GrepArguments(BaseModel):
     after: Annotated[
         int | None,
         Field(
-            alias="-A",
             ge=0,
             description=f"Number of lines to show after each match (rg -A). {CONTENT_ONLY}",
         ),
     ] = None
-    around: Annotated[int | None, Field(alias="-C", ge=0, description="Alias for context.")] = None
     context: Annotated[
         int | None,
         Field(
@@ -117,18 +114,12 @@ class GrepArguments(BaseModel):
     ] = None
     line_numbers: Annotated[
         bool,
-        Field(
-            alias="-n",
-            description=f"Show line numbers in output (rg -n). {CONTENT_ONLY}",
-        ),
+        Field(description=f"Show line numbers in output (rg -n). {CONTENT_ONLY}"),
     ] = True
-    ignore_case: Annotated[
-        bool, Field(alias="-i", description="Case insensitive search (rg -i)")
-    ] = False
+    ignore_case: Annotated[bool, Field(description="Case insensitive search (rg -i)")] = False
     only_matching: Annotated[
         bool,
         Field(
-            alias="-o",
             description="Print only the matched (non-empty) parts of each matching line, one"
             f" match per output line (rg -o / --only-matching). {CONTENT_ONLY}",
         ),
