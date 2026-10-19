@@ -1,19 +1,34 @@
 import asyncio
 from asyncio.subprocess import DEVNULL, PIPE, Process
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from fastapi import HTTPException
+from psycopg import AsyncConnection
 
 from jendhub.db.pool import Pool
-from jendhub.hub.api import valid_path
-from jendhub.hub.library import Library, file_paths
-from jendhub.search.sources import BASE, base_tag, read_text, stored_release
-from jendhub.services.site.arguments import MAX_COLUMNS, MAX_LINES, GrepArguments
+from jendhub.hub.api import HASH, valid_path
+from jendhub.hub.library import Library
+from jendhub.search.sources import BASE, base_tag, latest_releases, read_text, stored_release
+from jendhub.services.site.arguments import (
+    MAX_COLUMNS,
+    MAX_LINES,
+    FilesArguments,
+    GrepArguments,
+)
 
-GREP_SECONDS = 10.0
+RIPGREP_SECONDS = 10.0
 RIPGREP = "rg"
+RIPGREP_FLAGS = [
+    "--no-config",
+    "--no-messages",
+    "--color=never",
+    "--sort=path",
+    "--hidden",
+    "--no-ignore",
+]
 HERE = "./"
+NAMED_RELEASES = 5
 NOT_READY = "The search index is not ready. Try again later."
 
 
@@ -52,11 +67,22 @@ class Page:
     more: bool
 
 
-def unknown_release(release: str) -> HTTPException:
+async def unknown_release(connection: AsyncConnection, release: str) -> HTTPException:
+    if HASH.fullmatch(release):
+        return HTTPException(404, f"The store has no release with the hash {release}.")
+    name = release.partition("@")[0]
+    found, total = await latest_releases(connection, name, NAMED_RELEASES)
+    if not found:
+        return HTTPException(
+            404,
+            f"The store has no package {name}. Start a path with a release as name@version,"
+            " for example kit@1.0.0.0, or with the hash of a release.",
+        )
+    more = f" and {total - len(found)} more" if total > len(found) else ""
     return HTTPException(
         404,
-        f"The store has no release {release}. Name a release as name@version, for example"
-        " kit@1.0.0.0, or by the hash of its package.",
+        f"The store has no release {release}. The latest releases of {name} are"
+        f" {', '.join(found)}{more}.",
     )
 
 
@@ -71,8 +97,8 @@ async def locate(pool: Pool, library: Library, generation: int | None, path: str
                 raise HTTPException(503, NOT_READY)
             return Place(BASE, library.base_directory(tag), inner)
         stored = await stored_release(connection, release)
-    if stored is None or stored.hash is None:
-        raise unknown_release(release)
+        if stored is None or stored.hash is None:
+            raise await unknown_release(connection, release)
     return Place(stored.label, library.package_directory(stored.hash), inner)
 
 
@@ -96,26 +122,24 @@ async def read_lines(place: Place, start_line: int, end_line: int | None) -> Lin
     return Lines(place.path, start_line, lines[start_line - 1 : last], len(lines), last < wanted)
 
 
-def ripgrep_command(given: GrepArguments, target: str) -> list[str]:
+def glob_flags(glob: str | None) -> list[str]:
+    return [] if glob is None else [f"--glob={glob}"]
+
+
+def grep_command(given: GrepArguments, target: str) -> list[str]:
     command = [
         RIPGREP,
-        "--no-config",
-        "--no-messages",
-        "--color=never",
+        *RIPGREP_FLAGS,
         "--no-heading",
         "--with-filename",
-        "--sort=path",
-        "--hidden",
-        "--no-ignore",
         f"--max-columns={MAX_COLUMNS}",
         "--max-columns-preview",
+        *glob_flags(given.glob),
     ]
     if given.ignore_case:
         command.append("--ignore-case")
     if given.multiline:
         command += ["--multiline", "--multiline-dotall"]
-    if given.glob is not None:
-        command.append(f"--glob={given.glob}")
     match given.mode:
         case "files":
             command.append("--files-with-matches")
@@ -133,9 +157,17 @@ def ripgrep_command(given: GrepArguments, target: str) -> list[str]:
     return [*command, f"--regexp={given.pattern}", "--", target]
 
 
+def files_command(given: FilesArguments, target: str) -> list[str]:
+    return [RIPGREP, *RIPGREP_FLAGS, "--files", *glob_flags(given.glob), "--", target]
+
+
 def shown(line: bytes, label: str) -> str:
     text = line.decode(errors="replace").removesuffix("\n")
     return f"{label}/{text.removeprefix(HERE)}" if text.startswith(HERE) else text
+
+
+def ripgrep_target(place: Place) -> str:
+    return f"{HERE}{place.inner}" if place.inner else "."
 
 
 async def collect(process: Process, label: str, wanted: int) -> tuple[list[str], str]:
@@ -151,41 +183,41 @@ async def collect(process: Process, label: str, wanted: int) -> tuple[list[str],
     return entries, ""
 
 
-async def grep_files(place: Place, given: GrepArguments) -> Page:
-    if not place.target.exists():
-        raise HTTPException(404, f"The store has no file or directory {place.path}.")
-    target = f"{HERE}{place.inner}" if place.inner else "."
-    end = given.offset + given.limit
+async def ripgrep(place: Place, command: list[str], limit: int, offset: int) -> Page:
+    end = offset + limit
     process = await asyncio.create_subprocess_exec(
-        *ripgrep_command(given, target), cwd=place.root, stdin=DEVNULL, stdout=PIPE, stderr=PIPE
+        *command, cwd=place.root, stdin=DEVNULL, stdout=PIPE, stderr=PIPE
     )
     try:
-        async with asyncio.timeout(GREP_SECONDS):
+        async with asyncio.timeout(RIPGREP_SECONDS):
             entries, error = await collect(process, place.label, end + 1)
     except TimeoutError as timeout:
         raise HTTPException(
-            504, f"The grep took more than {GREP_SECONDS:g} s. Use a narrower pattern or path."
+            504,
+            f"ripgrep took more than {RIPGREP_SECONDS:g} s. Use a narrower path, glob or pattern.",
         ) from timeout
     finally:
         if process.returncode is None:
             process.kill()
         await process.wait()
     if error and not entries:
-        raise HTTPException(400, f"Invalid pattern: {error.removeprefix('rg: ').strip()}")
-    return Page(entries[given.offset : end], given.offset, len(entries) > end)
+        raise HTTPException(400, f"Invalid argument: {error.removeprefix('rg: ').strip()}")
+    return Page(entries[offset:end], offset, len(entries) > end)
 
 
-def matching_paths(directory: Path, pattern: str) -> list[str]:
-    return [path for path in file_paths(directory) if PurePosixPath(path).full_match(pattern)]
+async def grep_files(place: Place, given: GrepArguments) -> Page:
+    if not place.target.exists():
+        raise HTTPException(404, f"The store has no file or directory {place.path}.")
+    return await ripgrep(
+        place, grep_command(given, ripgrep_target(place)), given.limit, given.offset
+    )
 
 
-async def list_files(place: Place, pattern: str, limit: int, offset: int) -> Page:
-    target = place.target
-    if not target.is_dir():
-        if target.exists():
+async def list_files(place: Place, given: FilesArguments) -> Page:
+    if not place.target.is_dir():
+        if place.target.exists():
             raise HTTPException(400, f"{place.path} is a file. Use read to read it.")
         raise HTTPException(404, f"The store has no directory {place.path}.")
-    matched = await asyncio.to_thread(matching_paths, target, pattern)
-    end = offset + limit
-    shown_paths = [f"{place.path}/{path}" for path in matched[offset:end]]
-    return Page(shown_paths, offset, len(matched) > end)
+    return await ripgrep(
+        place, files_command(given, ripgrep_target(place)), given.limit, given.offset
+    )

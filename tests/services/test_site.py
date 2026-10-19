@@ -249,6 +249,16 @@ async def test_agents_find_code_and_files_in_one_release(site: httpx.AsyncClient
     assert (await site.get("/files.txt", params=paths)).text == "kit@1.0.0.0/main.bend\n"
 
 
+async def test_agents_may_leave_an_optional_value_empty(site: httpx.AsyncClient) -> None:
+    read = "/read.txt?path=app@1.0.0.0/main.bend&start_line=2&end_line="
+    assert (await site.get(read)).text == numbered(APP_SOURCE, 2)
+    grep = (
+        "/grep.txt?pattern=double&path=app@1.0.0.0&glob=&mode=&context=&before=&after="
+        "&ignore_case=&multiline=&limit=&offset="
+    )
+    assert (await site.get(grep)).text == "app@1.0.0.0/main.bend:5:  K.double(K.double(n))\n"
+
+
 @pytest.mark.parametrize(
     ("path", "params", "status"),
     [
@@ -375,9 +385,19 @@ async def test_mcp_tools_open_read_and_find_code(site: httpx.AsyncClient) -> Non
             "read",
             {"path": "kit/main.bend"},
             (
-                "The store has no release kit. Name a release as name@version, for example"
-                " kit@1.0.0.0, or by the hash of its package."
+                "The store has no release kit. The latest releases of kit are kit@2.0.0.0,"
+                " kit@1.0.0.0."
             ),
+        ),
+        (
+            "definition",
+            {"path": "kit@1.0.0.0/main.bend", "name": "Kit.double"},
+            "kit@1.0.0.0/main.bend has no definition Kit.double.",
+        ),
+        (
+            "definition",
+            {"path": "kit@2.0.0.0/main.bend", "name": "double"},
+            "The index has no definitions of kit@2.0.0.0/main.bend.",
         ),
         (
             "grep",
@@ -394,7 +414,9 @@ async def test_mcp_tools_open_read_and_find_code(site: httpx.AsyncClient) -> Non
 async def test_mcp_tools_explain_a_failure(
     site: httpx.AsyncClient, name: str, arguments: dict[str, object], message: str
 ) -> None:
-    assert await call_tool(site, name, arguments) == (True, message)
+    failed, text = await call_tool(site, name, arguments)
+    assert failed
+    assert text.startswith(message)
 
 
 async def test_mcp_clients_get_an_error_for_an_unknown_tool(site: httpx.AsyncClient) -> None:

@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from jendhub.services.site import files
-from jendhub.services.site.arguments import GrepArguments
+from jendhub.services.site.arguments import FilesArguments, GrepArguments
 from jendhub.services.site.files import Page, Place, grep_files, list_files, read_lines
 
 LABEL = "kit@1.0.0.0"
@@ -29,6 +29,10 @@ def inside(release: Place, path: str) -> Place:
 
 async def grep(place: Place, **arguments: object) -> Page:
     return await grep_files(place, GrepArguments.model_validate({"path": LABEL, **arguments}))
+
+
+async def files_of(place: Place, **arguments: object) -> Page:
+    return await list_files(place, FilesArguments.model_validate({"path": LABEL, **arguments}))
 
 
 async def test_read_gives_the_lines_from_start_to_end(release: Place) -> None:
@@ -121,18 +125,33 @@ async def test_grep_explains_an_invalid_pattern(release: Place) -> None:
     with pytest.raises(HTTPException) as raised:
         await grep(release, pattern="Box{value")
     assert raised.value.status_code == 400
-    assert str(raised.value.detail).startswith("Invalid pattern: regex parse error")
+    assert str(raised.value.detail).startswith("Invalid argument: regex parse error")
 
 
-async def test_files_gives_the_matching_paths_in_pages(release: Place) -> None:
-    every = await list_files(release, "**", 2, 0)
+async def test_files_gives_the_paths_in_pages(release: Place) -> None:
+    every = await files_of(release, limit=2)
     assert (every.entries, every.more) == ([f"{LABEL}/.hidden.bend", f"{LABEL}/main.bend"], True)
-    assert (await list_files(release, "*.bend", 10, 0)).entries == [
-        f"{LABEL}/.hidden.bend",
-        f"{LABEL}/main.bend",
-    ]
-    assert (await list_files(inside(release, "src"), "**", 10, 0)).entries == [
-        f"{LABEL}/src/util.bend"
-    ]
+    assert (await files_of(inside(release, "src"))).entries == [f"{LABEL}/src/util.bend"]
     with pytest.raises(HTTPException):
-        await list_files(inside(release, "main.bend"), "**", 10, 0)
+        await files_of(inside(release, "main.bend"))
+
+
+@pytest.mark.parametrize(
+    ("glob", "paths"),
+    [
+        ("*.bend", [".hidden.bend", "main.bend", "src/util.bend"]),
+        ("util.bend", ["src/util.bend"]),
+        ("src/**", ["src/util.bend"]),
+        ("/main.bend", ["main.bend"]),
+        ("!src/**", [".hidden.bend", "main.bend"]),
+    ],
+)
+async def test_files_and_grep_match_a_glob_in_the_same_way(
+    release: Place, glob: str, paths: list[str]
+) -> None:
+    expected = [f"{LABEL}/{path}" for path in paths]
+    assert (await files_of(release, glob=glob)).entries == expected
+    assert (await grep(release, pattern="def", glob=glob, mode="files")).entries == expected
+    assert (await files_of(inside(release, "src"), glob=glob)).entries == [
+        path for path in expected if path.startswith(f"{LABEL}/src/")
+    ]

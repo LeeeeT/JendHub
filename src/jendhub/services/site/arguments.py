@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from jendhub.services.parameters import MAX_LIMIT, MAX_QUERY
 
@@ -16,14 +16,33 @@ RELEASE_PATH = (
     "One release, or a directory or a file in it, for example `kit@1.0.0.0` or"
     " `kit@1.0.0.0/src`. Base is `Base`."
 )
+GLOB = (
+    "A glob with a `/` matches the path of a file from the top of its release, for example"
+    " `src/**`. A glob with no `/` matches the name of a file in any directory, for example"
+    " `*.bend`. A glob that starts with `!` leaves out the files that match it."
+)
 LINES_ONLY = "Only for mode `lines`."
 
 Mode = Literal["lines", "files", "counts"]
 
 
-class SearchArguments(BaseModel):
+class Arguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="before")
+    @classmethod
+    def without_empty(cls, given: object) -> object:
+        if not isinstance(given, dict):
+            return given
+        fields = cls.model_fields
+        return {
+            name: value
+            for name, value in cast("dict[str, object]", given).items()
+            if value != "" or name not in fields or fields[name].is_required()
+        }
+
+
+class SearchArguments(Arguments):
     query: Annotated[
         str,
         Field(
@@ -46,23 +65,20 @@ class SearchArguments(BaseModel):
     ] = 0
 
 
-class DefinitionArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class DefinitionArguments(Arguments):
     path: Annotated[str, Field(min_length=1, description=FILE_PATH)]
     name: Annotated[
         str,
         Field(
             min_length=1,
-            description="The name of the definition in its file, for example `parse` or"
-            " `List.map`.",
+            description="The name of the definition as its file declares it, for example"
+            " `parse` or `List.map`. Give it with no alias of an import line: `parse`, not"
+            " `Json.parse`.",
         ),
     ]
 
 
-class ReadArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ReadArguments(Arguments):
     path: Annotated[str, Field(min_length=1, description=FILE_PATH)]
     start_line: Annotated[
         int,
@@ -78,9 +94,7 @@ class ReadArguments(BaseModel):
     ] = None
 
 
-class GrepArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class GrepArguments(Arguments):
     pattern: Annotated[
         str,
         Field(
@@ -92,10 +106,7 @@ class GrepArguments(BaseModel):
     path: Annotated[str, Field(min_length=1, description=RELEASE_PATH)]
     glob: Annotated[
         str | None,
-        Field(
-            description="Search only the files whose paths match this glob, for example"
-            " `src/**`. A glob that starts with `!` leaves out the files that match it."
-        ),
+        Field(description=f"Search only the files that match this glob. {GLOB}"),
     ] = None
     mode: Annotated[
         Mode,
@@ -128,20 +139,19 @@ class GrepArguments(BaseModel):
     ] = False
     limit: Annotated[
         int,
-        Field(ge=1, le=MAX_ENTRIES, description="The number of lines, paths or counts to give."),
+        Field(
+            ge=1,
+            le=MAX_ENTRIES,
+            description="The number of lines to give. Each match, context line, `--`, path or"
+            " count is one line.",
+        ),
     ] = 250
     offset: Annotated[
-        int,
-        Field(
-            ge=0,
-            description="The number of lines, paths or counts to skip, to get the next page.",
-        ),
+        int, Field(ge=0, description="The number of lines to skip, to get the next page.")
     ] = 0
 
 
-class FilesArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class FilesArguments(Arguments):
     path: Annotated[
         str,
         Field(
@@ -150,14 +160,9 @@ class FilesArguments(BaseModel):
             " is `Base`.",
         ),
     ]
-    pattern: Annotated[
-        str,
-        Field(
-            min_length=1,
-            description="Give only the paths that match this glob, for example `src/**`. The"
-            " glob matches the path below `path`: `*.bend` matches only the files at its top.",
-        ),
-    ] = "**"
+    glob: Annotated[
+        str | None, Field(description=f"List only the files that match this glob. {GLOB}")
+    ] = None
     limit: Annotated[
         int, Field(ge=1, le=MAX_ENTRIES, description="The number of paths to give.")
     ] = MAX_ENTRIES
@@ -177,9 +182,8 @@ SEARCH = ToolSpec(
     "search",
     "Find the definitions (functions, types and laws) of Base and of the BendHub packages"
     " that do a task, or that have a given name. The best results come first. Each result"
-    " gives the"
-    " name to call, the import line, the head (doc comment and signature), and the definition"
-    " call that opens its code.",
+    " gives the name to call, the import line, the head (doc comment and signature), and the"
+    " definition call that opens its code.",
     SearchArguments,
 )
 DEFINITION = ToolSpec(
@@ -188,25 +192,29 @@ DEFINITION = ToolSpec(
     " the definitions that the code uses, each with the definition call that opens it. Each"
     " import line names an exact release, so you can copy the code and its import lines into"
     " your project. The answer also gives the read call for the lines of the definition in its"
-    " file. The index holds the definitions of Base and of the latest valid release of each"
-    " package: read, grep and files work on every release.",
+    " file. definition opens only the definitions of Base and of the latest valid release of"
+    " each package, because only they are in the index. read, grep and files work on every"
+    " release.",
     DefinitionArguments,
 )
 READ = ToolSpec(
     "read",
     "Read lines of a file of Base or of a release on BendHub. The answer gives each line as its"
-    f" number, a tab and its text, and cuts a line after {MAX_COLUMNS} characters. A file shows"
-    " its imports as BendHub has them: `./` and `../` name files of the same release. If the"
-    " answer stops before the end of the file, its last line gives the read call for the next"
-    " lines.",
+    f" number, a tab and its text, and cuts a line after {MAX_COLUMNS} characters. If the"
+    " answer stops before `end_line`, or before the end of the file when you give no"
+    " `end_line`, its last line gives the read call for the next lines. The file shows its"
+    " imports as BendHub stores them: `./` and `../` name files of the same release. To copy"
+    " code, take its import lines from definition.",
     ReadArguments,
 )
 GREP = ToolSpec(
     "grep",
-    "Find the lines of one release that match a regular expression, with ripgrep. A matching"
-    " line comes as `path:line:text`, and a context line as `path-line-text`, with the path"
-    " and the line number that read takes. If more results exist, the last line of the answer"
-    " gives the grep call for the next page.",
+    "Find the lines of one release that match a regular expression, with ripgrep. In mode"
+    " `lines`, a matching line comes as `path:line:text` and a context line as"
+    " `path-line-text`, with the path and the line number that read takes. A line `--`"
+    " separates groups of lines that are not next to each other. Mode `files` gives one path"
+    " on each line, and mode `counts` gives `path:count`. If more results exist, the last line"
+    " of the answer gives the grep call for the next page.",
     GrepArguments,
 )
 FILES = ToolSpec(

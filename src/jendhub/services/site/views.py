@@ -31,6 +31,7 @@ from jendhub.search.sources import (
     SourceFile,
     Usage,
     definition_id,
+    indexed_file,
     read_declared,
     read_file,
     read_release_files,
@@ -65,7 +66,7 @@ from jendhub.vectors.index import VectorIndex, open_vector_index
 logger = logging.getLogger(__name__)
 
 EMBEDDING_FAILED = "The embedding service did not answer. Try again."
-GREPS = 2
+RIPGREPS = 2
 
 
 @dataclass
@@ -167,7 +168,7 @@ class Site:
     live: LiveTarget
     generations: Generations
     origin: str
-    greps: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(GREPS))
+    ripgreps: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(RIPGREPS))
 
     @property
     def pool(self) -> Pool:
@@ -222,14 +223,23 @@ class Site:
     async def named(self, given: DefinitionArguments) -> DefinitionView:
         id_ = await definition_id(self.pool, given.path, given.name)
         found = None if id_ is None else await self.found_definition(id_)
-        if found is None:
+        if found is not None:
+            return found
+        place = await self.locate(given.path)
+        if not place.target.is_file():
+            raise HTTPException(404, f"The store has no file {place.path}.")
+        if await indexed_file(self.pool, self.target().generation, given.path):
             raise HTTPException(
                 404,
-                f"The index has no definition {given.name} in {given.path}. The index holds"
-                " only Base and the latest valid release of each package: read, grep and files"
-                " work on every release.",
+                f"{place.path} has no definition {given.name}. Give the name as the file"
+                " declares it, with no alias of an import line: `parse`, not `Json.parse`.",
             )
-        return found
+        raise HTTPException(
+            404,
+            f"The index has no definitions of {place.path}. The index holds only Base and the"
+            " latest valid release of each package. read, grep and files work on every"
+            " release.",
+        )
 
     async def found_definition(self, id_: str) -> DefinitionView | None:
         found = await read_definition(self.pool, self.library, self.target().generation, id_)
@@ -248,12 +258,13 @@ class Site:
 
     async def grep(self, given: GrepArguments) -> Page:
         place = await self.locate(given.path)
-        async with self.greps:
+        async with self.ripgreps:
             return await grep_files(place, given)
 
     async def files_page(self, given: FilesArguments) -> Page:
         place = await self.locate(given.path)
-        return await list_files(place, given.pattern, given.limit, given.offset)
+        async with self.ripgreps:
+            return await list_files(place, given)
 
     async def package(self, name: str, offset: int, limit: int) -> PackageView:
         found = await read_package(self.pool, self.target().generation, name, offset, limit)

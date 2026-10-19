@@ -10,8 +10,8 @@ OPENSEARCH_TYPE = "application/opensearchdescription+xml"
 
 
 SUMMARY = (
-    "JendHub is a search engine for the definitions of Base and of the packages on BendHub"
-    f" ({HUB})."
+    "JendHub is a search engine for the definitions of Base, the standard library of Bend, and"
+    f" of the packages on BendHub ({HUB})."
 )
 SEARCH_FIRST = (
     "Before you write a Bend function or type, use search to find one that exists. Tell what"
@@ -37,9 +37,10 @@ COPY = (
     " BendHub."
 )
 TOOLS_INTRO = (
-    "Each tool is a GET path that takes its parameters in the query string. It answers with"
-    " plain text, also for an error. In an answer, a call to a tool is a full URL that you can"
-    " GET."
+    "Each tool is a GET path that takes its parameters in the query string. Encode each value"
+    " for a URL: for example, `+` is `%2B`, `#` is `%23`, `&` is `%26` and a space is `%20`."
+    " Each tool answers with plain text, also for an error. In an answer, a call to a tool is"
+    " a full URL that you can GET."
 )
 
 INSTRUCTIONS = f"{SUMMARY}\n\n{SEARCH_FIRST}\n\n{EXPLORE}\n\n{IMPORTS}\n\n{COPY}"

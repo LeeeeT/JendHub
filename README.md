@@ -39,14 +39,20 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   names for its options and always shows line numbers, because they lead to
   `read`. A cut answer ends with the call of the next part, and a complete
   answer has no such line, so an agent never takes a part for the whole. Each
-  error tells how to correct the call. To keep an answer small and the CPU
-  free, `grep` and `files` work on one release, a `read` gives at most 2000
-  lines and cuts a line at 2000 characters, and `grep` and `files` give at most
-  1000 entries.
+  error tells how to correct the call: a wrong release gets the latest
+  releases of its package, and a wrong name in an indexed file gets the form
+  of a name. An empty value is the same as no value, so an agent can copy the
+  GET line of `/llms.txt` and leave an optional parameter empty. To keep an
+  answer small and the CPU free, `grep` and `files` work on one release, a
+  `read` gives at most 2000 lines and cuts a line at 2000 characters, and
+  `grep` and `files` give at most 1000 entries.
 - **ripgrep:** `grep` runs `rg` itself on the stored files, with the regular
   expressions of `rg`. The regex engine of `rg` runs in linear time, so a
-  pattern cannot block the server. A grep stops after 10 s, and the site runs
-  at most 2 at a time.
+  pattern cannot block the server. `files` runs `rg --files`, so the `glob` of
+  `grep` and the `glob` of `files` match by one rule, the rule of `rg`: a glob
+  with a `/` matches from the top of the release, and a glob with no `/`
+  matches a file name in any directory. A run of `rg` stops after 10 s, and the
+  site runs at most 2 at a time.
 - **File store:** the package files and each `base.bend` are files in the
   library, a volume in the `BEND_LIB` layout. Postgres keeps only their
   metadata. So there is one copy of each file, `rg` and the Rust indexer read
@@ -120,7 +126,7 @@ BendHub ──> syncer ──> Postgres, library <── worker ──> Qdrant
 | `GET /definition.txt?path=<file>&name=<name>` | `GET /definitions/<id>` | A definition of the index: its code, the import lines that its code uses as exact releases, its lines in its file, and the definitions that it uses. |
 | `GET /read.txt?path=<file>&start_line=1&end_line=<line>` | `GET /files/<release>/<path>` | Lines of a file of any stored release, also an invalid or unindexed one, as `N<tab>text`. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | `GET /grep.txt?pattern=<regex>&path=<release>` | | The lines, paths or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters: `glob`, `mode` (`lines`, `files` or `counts`), `context`, `before`, `after`, `ignore_case`, `multiline`, `limit` (1 to 1000, 250) and `offset`. |
-| `GET /files.txt?path=<release>&pattern=**` | `GET /files/<release>` | The files of one release, or of a directory in it, whose paths match a glob, 1000 for each page. The page shows all files with the number of indexed definitions in each. |
+| `GET /files.txt?path=<release>` | `GET /files/<release>` | The files of one release, or of a directory in it, 1000 for each page. `glob` keeps only the files that match it, by the same rule as the `glob` of `grep`. The page shows all files with the number of indexed definitions in each. |
 | `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
 | | `GET /opensearch.xml` | The OpenSearch description, so that a browser can search JendHub from its address bar. Each page links to it. |
@@ -140,7 +146,7 @@ agent with one of these commands:
 | `definition(path, name)` | The same as `/definition.txt`. |
 | `read(path, start_line=1, end_line=None)` | The same as `/read.txt`. |
 | `grep(pattern, path, ...)` | The same as `/grep.txt`. |
-| `files(path, pattern="**", limit=1000, offset=0)` | The same as `/files.txt`. |
+| `files(path, glob=None, limit=1000, offset=0)` | The same as `/files.txt`. |
 
 In tool answers, each link is the tool call that opens it, for example
 `definition(path="kit@1.0.0.0/json.bend", name="parse")`.
@@ -330,7 +336,7 @@ stage compiles the Rust indexer. Its second stage installs the Python
 dependencies with `uv sync --frozen`, from `pyproject.toml` and `uv.lock`. The
 last stage is `python:3.14-slim` with the dependencies, the indexer and
 `src/jendhub`. It also installs `libgomp1`, because LightGBM needs OpenMP, and
-`ripgrep` for `grep`. The compose file gives each service its command.
+`ripgrep` for `grep` and `files`. The compose file gives each service its command.
 
 The dev shell does not read `uv.lock`. When you add a dependency, add it to
 `flake.nix` and to `pyproject.toml`, then run `uv lock`.

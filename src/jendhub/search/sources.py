@@ -163,6 +163,35 @@ async def stored_release(connection: AsyncConnection, release: str) -> StoredRel
     return None if row is None else StoredRelease(str(Release(name, version)), row[0])
 
 
+async def latest_releases(
+    connection: AsyncConnection, name: str, limit: int
+) -> tuple[list[str], int]:
+    cursor = await connection.execute(
+        "SELECT version, count(*) OVER () FROM packages"
+        " WHERE name = %s ORDER BY version_order DESC LIMIT %s",
+        (name, limit),
+    )
+    rows = await cursor.fetchall()
+    return [str(Release(name, version)) for version, _ in rows], rows[0][1] if rows else 0
+
+
+async def indexed_file(pool: Pool, generation: int, path: str) -> bool:
+    release, _, file = path.partition("/")
+    if release == BASE:
+        return file == BASE_FILE
+    async with pool.connection() as connection:
+        stored = await stored_release(connection, release)
+        if stored is None or stored.hash is None:
+            return False
+        cursor = await connection.execute(
+            "SELECT EXISTS (SELECT FROM definitions"
+            " WHERE generation = %s AND release = %s AND module = %s)",
+            (generation, stored.hash, file.removesuffix(".bend")),
+        )
+        row = await cursor.fetchone()
+    return row is not None and row[0]
+
+
 async def hash_labels(connection: AsyncConnection, hashes: list[str]) -> dict[str, str]:
     cursor = await connection.execute(
         "SELECT hash, name, version FROM packages WHERE hash = ANY(%s) AND name IS NOT NULL",
