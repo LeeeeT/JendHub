@@ -86,6 +86,20 @@ def module_key(neighbor: Neighbor) -> Hashable:
     return (neighbor.release, neighbor.module)
 
 
+async def most_used(pool: Pool, within: list[int], limit: int) -> list[Hit]:
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT id, kind, name, package, version, module, head, users FROM definitions"
+            " WHERE point = ANY(%s) ORDER BY users DESC, key LIMIT %s",
+            (within, limit),
+        )
+        rows = await cursor.fetchall()
+    return [
+        Hit(id_, kind, name, package, version, module, head, float(users))
+        for id_, kind, name, package, version, module, head, users in rows
+    ]
+
+
 class SearchEngine:
     def __init__(
         self,
@@ -173,19 +187,6 @@ class SearchEngine:
         scores = self.model.predict(matrix)
         order: list[int] = np.argsort(-scores, kind="stable")[:limit].tolist()
         return [hit(ranked[index][1], float(scores[index])) for index in order]
-
-    async def most_used(self, within: list[int], limit: int) -> list[Hit]:
-        async with self.pool.connection() as connection:
-            cursor = await connection.execute(
-                "SELECT id, kind, name, package, version, module, head, users FROM definitions"
-                " WHERE point = ANY(%s) ORDER BY users DESC, key LIMIT %s",
-                (within, limit),
-            )
-            rows = await cursor.fetchall()
-        return [
-            Hit(id_, kind, name, package, version, module, head, float(users))
-            for id_, kind, name, package, version, module, head, users in rows
-        ]
 
     async def scores(
         self, vector: Vectors, points: list[int], using: VectorName

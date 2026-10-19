@@ -8,6 +8,7 @@ from jendhub.search.sources import BASE_IMPORT, StoredRelease, package_source, u
 @dataclass(frozen=True)
 class DefinitionDetail:
     id: str
+    key: str
     kind: str
     name: str
     package: str | None
@@ -25,14 +26,14 @@ async def read_definition(
 ) -> DefinitionDetail | None:
     async with pool.connection() as connection:
         cursor = await connection.execute(
-            "SELECT point, release, kind, name, package, version, module, text,"
+            "SELECT point, release, key, kind, name, package, version, module, text,"
             " first_line, end_line FROM definitions WHERE generation = %s AND id = %s",
             (generation, id_),
         )
         row = await cursor.fetchone()
         if row is None:
             return None
-        point, release, kind, name, package, version, module, text, first_line, end_line = row
+        point, release, key, kind, name, package, version, module, text, first_line, end_line = row
         if package is None:
             imports = [BASE_IMPORT]
         else:
@@ -49,5 +50,5 @@ async def read_definition(
         )
         uses = [found for (found,) in await cursor.fetchall()]
     return DefinitionDetail(
-        id_, kind, name, package, version, module, text, imports, first_line, end_line, uses
+        id_, key, kind, name, package, version, module, text, imports, first_line, end_line, uses
     )

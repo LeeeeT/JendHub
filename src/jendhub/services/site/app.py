@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException
 
 from jendhub.errors import JendHubError
 from jendhub.indexing.store import IndexStore
+from jendhub.search.filters import Filters
 from jendhub.search.searches import Caller
 from jendhub.services.app import Running, service_app
 from jendhub.services.background import every
@@ -242,8 +243,19 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
 
     @router.get("/definitions/{id_:path}")
     async def definition(id_: str) -> Response:
-        view = await running.get().definition(id_)
-        return page("definition.html", view=view, alternate=RELATIVE.definition(id_))
+        site = running.get()
+        view = await site.definition(id_)
+        key = view.detail.key
+        uses, used_by = await asyncio.gather(
+            site.preview(Filters(used_by=(key,))), site.preview(Filters(uses=(key,)))
+        )
+        return page(
+            "definition.html",
+            view=view,
+            uses=uses,
+            used_by=used_by,
+            alternate=RELATIVE.definition(id_),
+        )
 
     return router
 

@@ -97,22 +97,6 @@ def reference(id_: str) -> Reference:
     return Reference(id_, file, name)
 
 
-@dataclass(frozen=True)
-class References:
-    file: str
-    where: str
-    found: list[Reference]
-
-
-def by_file(ids: list[str]) -> list[References]:
-    grouped: dict[str, list[Reference]] = {}
-    for id_ in ids:
-        found = reference(id_)
-        grouped.setdefault(found.file, []).append(found)
-    files = sorted(grouped, key=lambda file: (file != f"{BASE}/{BASE_FILE}", file))
-    return [References(file, grouped[file][0].where, grouped[file]) for file in files]
-
-
 def shortened(head: str) -> str:
     lines = head.split("\n")
     return head if len(lines) <= HEAD_LINES else "\n".join([*lines[: HEAD_LINES - 1], "  …"])
@@ -211,7 +195,6 @@ def environment() -> Environment:
         search_href=search_href,
         filter_href=filter_href,
         reference=reference,
-        by_file=by_file,
         source_line=source_line,
         shortened=shortened,
         counted=counted,

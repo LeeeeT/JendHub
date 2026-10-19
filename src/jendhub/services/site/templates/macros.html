@@ -23,13 +23,13 @@
 {% if package is none %}<a href="{{ release_href('Base') }}">Base</a>{% else %}<a href="{{ package_href(package) }}">{{ package }}</a>@<a href="{{ release_href(package ~ '@' ~ version) }}">{{ version }}</a>{% endif %}
 {%- endmacro %}
 
-{% macro refs(ids) -%}
-<dl class="refs">
-{% for group in by_file(ids) %}
-<dt><a href="{{ file_href(group.file) }}">{{ group.where }}</a></dt>
-<dd>{% for found in group.found %}<a href="{{ definition_href(found.id) }}">{{ found.name }}</a>{{ ", " if not loop.last }}{% endfor %}</dd>
+{% macro preview(found, href) -%}
+<ul class="ids">
+{% for id in found.ids %}
+<li><a href="{{ definition_href(id) }}">{{ id }}</a></li>
 {% endfor %}
-</dl>
+</ul>
+<p class="all"><a href="{{ href }}">All</a></p>
 {%- endmacro %}
 
 {% macro import_line(usage) -%}

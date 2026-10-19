@@ -1,7 +1,6 @@
 from jendhub.search.sources import Declared
 from jendhub.services.site.pages import (
     Link,
-    by_file,
     lines_href,
     reference,
     shortened,
@@ -40,15 +39,6 @@ def test_a_reference_splits_the_place_from_the_name() -> None:
         "a.b",
     )
     assert reference("List.map").where == "Base"
-
-
-def test_references_group_by_file_with_base_first() -> None:
-    found = by_file(["kit@1.0.0.0/main:b", "Nat", "kit@1.0.0.0/main:a", "app@1.0.0.0/x:c"])
-    assert [(group.where, [ref.name for ref in group.found]) for group in found] == [
-        ("Base", ["Nat"]),
-        ("app@1.0.0.0/x", ["c"]),
-        ("kit@1.0.0.0/main", ["b", "a"]),
-    ]
 
 
 def test_a_range_of_lines_is_a_parameter_and_its_first_line() -> None:

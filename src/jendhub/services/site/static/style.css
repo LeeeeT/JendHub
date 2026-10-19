@@ -471,33 +471,17 @@ button:hover {
 	margin-top: 1.6em;
 }
 
-.refs {
+.ids {
 	margin: 0;
-}
-
-.refs dt {
-	margin-top: 0.8em;
-	font-size: 0.87em;
-	overflow-wrap: anywhere;
-}
-
-.refs dt:first-child {
-	margin-top: 0;
-}
-
-.refs dt a {
-	color: var(--muted);
-	border-bottom-color: var(--muted);
-}
-
-.refs dt a:hover {
-	color: var(--background);
-}
-
-.refs dd {
-	margin: 0.2em 0 0 2ch;
+	padding: 0;
+	list-style: none;
 	line-height: 1.8;
 	overflow-wrap: anywhere;
+}
+
+.all {
+	margin: 0.9em 0 0;
+	font-size: 0.87em;
 }
 
 .defs {

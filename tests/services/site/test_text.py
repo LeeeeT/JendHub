@@ -91,6 +91,7 @@ def test_no_results_say_so() -> None:
 def test_a_definition_gives_its_code_imports_lines_and_uses() -> None:
     detail = DefinitionDetail(
         "kit@1.0.0.0/main:map",
+        "kit/main:map",
         "def",
         "map",
         "kit",

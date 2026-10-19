@@ -21,7 +21,7 @@ from jendhub.indexing.status import (
 from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.remote.openrouter import INTERACTIVE, open_openrouter
 from jendhub.search.definitions import DefinitionDetail, read_definition
-from jendhub.search.engine import Hit, SearchEngine, Target
+from jendhub.search.engine import Hit, SearchEngine, Target, most_used
 from jendhub.search.filters import Filters, UnknownFilterError, filtered_points
 from jendhub.search.packages import PackageDetail, read_package
 from jendhub.search.ranking import Model, load_model
@@ -68,6 +68,7 @@ logger = logging.getLogger(__name__)
 
 EMBEDDING_FAILED = "The embedding service did not answer. Try again."
 RIPGREPS = 2
+PREVIEW = 5
 
 
 @dataclass
@@ -127,6 +128,12 @@ async def open_resources(query_cache_size: int) -> AsyncGenerator[Resources]:
 class Result:
     hit: Hit
     usage: Usage
+
+
+@dataclass(frozen=True)
+class Preview:
+    ids: list[str]
+    total: int
 
 
 @dataclass(frozen=True)
@@ -207,7 +214,7 @@ class Site:
         if query:
             [hits] = await engine.search([query], MAX_LIMIT, within)
         else:
-            hits = await engine.most_used(within or [], MAX_LIMIT)
+            hits = await most_used(resources.pool, within or [], MAX_LIMIT)
         searched = Search(
             caller,
             query,
@@ -223,6 +230,11 @@ class Site:
             for hit in hits[offset : offset + limit]
         ]
         return Results(query, shown, len(hits), offset), searched
+
+    async def preview(self, filters: Filters) -> Preview:
+        found = await filtered_points(self.pool, self.target().generation, filters)
+        hits = await most_used(self.pool, found, PREVIEW)
+        return Preview([hit.id for hit in hits], len(found))
 
     async def keep(self, searched: Search) -> None:
         try:
