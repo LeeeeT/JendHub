@@ -14,32 +14,35 @@ SUMMARY = (
     f" ({HUB})."
 )
 SEARCH_FIRST = (
-    "Before you write a Bend function or type, use the search tool to find one that exists."
-    " Tell what you need in a few words: the task, some keywords or a short description, for"
-    " example `decompress gzip data`, `base64 encode` or `sha256 hash of bytes`."
+    "Before you write a Bend function or type, use search to find one that exists. Tell what"
+    " you need in a few words: the task, some keywords or a short description, for example"
+    " `decompress gzip data`, `base64 encode` or `sha256 hash of bytes`. A name, such as"
+    " `List.map`, also works."
+)
+EXPLORE = (
+    "Each result gives the definition call that opens its code. Use read to see more of a"
+    " file, grep to find code in one release, and files to list the files of a release. A"
+    " path names a release as `name@version` and then a file in it, for example"
+    " `kit@1.0.0.0/json.bend`. Base is `Base/base.bend`."
 )
 IMPORTS = (
-    "Import a result only when it does exactly what you need. Write its import line at the"
-    " top of your Bend file and call it by the name that the result gives. For example, after"
+    "Use a result only when it does exactly what you need. Write its import line at the top"
+    " of your Bend file, and call it by the name that the result gives: after"
     " `import kit@1.0.0.0/json.bend as Json`, call `Json.parse(text)`. Base needs only"
     " `import Base`."
 )
-SOURCES = (
-    "When you are not sure that a result fits, read its code. When a result is close to what"
-    " you need, copy its code and its import lines into your project and change it. An import"
-    " of `./` or `../` names a file of the same release. You can read and copy all code on"
+COPY = (
+    "When a result is close to what you need, copy its code and the import lines that"
+    " definition gives into your project, and change it. You can read and copy all code on"
     " BendHub."
 )
-FOLLOW = (
-    "To read the code of a result, make the read call that the result gives. To find code in"
-    " one release, use grep and glob."
-)
 TOOLS_INTRO = (
-    "Each tool is a GET path that takes its parameters in the query string. The answer is"
-    " plain text, also for an error."
+    "Each tool is a GET path that takes its parameters in the query string. It answers with"
+    " plain text, also for an error. In an answer, a call to a tool is a full URL that you can"
+    " GET."
 )
 
-INSTRUCTIONS = f"{SUMMARY}\n\n{SEARCH_FIRST}\n\n{IMPORTS}\n\n{SOURCES}\n\n{FOLLOW}"
+INSTRUCTIONS = f"{SUMMARY}\n\n{SEARCH_FIRST}\n\n{EXPLORE}\n\n{IMPORTS}\n\n{COPY}"
 
 
 def kind(schema: dict[str, Any]) -> str:
@@ -116,9 +119,11 @@ def llms_text(origin: str) -> str:
 
 {SEARCH_FIRST}
 
+{EXPLORE}
+
 {IMPORTS}
 
-{SOURCES}
+{COPY}
 
 ## Tools
 

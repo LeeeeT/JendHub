@@ -17,6 +17,4 @@ from jendhub.search.packages import DefinitionSummary
     ],
 )
 def test_a_summary_is_the_first_sentence_of_the_doc_comment(head: str, summary: str | None) -> None:
-    assert (
-        DefinitionSummary("kit@1.0.0.0/main:f", "def", "f", "main", head, 0, 1).summary == summary
-    )
+    assert DefinitionSummary("kit@1.0.0.0/main:f", "def", "f", "main", head).summary == summary

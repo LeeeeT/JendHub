@@ -67,7 +67,6 @@ async def test_a_new_release_replaces_the_old_one(
     assert hits[0].id == "kit@2.0.0.0/main:double"
     assert hits[0].package == "kit"
     assert hits[0].head.startswith("# Doubles a number.")
-    assert (hits[0].first_line, hits[0].end_line) == (2, 5)
 
 
 async def test_an_older_release_never_replaces_a_newer_one(

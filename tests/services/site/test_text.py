@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from jendhub.indexing.failures import Place, Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease, JobCounts
+from jendhub.search.definitions import DefinitionDetail
 from jendhub.search.engine import Hit
 from jendhub.search.packages import (
     DefinitionSummary,
@@ -9,10 +10,11 @@ from jendhub.search.packages import (
     ReleaseDetail,
 )
 from jendhub.search.sources import usage
-from jendhub.services.site.files import Lines, Matches
+from jendhub.services.site.files import Lines, Page
 from jendhub.services.site.text import (
     ToolLinks,
     UrlLinks,
+    render_definition,
     render_lines,
     render_matches,
     render_package,
@@ -21,6 +23,7 @@ from jendhub.services.site.text import (
     render_status,
 )
 from jendhub.services.site.views import (
+    DefinitionView,
     PackageView,
     Result,
     Results,
@@ -29,7 +32,7 @@ from jendhub.services.site.views import (
 
 ORIGIN = "https://jend.test"
 LINKS = UrlLinks(ORIGIN)
-KIT_MAP = f"{ORIGIN}/read.txt?file_path=kit@1.0.0.0/main.bend&offset=4&limit=2"
+KIT_MAP = f"{ORIGIN}/definition.txt?path=kit@1.0.0.0/main.bend&name=map"
 PROBLEM = Problem(
     "a fresh name (duplicate declaration: Nat)",
     "'Nat'",
@@ -38,7 +41,7 @@ PROBLEM = Problem(
 )
 PROBLEM_TEXT = (
     "   expected a fresh name (duplicate declaration: Nat)\n"
-    f"   At {ORIGIN}/read.txt?file_path=kit@2.0.0.0/nat.bend&offset=2.\n"
+    f"   At {ORIGIN}/read.txt?path=kit@2.0.0.0/nat.bend&start_line=3.\n"
     "   Files that do not load: main.bend, nat.bend.\n"
 )
 
@@ -53,28 +56,26 @@ def result(id_: str, package: str | None) -> Result:
         version,
         "main",
         "# Maps.\ndef map(xs):",
-        4,
-        6,
         1.0,
     )
     return Result(found, usage(found.name, package, version, "main"))
 
 
-def test_results_show_how_to_use_and_read_each_definition() -> None:
+def test_results_show_how_to_use_and_open_each_definition() -> None:
     found = Results("map", [result("List.map", None), result("kit@1.0.0.0/main:map", "kit")], 2, 0)
     assert render_results(found, LINKS) == (
-        f"1. List.map ({ORIGIN}/read.txt?file_path=Base/base.bend&offset=4&limit=2)\n"
+        f"1. List.map ({ORIGIN}/definition.txt?path=Base/base.bend&name=List.map)\n"
         "   import Base\n   # Maps.\n   def map(xs):\n\n"
         f"2. Kit.map ({KIT_MAP})\n"
         "   import kit@1.0.0.0/main.bend as Kit\n   # Maps.\n   def map(xs):\n"
     )
 
 
-def test_tool_results_give_read_calls() -> None:
+def test_tool_results_give_definition_calls() -> None:
     found = Results("map", [result("kit@1.0.0.0/main:map", "kit")], 3, 0)
     links = ToolLinks("search", {"query": "map", "limit": 1})
     assert render_results(found, links).splitlines() == [
-        '1. Kit.map (read(file_path="kit@1.0.0.0/main.bend", offset=4, limit=2))',
+        '1. Kit.map (definition(path="kit@1.0.0.0/main.bend", name="map"))',
         "   import kit@1.0.0.0/main.bend as Kit",
         "   # Maps.",
         "   def map(xs):",
@@ -87,22 +88,59 @@ def test_no_results_say_so() -> None:
     assert render_results(Results("x", [], 0, 0), LINKS) == "No results.\n"
 
 
-def test_lines_are_numbered_and_cut_at_2000_characters() -> None:
-    found = Lines("kit@1.0.0.0/main.bend", 3, ["def f:", "x" * 2001], 9)
-    assert render_lines(found) == f"3\tdef f:\n4\t{'x' * 2000}\n"
-    assert render_lines(Lines("kit@1.0.0.0/e.bend", 1, [], 0)) == "kit@1.0.0.0/e.bend is empty.\n"
+def test_a_definition_gives_its_code_imports_lines_and_uses() -> None:
+    detail = DefinitionDetail(
+        "kit@1.0.0.0/main:map",
+        "def",
+        "map",
+        "kit",
+        "1.0.0.0",
+        "main",
+        "def map(xs):\n  xs",
+        ["import Base"],
+        4,
+        6,
+        ["List", "kit@1.0.0.0/deep/odd:a?b"],
+    )
+    view = DefinitionView(detail, usage("map", "kit", "1.0.0.0", "main"))
+    assert render_definition(view, ToolLinks("definition")) == (
+        "Kit.map: def of kit@1.0.0.0\n"
+        "Import: import kit@1.0.0.0/main.bend as Kit\n"
+        "Call: Kit.map\n"
+        'Lines 5-6 of kit@1.0.0.0/main.bend: read(path="kit@1.0.0.0/main.bend", start_line=5,'
+        " end_line=6)\n\n"
+        "import Base\n\ndef map(xs):\n  xs\n\n"
+        "Uses (2):\n"
+        '  definition(path="Base/base.bend", name="List")\n'
+        '  definition(path="kit@1.0.0.0/deep/odd.bend", name="a?b")\n'
+    )
 
 
-def test_grep_files_give_the_count() -> None:
-    found = Matches("files_with_matches", ["kit@1.0.0.0/a.bend"], 2)
-    assert render_matches(found) == "Found 2 files\nkit@1.0.0.0/a.bend\n"
-    assert render_matches(Matches("files_with_matches", [], 0)) == "No files found\n"
-    assert render_matches(Matches("content", [], 0)) == "No matches found\n"
+def test_lines_are_numbered_and_a_cut_answer_gives_the_next_call() -> None:
+    links = ToolLinks("read", {"path": "kit@1.0.0.0/main.bend"})
+    found = Lines("kit@1.0.0.0/main.bend", 3, ["def f:", "x" * 2001], 9, cut=True)
+    assert render_lines(found, links) == (
+        f"3\tdef f:\n4\t{'x' * 2000}\n"
+        'Lines 3-4 of 9. More: read(path="kit@1.0.0.0/main.bend", start_line=5)\n'
+    )
+    complete = Lines("kit@1.0.0.0/main.bend", 3, ["a", "b"], 9, cut=False)
+    assert render_lines(complete, links) == "3\ta\n4\tb\n"
+    empty = Lines("kit@1.0.0.0/e.bend", 1, [], 0, cut=False)
+    assert render_lines(empty, links) == "kit@1.0.0.0/e.bend is empty.\n"
 
 
-def test_glob_gives_one_path_on_each_line() -> None:
-    assert render_paths(["kit@1.0.0.0/a.bend"]) == "kit@1.0.0.0/a.bend\n"
-    assert render_paths([]) == "No files found\n"
+def test_a_page_of_results_gives_the_next_call() -> None:
+    links = UrlLinks(ORIGIN, "/grep.txt", {"pattern": "f", "path": "kit@1.0.0.0"})
+    found = Page(["kit@1.0.0.0/a.bend:1:def f:"], 0, more=True)
+    assert render_matches(found, links) == (
+        "kit@1.0.0.0/a.bend:1:def f:\n"
+        f"More: {ORIGIN}/grep.txt?pattern=f&path=kit@1.0.0.0&offset=1\n"
+    )
+    assert render_matches(Page([], 0, more=False), links) == "No matches.\n"
+    assert (
+        render_paths(Page(["kit@1.0.0.0/a.bend"], 0, more=False), links) == "kit@1.0.0.0/a.bend\n"
+    )
+    assert render_paths(Page([], 0, more=False), links) == "No files match.\n"
 
 
 def test_a_package_shows_its_releases_and_a_page_of_definitions() -> None:
@@ -112,10 +150,10 @@ def test_a_package_shows_its_releases_and_a_page_of_definitions() -> None:
             ReleaseDetail("2.0.0.0", "0x2", "invalid", [PROBLEM]),
             ReleaseDetail("1.0.0.0", "0x1", "indexed", []),
         ],
-        [DefinitionSummary("kit@1.0.0.0/main:map", "def", "map", "main", "def map:", 4, 6)],
+        [DefinitionSummary("kit@1.0.0.0/main:map", "def", "map", "main", "def map:")],
         3,
     )
-    files = f"{ORIGIN}/glob.txt?pattern=**&path=kit"
+    files = f"{ORIGIN}/files.txt?path=kit"
     assert render_package(PackageView(package, 2), LINKS) == (
         "kit\n\n"
         f"Releases (2):\n  2.0.0.0  0x2  invalid  {files}@2.0.0.0\n{PROBLEM_TEXT}"

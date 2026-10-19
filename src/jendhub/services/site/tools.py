@@ -19,7 +19,7 @@ from mcp.types import (
     Tool,
     ToolAnnotations,
 )
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.routing import Route
@@ -30,11 +30,13 @@ from jendhub.search.searches import Caller
 from jendhub.services.app import Running
 from jendhub.services.parameters import invalid_parameters
 from jendhub.services.site.arguments import (
-    GLOB,
+    DEFINITION,
+    FILES,
     GREP,
     READ,
     SEARCH,
-    GlobArguments,
+    DefinitionArguments,
+    FilesArguments,
     GrepArguments,
     ReadArguments,
     SearchArguments,
@@ -43,6 +45,7 @@ from jendhub.services.site.arguments import TOOLS as SPECS
 from jendhub.services.site.guide import INSTRUCTIONS
 from jendhub.services.site.text import (
     ToolLinks,
+    render_definition,
     render_lines,
     render_matches,
     render_paths,
@@ -101,6 +104,10 @@ def client_name(ctx: Context) -> str | None:
     return f"{info.name} {info.version}".strip()
 
 
+def tool_links(tool: str, given: BaseModel) -> ToolLinks:
+    return ToolLinks(tool, given.model_dump(exclude_unset=True, exclude_none=True))
+
+
 def answer(text: str, *, failed: bool = False) -> CallToolResult:
     return CallToolResult(content=[TextContent(text=text)], is_error=failed)
 
@@ -117,23 +124,29 @@ def tool_server(running: Running[Site], searching: Guard, version: str) -> Serve
         links = ToolLinks(SEARCH.name, {"query": given.query, "limit": given.limit})
         return render_results(found, links)
 
+    async def definition(_: Context, arguments: dict[str, Any]) -> str:
+        given = DefinitionArguments.model_validate(arguments)
+        view = await running.get().named(given)
+        return render_definition(view, tool_links(DEFINITION.name, given))
+
     async def read(_: Context, arguments: dict[str, Any]) -> str:
         given = ReadArguments.model_validate(arguments)
-        return render_lines(await running.get().read(given))
+        return render_lines(await running.get().read(given), tool_links(READ.name, given))
 
     async def grep(_: Context, arguments: dict[str, Any]) -> str:
         given = GrepArguments.model_validate(arguments)
-        return render_matches(await running.get().grep(given))
+        return render_matches(await running.get().grep(given), tool_links(GREP.name, given))
 
-    async def glob(_: Context, arguments: dict[str, Any]) -> str:
-        given = GlobArguments.model_validate(arguments)
-        return render_paths(await running.get().glob(given))
+    async def files(_: Context, arguments: dict[str, Any]) -> str:
+        given = FilesArguments.model_validate(arguments)
+        return render_paths(await running.get().files_page(given), tool_links(FILES.name, given))
 
     answers: dict[str, Answer] = {
         SEARCH.name: search,
+        DEFINITION.name: definition,
         READ.name: read,
         GREP.name: grep,
-        GLOB.name: glob,
+        FILES.name: files,
     }
 
     async def list_tools(_: Context, __: PaginatedRequestParams | None) -> ListToolsResult:

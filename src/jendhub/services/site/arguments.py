@@ -8,10 +8,17 @@ from jendhub.services.parameters import MAX_LIMIT, MAX_QUERY
 MAX_LINES = 2000
 MAX_COLUMNS = 2000
 MAX_ENTRIES = 1000
-MAX_PATHS = 1000
-CONTENT_ONLY = 'Requires output_mode: "content", ignored otherwise.'
+FILE_PATH = (
+    "The file, as its import line names it, for example `kit@1.0.0.0/json.bend`. Base is"
+    " `Base/base.bend`."
+)
+RELEASE_PATH = (
+    "One release, or a directory or a file in it, for example `kit@1.0.0.0` or"
+    " `kit@1.0.0.0/src`. Base is `Base`."
+)
+LINES_ONLY = "Only for mode `lines`."
 
-OutputMode = Literal["content", "files_with_matches", "count"]
+Mode = Literal["lines", "files", "counts"]
 
 
 class SearchArguments(BaseModel):
@@ -22,38 +29,53 @@ class SearchArguments(BaseModel):
         Field(
             min_length=1,
             max_length=MAX_QUERY,
-            description="What you need in a few words, for example `decompress gzip data`.",
+            description="What you need in a few words, for example `decompress gzip data`,"
+            " or a name, for example `List.map`.",
         ),
     ]
     limit: Annotated[
         int, Field(ge=1, le=MAX_LIMIT, description="The number of results to give.")
     ] = 10
     offset: Annotated[
-        int, Field(ge=0, lt=MAX_LIMIT, description="The number of best results to skip.")
+        int,
+        Field(
+            ge=0,
+            lt=MAX_LIMIT,
+            description="The number of best results to skip, to get the next page.",
+        ),
     ] = 0
+
+
+class DefinitionArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: Annotated[str, Field(min_length=1, description=FILE_PATH)]
+    name: Annotated[
+        str,
+        Field(
+            min_length=1,
+            description="The name of the definition in its file, for example `parse` or"
+            " `List.map`.",
+        ),
+    ]
 
 
 class ReadArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    file_path: Annotated[
-        str,
-        Field(
-            min_length=1,
-            description="The path to the file to read, for example `kit@1.0.0.0/json.bend`.",
-        ),
-    ]
-    offset: Annotated[
+    path: Annotated[str, Field(min_length=1, description=FILE_PATH)]
+    start_line: Annotated[
         int,
+        Field(ge=1, description="The number of the first line to give. Line numbers start at 1."),
+    ] = 1
+    end_line: Annotated[
+        int | None,
         Field(
-            ge=0,
-            description="The number of lines to skip before reading. Use it with limit to read"
-            " one part of a file, such as the lines that a search result gives.",
+            ge=1,
+            description="The number of the last line to give. Without it, the answer goes"
+            f" to the end of the file. An answer gives at most {MAX_LINES} lines.",
         ),
-    ] = 0
-    limit: Annotated[int, Field(ge=1, le=MAX_LINES, description="The number of lines to read.")] = (
-        MAX_LINES
-    )
+    ] = None
 
 
 class GrepArguments(BaseModel):
@@ -63,108 +85,85 @@ class GrepArguments(BaseModel):
         str,
         Field(
             min_length=1,
-            description="The regular expression pattern to search for in file contents",
+            description=r"A regular expression in ripgrep syntax, for example `def parse` or"
+            r" `type \w+ is Data`. Escape a literal brace: `Box\{value`.",
         ),
     ]
-    path: Annotated[
-        str,
-        Field(
-            min_length=1,
-            description="File or directory to search in (rg PATH): one release, or a file or"
-            " directory in it, for example `kit@1.0.0.0` or `kit@1.0.0.0/src`. Base is `Base`.",
-        ),
-    ]
+    path: Annotated[str, Field(min_length=1, description=RELEASE_PATH)]
     glob: Annotated[
         str | None,
         Field(
-            description='Glob pattern to filter files (e.g. "src/**", "!**/tests/**") - maps to'
-            " rg --glob"
+            description="Search only the files whose paths match this glob, for example"
+            " `src/**`. A glob that starts with `!` leaves out the files that match it."
         ),
     ] = None
-    output_mode: Annotated[
-        OutputMode,
+    mode: Annotated[
+        Mode,
         Field(
-            description='Output mode: "content" shows matching lines (supports before, after'
-            ' and context lines, line_numbers, head_limit), "files_with_matches" shows file'
-            ' paths (supports head_limit), "count" shows the number of matching lines in each'
-            " file (supports head_limit)."
+            description="`lines` gives the matching lines, `files` gives the paths of the"
+            " files that match, and `counts` gives the number of matching lines in each file."
         ),
-    ] = "files_with_matches"
-    before: Annotated[
-        int | None,
-        Field(
-            ge=0,
-            description=f"Number of lines to show before each match (rg -B). {CONTENT_ONLY}",
-        ),
-    ] = None
-    after: Annotated[
-        int | None,
-        Field(
-            ge=0,
-            description=f"Number of lines to show after each match (rg -A). {CONTENT_ONLY}",
-        ),
-    ] = None
+    ] = "lines"
     context: Annotated[
         int | None,
         Field(
             ge=0,
-            description="Number of lines to show before and after each match (rg -C)."
-            f" {CONTENT_ONLY}",
+            description=f"The number of lines to show before and after each match. {LINES_ONLY}",
         ),
     ] = None
-    line_numbers: Annotated[
-        bool,
-        Field(description=f"Show line numbers in output (rg -n). {CONTENT_ONLY}"),
-    ] = True
-    ignore_case: Annotated[bool, Field(description="Case insensitive search (rg -i)")] = False
-    only_matching: Annotated[
-        bool,
-        Field(
-            description="Print only the matched (non-empty) parts of each matching line, one"
-            f" match per output line (rg -o / --only-matching). {CONTENT_ONLY}",
-        ),
+    before: Annotated[
+        int | None,
+        Field(ge=0, description=f"The number of lines to show before each match. {LINES_ONLY}"),
+    ] = None
+    after: Annotated[
+        int | None,
+        Field(ge=0, description=f"The number of lines to show after each match. {LINES_ONLY}"),
+    ] = None
+    ignore_case: Annotated[
+        bool, Field(description="Match upper case and lower case letters as the same.")
     ] = False
     multiline: Annotated[
         bool,
-        Field(
-            description="Enable multiline mode where . matches newlines and patterns can span"
-            " lines (rg -U --multiline-dotall)."
-        ),
+        Field(description="Let a match go across lines. Then `.` also matches a line end."),
     ] = False
-    head_limit: Annotated[
+    limit: Annotated[
         int,
-        Field(
-            ge=1,
-            le=MAX_ENTRIES,
-            description='Limit output to first N lines/entries, equivalent to "| head -N".'
-            " Works across all output modes: content (limits output lines),"
-            " files_with_matches (limits file paths), count (limits count entries).",
-        ),
+        Field(ge=1, le=MAX_ENTRIES, description="The number of lines, paths or counts to give."),
     ] = 250
     offset: Annotated[
         int,
         Field(
             ge=0,
-            description="Skip first N lines/entries before applying head_limit, equivalent to"
-            ' "| tail -n +N | head -N". Works across all output modes.',
+            description="The number of lines, paths or counts to skip, to get the next page.",
         ),
     ] = 0
 
 
-class GlobArguments(BaseModel):
+class FilesArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    pattern: Annotated[
-        str, Field(min_length=1, description="The glob pattern to match files against")
-    ]
     path: Annotated[
         str,
         Field(
             min_length=1,
-            description="The release to search in, or a directory in it, for example"
-            " `kit@1.0.0.0`. Base is `Base`.",
+            description="One release, or a directory in it, for example `kit@1.0.0.0`. Base"
+            " is `Base`.",
         ),
     ]
+    pattern: Annotated[
+        str,
+        Field(
+            min_length=1,
+            description="Give only the paths that match this glob, for example `src/**`. The"
+            " glob matches the path below `path`: `*.bend` matches only the files at its top.",
+        ),
+    ] = "**"
+    limit: Annotated[
+        int, Field(ge=1, le=MAX_ENTRIES, description="The number of paths to give.")
+    ] = MAX_ENTRIES
+    offset: Annotated[
+        int, Field(ge=0, description="The number of paths to skip, to get the next page.")
+    ] = 0
 
 
 @dataclass(frozen=True)
@@ -176,48 +175,45 @@ class ToolSpec:
 
 SEARCH = ToolSpec(
     "search",
-    "Search the definitions of Base and of the BendHub packages by task or by name. Each"
-    " result gives its import line, the name to call, its head and how to read its code.",
+    "Find the definitions (functions, types and laws) of Base and of the BendHub packages"
+    " that do a task, or that have a given name. The best results come first. Each result"
+    " gives the"
+    " name to call, the import line, the head (doc comment and signature), and the definition"
+    " call that opens its code.",
     SearchArguments,
 )
-
-
-def described(summary: str, *notes: str) -> str:
-    return "\n".join([summary, "", *(f"- {note}" for note in notes)])
-
-
+DEFINITION = ToolSpec(
+    "definition",
+    "Open one definition. The answer gives its code, the import lines that the code needs, and"
+    " the definitions that the code uses, each with the definition call that opens it. Each"
+    " import line names an exact release, so you can copy the code and its import lines into"
+    " your project. The answer also gives the read call for the lines of the definition in its"
+    " file. The index holds the definitions of Base and of the latest valid release of each"
+    " package: read, grep and files work on every release.",
+    DefinitionArguments,
+)
 READ = ToolSpec(
     "read",
-    described(
-        "Reads a file of Base or of a release on BendHub.",
-        "`file_path` is the path of an import line, for example `kit@1.0.0.0/json.bend`."
-        " Base is `Base/base.bend`.",
-        f"Reads up to {MAX_LINES} lines by default.",
-        "When you already know which part of the file you need, only read that part. This"
-        " can be important for larger files.",
-        "Each line is returned as its number, a tab and its text, with line numbers starting at 1.",
-        "Reading a directory or a missing file returns an error rather than content.",
-    ),
+    "Read lines of a file of Base or of a release on BendHub. The answer gives each line as its"
+    f" number, a tab and its text, and cuts a line after {MAX_COLUMNS} characters. A file shows"
+    " its imports as BendHub has them: `./` and `../` name files of the same release. If the"
+    " answer stops before the end of the file, its last line gives the read call for the next"
+    " lines.",
     ReadArguments,
 )
 GREP = ToolSpec(
     "grep",
-    described(
-        "Content search built on ripgrep, in the files of one release.",
-        r'Full regex syntax (e.g. "def parse", "type \w+ is Data"). Ripgrep, not grep —'
-        r" escape literal braces (`Box\{value: Nat\}`).",
-        'Filter with `glob` (e.g. "src/**").',
-        '`output_mode`: "content" (matching lines), "files_with_matches" (paths only,'
-        ' default), or "count".',
-        "`multiline: true` for patterns that span lines.",
-    ),
+    "Find the lines of one release that match a regular expression, with ripgrep. A matching"
+    " line comes as `path:line:text`, and a context line as `path-line-text`, with the path"
+    " and the line number that read takes. If more results exist, the last line of the answer"
+    " gives the grep call for the next page.",
     GrepArguments,
 )
-GLOB = ToolSpec(
-    "glob",
-    'Fast file pattern matching in one release. Supports glob patterns like "**/*.bend" or'
-    ' "src/**/*.bend", which match the paths relative to `path`. Returns matching file paths'
-    " sorted by path.",
-    GlobArguments,
+FILES = ToolSpec(
+    "files",
+    "List the files of one release, or of a directory in it, with the paths that read, grep"
+    " and definition take. If more paths exist, the last line of the answer gives the files"
+    " call for the next page.",
+    FilesArguments,
 )
-TOOLS = [SEARCH, READ, GREP, GLOB]
+TOOLS = [SEARCH, DEFINITION, READ, GREP, FILES]

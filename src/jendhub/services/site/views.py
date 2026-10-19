@@ -30,20 +30,26 @@ from jendhub.search.sources import (
     ReleaseFiles,
     SourceFile,
     Usage,
+    definition_id,
     read_declared,
     read_file,
     read_release_files,
     usage,
 )
 from jendhub.services.parameters import MAX_LIMIT
-from jendhub.services.site.arguments import GlobArguments, GrepArguments, ReadArguments
+from jendhub.services.site.arguments import (
+    DefinitionArguments,
+    FilesArguments,
+    GrepArguments,
+    ReadArguments,
+)
 from jendhub.services.site.files import (
     NOT_READY,
     Lines,
-    Matches,
+    Page,
     Place,
-    glob_files,
     grep_files,
+    list_files,
     locate,
     read_lines,
 )
@@ -208,9 +214,27 @@ class Site:
             logger.exception("the search log did not store a search")
 
     async def definition(self, id_: str) -> DefinitionView:
-        found = await read_definition(self.pool, self.library, self.target().generation, id_)
+        found = await self.found_definition(id_)
         if found is None:
             raise HTTPException(404, f"The index has no definition {id_}.")
+        return found
+
+    async def named(self, given: DefinitionArguments) -> DefinitionView:
+        id_ = await definition_id(self.pool, given.path, given.name)
+        found = None if id_ is None else await self.found_definition(id_)
+        if found is None:
+            raise HTTPException(
+                404,
+                f"The index has no definition {given.name} in {given.path}. The index holds"
+                " only Base and the latest valid release of each package: read, grep and files"
+                " work on every release.",
+            )
+        return found
+
+    async def found_definition(self, id_: str) -> DefinitionView | None:
+        found = await read_definition(self.pool, self.library, self.target().generation, id_)
+        if found is None:
+            return None
         return DefinitionView(found, usage(found.name, found.package, found.version, found.module))
 
     async def locate(self, path: str) -> Place:
@@ -220,15 +244,16 @@ class Site:
         )
 
     async def read(self, given: ReadArguments) -> Lines:
-        return await read_lines(await self.locate(given.file_path), given.offset, given.limit)
+        return await read_lines(await self.locate(given.path), given.start_line, given.end_line)
 
-    async def grep(self, given: GrepArguments) -> Matches:
+    async def grep(self, given: GrepArguments) -> Page:
         place = await self.locate(given.path)
         async with self.greps:
             return await grep_files(place, given)
 
-    async def glob(self, given: GlobArguments) -> list[str]:
-        return await glob_files(await self.locate(given.path), given.pattern)
+    async def files_page(self, given: FilesArguments) -> Page:
+        place = await self.locate(given.path)
+        return await list_files(place, given.pattern, given.limit, given.offset)
 
     async def package(self, name: str, offset: int, limit: int) -> PackageView:
         found = await read_package(self.pool, self.target().generation, name, offset, limit)

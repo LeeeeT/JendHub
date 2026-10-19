@@ -25,7 +25,8 @@ from jendhub.services.parameters import (
     invalid_parameters,
 )
 from jendhub.services.site.arguments import (
-    GlobArguments,
+    DefinitionArguments,
+    FilesArguments,
     GrepArguments,
     ReadArguments,
     SearchArguments,
@@ -44,6 +45,7 @@ from jendhub.services.site.pages import (
 )
 from jendhub.services.site.text import (
     UrlLinks,
+    render_definition,
     render_lines,
     render_matches,
     render_package,
@@ -151,17 +153,25 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
         background.add_task(site.keep, searched)
         return render_results(found, links(site, request))
 
+    @router.get("/definition.txt")
+    async def definition(request: Request, given: Annotated[DefinitionArguments, Query()]) -> str:
+        site = running.get()
+        return render_definition(await site.named(given), links(site, request))
+
     @router.get("/read.txt")
-    async def read(given: Annotated[ReadArguments, Query()]) -> str:
-        return render_lines(await running.get().read(given))
+    async def read(request: Request, given: Annotated[ReadArguments, Query()]) -> str:
+        site = running.get()
+        return render_lines(await site.read(given), links(site, request))
 
     @router.get("/grep.txt")
-    async def grep(given: Annotated[GrepArguments, Query()]) -> str:
-        return render_matches(await running.get().grep(given))
+    async def grep(request: Request, given: Annotated[GrepArguments, Query()]) -> str:
+        site = running.get()
+        return render_matches(await site.grep(given), links(site, request))
 
-    @router.get("/glob.txt")
-    async def glob(given: Annotated[GlobArguments, Query()]) -> str:
-        return render_paths(await running.get().glob(given))
+    @router.get("/files.txt")
+    async def files(request: Request, given: Annotated[FilesArguments, Query()]) -> str:
+        site = running.get()
+        return render_paths(await site.files_page(given), links(site, request))
 
     @router.get("/packages/{name}.txt")
     async def package(request: Request, name: str, definitions_offset: Offset = 0) -> str:
@@ -222,11 +232,7 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
     @router.get("/definitions/{id_:path}")
     async def definition(id_: str) -> Response:
         view = await running.get().definition(id_)
-        detail = view.detail
-        alternate = RELATIVE.read(
-            view.usage.file, detail.first_line, detail.end_line - detail.first_line
-        )
-        return page("definition.html", view=view, alternate=alternate)
+        return page("definition.html", view=view, alternate=RELATIVE.definition(id_))
 
     return router
 
@@ -250,7 +256,7 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
     @router.get("/files/{release}")
     async def release_files(release: str) -> Response:
         found = await running.get().files(release)
-        return page("files.html", files=found, alternate=RELATIVE.glob(found.release))
+        return page("files.html", files=found, alternate=RELATIVE.files(found.release))
 
     @router.get("/files/{release}/{path:path}")
     async def file(release: str, path: str, lines: str | None = None) -> Response:

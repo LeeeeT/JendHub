@@ -8,20 +8,23 @@ from jendhub.indexing.failures import Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease
 from jendhub.search.packages import ReleaseDetail
 from jendhub.search.sources import id_source, usage
-from jendhub.services.site.arguments import MAX_COLUMNS, READ
-from jendhub.services.site.files import Lines, Matches
-from jendhub.services.site.pages import counted, shortened
-from jendhub.services.site.views import PackageView, Result, Results, StatusView
+from jendhub.services.site.arguments import DEFINITION, FILES, MAX_COLUMNS, READ
+from jendhub.services.site.files import Lines, Page
+from jendhub.services.site.pages import shortened
+from jendhub.services.site.views import DefinitionView, PackageView, Result, Results, StatusView
 
 INDENT = "   "
 NAMED_FILES = 5
-EVERY_FILE = "**"
 
 type Argument = str | int | bool
 
 
 class Links(Protocol):
-    def read(self, file: str, offset: int | None = None, limit: int | None = None) -> str: ...
+    def definition(self, id_: str) -> str: ...
+
+    def read(
+        self, file: str, start_line: int | None = None, end_line: int | None = None
+    ) -> str: ...
 
     def next(self, parameter: str, value: int) -> str: ...
 
@@ -38,7 +41,12 @@ def given(**arguments: Argument | None) -> dict[str, Argument]:
     return {name: value for name, value in arguments.items() if value is not None}
 
 
-def call(tool: str, arguments: dict[str, Argument]) -> str:
+def definition_arguments(id_: str) -> dict[str, Argument]:
+    file, name = id_source(id_)
+    return {"path": file, "name": name}
+
+
+def call(tool: str, arguments: Mapping[str, Argument]) -> str:
     named = ", ".join(f"{name}={json.dumps(value)}" for name, value in arguments.items())
     return f"{tool}({named})"
 
@@ -50,30 +58,36 @@ def encoded(query: Mapping[str, Argument]) -> str:
 @dataclass(frozen=True)
 class ToolLinks:
     tool: str
-    arguments: dict[str, Argument] = field(default_factory=dict[str, Argument])
+    arguments: Mapping[str, Argument] = field(default_factory=dict[str, Argument])
 
-    def read(self, file: str, offset: int | None = None, limit: int | None = None) -> str:
-        return call(READ.name, given(file_path=file, offset=offset, limit=limit))
+    def definition(self, id_: str) -> str:
+        return call(DEFINITION.name, definition_arguments(id_))
+
+    def read(self, file: str, start_line: int | None = None, end_line: int | None = None) -> str:
+        return call(READ.name, given(path=file, start_line=start_line, end_line=end_line))
 
     def next(self, parameter: str, value: int) -> str:
-        return f"More: {call(self.tool, self.arguments | {parameter: value})}\n"
+        return f"More: {call(self.tool, {**self.arguments, parameter: value})}\n"
 
 
 @dataclass(frozen=True)
 class UrlLinks:
     origin: str
     path: str = "/"
-    query: dict[str, str] = field(default_factory=dict[str, str])
+    query: Mapping[str, str] = field(default_factory=dict[str, str])
 
-    def read(self, file: str, offset: int | None = None, limit: int | None = None) -> str:
-        query = given(file_path=file, offset=offset, limit=limit)
-        return f"{self.origin}/read.txt?{encoded(query)}"
+    def definition(self, id_: str) -> str:
+        return f"{self.origin}/{DEFINITION.name}.txt?{encoded(definition_arguments(id_))}"
 
-    def glob(self, path: str) -> str:
-        return f"{self.origin}/glob.txt?{encoded({'pattern': EVERY_FILE, 'path': path})}"
+    def read(self, file: str, start_line: int | None = None, end_line: int | None = None) -> str:
+        query = given(path=file, start_line=start_line, end_line=end_line)
+        return f"{self.origin}/{READ.name}.txt?{encoded(query)}"
+
+    def files(self, path: str) -> str:
+        return f"{self.origin}/{FILES.name}.txt?{encoded({'path': path})}"
 
     def next(self, parameter: str, value: int) -> str:
-        return f"More: {self.origin}{self.path}?{encoded(self.query | {parameter: value})}\n"
+        return f"More: {self.origin}{self.path}?{encoded({**self.query, parameter: value})}\n"
 
 
 def indented(text: str) -> str:
@@ -85,15 +99,9 @@ def heading(title: str, shown: int, total: int, offset: int) -> str:
     return f"{title} ({total}{part}):\n"
 
 
-def definition_link(links: Links, id_: str, first_line: int, end_line: int) -> str:
-    file, _ = id_source(id_)
-    return links.read(file, first_line, end_line - first_line)
-
-
 def render_result(rank: int, result: Result, links: Links) -> str:
     hit = result.hit
-    link = definition_link(links, hit.id, hit.first_line, hit.end_line)
-    return f"{rank}. {result.usage.call_name} ({link})\n" + indented(
+    return f"{rank}. {result.usage.call_name} ({links.definition(hit.id)})\n" + indented(
         f"{result.usage.import_line}\n{shortened(hit.head)}"
     )
 
@@ -109,29 +117,53 @@ def render_results(found: Results, links: Links) -> str:
     return "\n".join([*blocks, next_page] if next_page else blocks)
 
 
-def render_lines(found: Lines) -> str:
-    if not found.total:
-        return f"{found.path} is empty.\n"
-    return "".join(
-        f"{number}\t{line[:MAX_COLUMNS]}\n"
-        for number, line in enumerate(found.lines, start=found.first)
+def render_definition(view: DefinitionView, links: Links) -> str:
+    detail, used = view.detail, view.usage
+    where = "Base" if detail.package is None else f"{detail.package}@{detail.version}"
+    first, last = detail.first_line + 1, detail.end_line
+    code = "\n".join([*detail.imports, "", detail.text]) if detail.imports else detail.text
+    return (
+        f"{used.call_name}: {detail.kind} of {where}\n"
+        f"Import: {used.import_line}\n"
+        f"Call: {used.call_name}\n"
+        f"Lines {first}-{last} of {used.file}: {links.read(used.file, first, last)}\n\n"
+        f"{code}\n\n"
+        + heading("Uses", len(detail.uses), len(detail.uses), 0)
+        + "".join(f"  {links.definition(id_)}\n" for id_ in detail.uses)
     )
 
 
-def render_matches(found: Matches) -> str:
-    files = found.mode == "files_with_matches"
+def render_lines(found: Lines, links: Links) -> str:
+    if not found.total:
+        return f"{found.path} is empty.\n"
+    numbered = "".join(
+        f"{number}\t{line[:MAX_COLUMNS]}\n"
+        for number, line in enumerate(found.lines, start=found.first)
+    )
+    if not found.cut:
+        return numbered
+    cut = f"Lines {found.first}-{found.last} of {found.total}. "
+    return numbered + cut + links.next("start_line", found.last + 1)
+
+
+def render_page(found: Page, links: Links, empty: str) -> str:
     if not found.entries:
-        return "No files found\n" if files else "No matches found\n"
-    head = f"Found {counted(found.total, 'file')}\n" if files else ""
-    return head + "".join(f"{entry}\n" for entry in found.entries)
+        return f"{empty}\n"
+    entries = "".join(f"{entry}\n" for entry in found.entries)
+    end = found.offset + len(found.entries)
+    return entries + (links.next("offset", end) if found.more else "")
 
 
-def render_paths(paths: list[str]) -> str:
-    return "".join(f"{path}\n" for path in paths) if paths else "No files found\n"
+def render_matches(found: Page, links: Links) -> str:
+    return render_page(found, links, "No matches.")
+
+
+def render_paths(found: Page, links: Links) -> str:
+    return render_page(found, links, "No files match.")
 
 
 def render_problem(problem: Problem, links: Links) -> str:
-    places = ", ".join(links.read(place.file, place.line - 1) for place in problem.places)
+    places = ", ".join(links.read(place.file, place.line) for place in problem.places)
     where = f"At {places}.\n" if places else ""
     named = ", ".join(problem.files[:NAMED_FILES])
     files = (
@@ -148,7 +180,7 @@ def render_problems(problems: list[Problem], links: Links) -> str:
 
 def render_release(name: str, release: ReleaseDetail, links: UrlLinks) -> str:
     label = f"{name}@{release.version}"
-    line = f"  {release.version}  {release.hash}  {release.state}  {links.glob(label)}\n"
+    line = f"  {release.version}  {release.hash}  {release.state}  {links.files(label)}\n"
     return line + render_problems(release.problems, links)
 
 
@@ -156,8 +188,7 @@ def render_package(view: PackageView, links: UrlLinks) -> str:
     package = view.package
     definitions = "".join(
         f"  {call_name(package.name, definition.id, definition.name, definition.module)}"
-        f" ({definition_link(links, definition.id, definition.first_line, definition.end_line)})\n"
-        + indented(shortened(definition.head))
+        f" ({links.definition(definition.id)})\n" + indented(shortened(definition.head))
         for definition in package.definitions
     )
     return (

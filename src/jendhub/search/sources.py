@@ -87,6 +87,19 @@ def id_source(id_: str) -> tuple[str, str]:
     return f"{release}/{module}.bend", name
 
 
+async def definition_id(pool: Pool, path: str, name: str) -> str | None:
+    release, _, file = path.partition("/")
+    if release == BASE:
+        return name if file == BASE_FILE else None
+    if not file.endswith(".bend"):
+        return None
+    async with pool.connection() as connection:
+        stored = await stored_release(connection, release)
+    if stored is None or stored.hash == stored.label:
+        return None
+    return f"{stored.label}/{file.removesuffix('.bend')}:{name}"
+
+
 def label(hash_: str, name: str | None, version: str | None) -> str:
     return hash_ if name is None else f"{name}@{version}"
 

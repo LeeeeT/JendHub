@@ -31,7 +31,7 @@ from tests.indexing.live import (
 
 SITE_URL = "https://jend.test"
 DOUBLE = "kit@1.0.0.0/main:double"
-DOUBLE_READ = f"{SITE_URL}/read.txt?file_path=kit@1.0.0.0/main.bend&offset=2&limit=3"
+DOUBLE_OPEN = f"{SITE_URL}/definition.txt?path=kit@1.0.0.0/main.bend&name=double"
 QUADRUPLE = "app@1.0.0.0/main:quadruple"
 BROKEN_SOURCE = "import Base\nimport ./missing.bend as M\n\ndef broken(n: Nat) -> Nat:\n  n\n"
 
@@ -168,18 +168,16 @@ async def stored_searches(pool: Pool) -> list[StoredSearch]:
         return await cursor.fetchall()
 
 
-async def test_agents_get_results_with_their_code_and_import_line(
+async def test_agents_get_results_with_their_definition_and_import_line(
     site: httpx.AsyncClient,
 ) -> None:
     params = {"query": "double a number", "limit": 1}
     response = await site.get("/search.txt", params=params, headers={"accept": "text/html"})
     assert response.headers["content-type"].startswith("text/plain")
     assert response.text.startswith(
-        f"1. Kit.double ({DOUBLE_READ})\n"
+        f"1. Kit.double ({DOUBLE_OPEN})\n"
         "   import kit@1.0.0.0/main.bend as Kit\n   # Doubles a number.\n"
     )
-    code = (await site.get(DOUBLE_READ)).text
-    assert code == ("3\t# Doubles a number.\n4\tdef double(n: Nat) -> Nat:\n5\t  Nat.add(n, n)\n")
     assert response.text.endswith(
         f"More: {SITE_URL}/search.txt?query=double+a+number&limit=1&offset=1\n"
     )
@@ -209,48 +207,60 @@ async def test_each_search_is_stored_with_its_client_and_whole_ranking(
     assert len(web[6]) > 1
 
 
-def numbered(text: str) -> str:
-    return "".join(f"{number}\t{line}\n" for number, line in enumerate(text.splitlines(), 1))
+async def test_a_definition_gives_its_code_imports_lines_and_uses(site: httpx.AsyncClient) -> None:
+    params = {"path": "app@1.0.0.0/main.bend", "name": "quadruple"}
+    response = await site.get("/definition.txt", params=params)
+    assert response.text == (
+        "App.quadruple: def of app@1.0.0.0\n"
+        "Import: import app@1.0.0.0/main.bend as App\n"
+        "Call: App.quadruple\n"
+        f"Lines 4-5 of app@1.0.0.0/main.bend: {SITE_URL}/read.txt?path=app@1.0.0.0/main.bend"
+        "&start_line=4&end_line=5\n\n"
+        "import Base\nimport kit@1.0.0.0/main.bend as K\n\n"
+        "def quadruple(n: Nat) -> Nat:\n  K.double(K.double(n))\n\n"
+        f"Uses (2):\n  {SITE_URL}/definition.txt?path=Base/base.bend&name=Nat\n  {DOUBLE_OPEN}\n"
+    )
+    base = await site.get("/definition.txt", params={"path": "Base/base.bend", "name": "Nat.add"})
+    assert base.text.startswith("Nat.add: def of Base\nImport: import Base\n")
+
+
+def numbered(text: str, first: int = 1) -> str:
+    lines = text.splitlines()[first - 1 :]
+    return "".join(f"{number}\t{line}\n" for number, line in enumerate(lines, first))
 
 
 async def test_agents_read_each_file_as_it_is_stored(site: httpx.AsyncClient) -> None:
-    broken = await site.get("/read.txt", params={"file_path": "kit@2.0.0.0/main.bend"})
+    broken = await site.get("/read.txt", params={"path": "kit@2.0.0.0/main.bend"})
     assert broken.text == numbered(BROKEN_SOURCE)
-    by_hash = await site.get("/read.txt", params={"file_path": f"{APP}/main.bend"})
-    assert by_hash.text == numbered(APP_SOURCE)
-    base = await site.get("/read.txt", params={"file_path": "Base/base.bend", "limit": 1})
+    by_hash = await site.get("/read.txt", params={"path": f"{APP}/main.bend", "start_line": 2})
+    assert by_hash.text == numbered(APP_SOURCE, 2)
+    base = await site.get("/read.txt", params={"path": "Base/base.bend", "end_line": 1})
     assert base.text == "1\ttype Nat is Data:\n"
 
 
-async def test_agents_find_code_in_one_release(site: httpx.AsyncClient) -> None:
-    content = {
-        "pattern": "double",
-        "path": "app@1.0.0.0",
-        "output_mode": "content",
-        "line_numbers": "false",
-    }
-    assert (await site.get("/grep.txt", params=content)).text == (
-        "app@1.0.0.0/main.bend:  K.double(K.double(n))\n"
+async def test_agents_find_code_and_files_in_one_release(site: httpx.AsyncClient) -> None:
+    lines = {"pattern": "double", "path": "app@1.0.0.0"}
+    assert (await site.get("/grep.txt", params=lines)).text == (
+        "app@1.0.0.0/main.bend:5:  K.double(K.double(n))\n"
     )
-    files = {"pattern": "Nat", "path": "kit@1.0.0.0/main.bend"}
-    assert (await site.get("/grep.txt", params=files)).text == (
-        "Found 1 file\nkit@1.0.0.0/main.bend\n"
-    )
-    paths = {"pattern": "**/*.bend", "path": "kit@1.0.0.0"}
-    assert (await site.get("/glob.txt", params=paths)).text == "kit@1.0.0.0/main.bend\n"
+    files = {"pattern": "Nat", "path": "kit@1.0.0.0/main.bend", "mode": "files"}
+    assert (await site.get("/grep.txt", params=files)).text == "kit@1.0.0.0/main.bend\n"
+    paths = {"path": "kit@1.0.0.0", "limit": 1}
+    assert (await site.get("/files.txt", params=paths)).text == "kit@1.0.0.0/main.bend\n"
 
 
 @pytest.mark.parametrize(
     ("path", "params", "status"),
     [
-        ("/read.txt", {"file_path": "kit@9.0.0.0/main.bend"}, httpx.codes.NOT_FOUND),
-        ("/read.txt", {"file_path": "kit@1.0.0.0/other.bend"}, httpx.codes.NOT_FOUND),
-        ("/read.txt", {"file_path": "kit@1.0.0.0"}, httpx.codes.BAD_REQUEST),
-        ("/read.txt", {"file_path": "kit@1.0.0.0/../x.bend"}, httpx.codes.BAD_REQUEST),
-        ("/read.txt", {"file_path": "kit@1.0.0.0/main.bend", "offset": 9}, httpx.codes.BAD_REQUEST),
+        ("/read.txt", {"path": "kit@9.0.0.0/main.bend"}, httpx.codes.NOT_FOUND),
+        ("/read.txt", {"path": "kit@1.0.0.0/other.bend"}, httpx.codes.NOT_FOUND),
+        ("/read.txt", {"path": "kit@1.0.0.0"}, httpx.codes.BAD_REQUEST),
+        ("/read.txt", {"path": "kit@1.0.0.0/../x.bend"}, httpx.codes.BAD_REQUEST),
+        ("/read.txt", {"path": "kit@1.0.0.0/main.bend", "start_line": 9}, httpx.codes.BAD_REQUEST),
+        ("/definition.txt", {"path": "kit@1.0.0.0/main.bend", "name": "no"}, httpx.codes.NOT_FOUND),
         ("/grep.txt", {"pattern": "(", "path": "kit@1.0.0.0"}, httpx.codes.BAD_REQUEST),
         ("/grep.txt", {"pattern": "x", "path": "kit@1.0.0.0/no.bend"}, httpx.codes.NOT_FOUND),
-        ("/glob.txt", {"pattern": "**", "path": "nothing"}, httpx.codes.NOT_FOUND),
+        ("/files.txt", {"path": "nothing"}, httpx.codes.NOT_FOUND),
         ("/packages/nothing.txt", {}, httpx.codes.NOT_FOUND),
     ],
 )
@@ -276,18 +286,19 @@ async def test_agents_get_an_invalid_query_as_text(
 async def test_agents_get_a_package_and_the_status_as_text(site: httpx.AsyncClient) -> None:
     package = (await site.get("/packages/kit.txt")).text
     assert package.startswith("kit\n\nReleases (2):\n  2.0.0.0  ")
-    assert f"indexed  {SITE_URL}/glob.txt?pattern=**&path=kit@1.0.0.0\n" in package
-    assert f"  Kit.double ({DOUBLE_READ})\n   # Doubles a number.\n" in package
+    assert f"indexed  {SITE_URL}/files.txt?path=kit@1.0.0.0\n" in package
+    assert f"  Kit.double ({DOUBLE_OPEN})\n   # Doubles a number.\n" in package
     status = (await site.get("/status.txt")).text
     assert "  Jobs: 0 queued, 0 running, 3 indexed, 0 superseded, 0 failed\n" in status
     assert f"Invalid releases (1):\n  kit@2.0.0.0 ({KIT_V2})" in status
-    assert f"   At {SITE_URL}/read.txt?file_path=kit@2.0.0.0/main.bend&offset=1.\n" in status
+    assert f"   At {SITE_URL}/read.txt?path=kit@2.0.0.0/main.bend&start_line=2.\n" in status
     assert "   Files that do not load: main.bend.\n" in status
 
 
-async def test_mcp_clients_get_four_read_only_tools(site: httpx.AsyncClient) -> None:
+async def test_mcp_clients_get_five_read_only_tools(site: httpx.AsyncClient) -> None:
     listed = (await rpc(site, "tools/list", {})).json()["result"]
-    assert [tool["name"] for tool in listed["tools"]] == ["search", "read", "grep", "glob"]
+    names = [tool["name"] for tool in listed["tools"]]
+    assert names == ["search", "definition", "read", "grep", "files"]
     assert all(tool["annotations"]["readOnlyHint"] for tool in listed["tools"])
     assert (listed["ttlMs"], listed["cacheScope"]) == (3_600_000, "public")
     discovered = (await rpc(site, "server/discover", {})).json()["result"]
@@ -313,7 +324,7 @@ async def test_mcp_clients_of_the_2025_protocol_also_search(
     assert stored[:3] == ("mcp", "python-httpx/" + httpx.__version__, None)
 
 
-async def test_mcp_search_gives_read_calls_and_is_stored(
+async def test_mcp_search_gives_definition_calls_and_is_stored(
     site: httpx.AsyncClient, pool: Pool
 ) -> None:
     failed, text = await call_tool(
@@ -321,7 +332,7 @@ async def test_mcp_search_gives_read_calls_and_is_stored(
     )
     assert not failed
     assert text.startswith(
-        '1. Kit.double (read(file_path="kit@1.0.0.0/main.bend", offset=2, limit=3))\n'
+        '1. Kit.double (definition(path="kit@1.0.0.0/main.bend", name="double"))\n'
         "   import kit@1.0.0.0/main.bend as Kit\n"
     )
     assert text.endswith('More: search(query="double a number", limit=1, offset=1)\n')
@@ -329,29 +340,27 @@ async def test_mcp_search_gives_read_calls_and_is_stored(
     assert stored[:6] == ("mcp", "c/3", "agent 1.2", "double a number", 0, 1)
 
 
-async def test_mcp_read_grep_and_glob_work_on_the_stored_files(site: httpx.AsyncClient) -> None:
-    read: dict[str, object] = {"file_path": "app@1.0.0.0/main.bend", "offset": 1, "limit": 2}
+async def test_mcp_tools_open_read_and_find_code(site: httpx.AsyncClient) -> None:
+    failed, opened = await call_tool(
+        site, "definition", {"path": "app@1.0.0.0/main.bend", "name": "quadruple"}
+    )
+    assert not failed
+    assert 'read(path="app@1.0.0.0/main.bend", start_line=4, end_line=5)' in opened
+    assert opened.endswith('  definition(path="kit@1.0.0.0/main.bend", name="double")\n')
+    read: dict[str, object] = {"path": "app@1.0.0.0/main.bend", "start_line": 2, "end_line": 3}
     assert await call_tool(site, "read", read) == (
         False,
         "2\timport kit@1.0.0.0/main.bend as K\n3\t\n",
     )
-    grep: dict[str, object] = {
-        "pattern": "def",
-        "path": "app@1.0.0.0",
-        "output_mode": "content",
-        "after": 1,
-    }
+    grep: dict[str, object] = {"pattern": "def", "path": "app@1.0.0.0", "after": 1, "limit": 1}
     assert await call_tool(site, "grep", grep) == (
         False,
         (
             "app@1.0.0.0/main.bend:4:def quadruple(n: Nat) -> Nat:\n"
-            "app@1.0.0.0/main.bend-5-  K.double(K.double(n))\n"
+            'More: grep(pattern="def", path="app@1.0.0.0", after=1, limit=1, offset=1)\n'
         ),
     )
-    assert await call_tool(site, "glob", {"pattern": "*.bend", "path": "Base"}) == (
-        False,
-        "Base/base.bend\n",
-    )
+    assert await call_tool(site, "files", {"path": "Base"}) == (False, "Base/base.bend\n")
 
 
 @pytest.mark.parametrize(
@@ -359,10 +368,17 @@ async def test_mcp_read_grep_and_glob_work_on_the_stored_files(site: httpx.Async
     [
         (
             "read",
-            {"file_path": "kit@1.0.0.0/nothing.bend"},
+            {"path": "kit@1.0.0.0/nothing.bend"},
             "The store has no file kit@1.0.0.0/nothing.bend.",
         ),
-        ("read", {"file_path": "kit/main.bend"}, "The store has no release kit."),
+        (
+            "read",
+            {"path": "kit/main.bend"},
+            (
+                "The store has no release kit. Name a release as name@version, for example"
+                " kit@1.0.0.0, or by the hash of its package."
+            ),
+        ),
         (
             "grep",
             {"pattern": "x", "path": "kit@1.0.0.0", "after": -1},
@@ -416,7 +432,7 @@ async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.Async
     assert f'href="/definitions/{DOUBLE}"' in html
     assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert "App.quadruple" in html
-    assert 'href="/read.txt?file_path=app@1.0.0.0/main.bend&amp;offset=3&amp;limit=2"' in html
+    assert 'href="/definition.txt?path=app@1.0.0.0/main.bend&amp;name=quadruple"' in html
 
 
 async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient) -> None:
@@ -527,7 +543,7 @@ async def test_without_a_live_index_only_base_waits(
     empty_site: httpx.AsyncClient, packages: PackageStore
 ) -> None:
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), BROKEN_SOURCE)
-    package = await empty_site.get("/read.txt", params={"file_path": "kit@2.0.0.0/main.bend"})
+    package = await empty_site.get("/read.txt", params={"path": "kit@2.0.0.0/main.bend"})
     assert package.text == numbered(BROKEN_SOURCE)
-    base = await empty_site.get("/read.txt", params={"file_path": "Base/base.bend"})
+    base = await empty_site.get("/read.txt", params={"path": "Base/base.bend"})
     assert base.status_code == httpx.codes.SERVICE_UNAVAILABLE
