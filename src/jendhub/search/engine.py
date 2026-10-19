@@ -101,14 +101,16 @@ class SearchEngine:
         self.model = model
         self.target = target
 
-    async def search(self, queries: list[str], limit: int) -> list[list[Hit]]:
+    async def search(
+        self, queries: list[str], limit: int, within: list[int] | None = None
+    ) -> list[list[Hit]]:
         texts = [instructed(TASK_INSTRUCTION, query) for query in queries]
         vectors = normalized(await self.embedder.embed(texts))
         slots = asyncio.Semaphore(CONCURRENCY)
 
         async def bounded(query: str, vector: Vectors) -> list[Hit]:
             async with slots:
-                return await self.search_one(query, vector, limit)
+                return await self.search_one(query, vector, limit, within)
 
         return list(
             await asyncio.gather(
@@ -116,9 +118,13 @@ class SearchEngine:
             )
         )
 
-    async def search_one(self, text: str, vector: Vectors, limit: int) -> list[Hit]:
+    async def search_one(
+        self, text: str, vector: Vectors, limit: int, within: list[int] | None
+    ) -> list[Hit]:
         target = self.target
-        neighbors = await self.vectors.search(target.collection, target.config, vector, DEPTH)
+        neighbors = await self.vectors.search(
+            target.collection, target.config, vector, DEPTH, within
+        )
         if not neighbors:
             return []
         similarities = {neighbor.point: neighbor.score for neighbor in neighbors}
@@ -167,6 +173,19 @@ class SearchEngine:
         scores = self.model.predict(matrix)
         order: list[int] = np.argsort(-scores, kind="stable")[:limit].tolist()
         return [hit(ranked[index][1], float(scores[index])) for index in order]
+
+    async def most_used(self, within: list[int], limit: int) -> list[Hit]:
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute(
+                "SELECT id, kind, name, package, version, module, head, users FROM definitions"
+                " WHERE point = ANY(%s) ORDER BY users DESC, key LIMIT %s",
+                (within, limit),
+            )
+            rows = await cursor.fetchall()
+        return [
+            Hit(id_, kind, name, package, version, module, head, float(users))
+            for id_, kind, name, package, version, module, head, users in rows
+        ]
 
     async def scores(
         self, vector: Vectors, points: list[int], using: VectorName

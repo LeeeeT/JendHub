@@ -50,7 +50,13 @@ def kind(schema: dict[str, Any]) -> str:
         return " | ".join(json.dumps(value) for value in schema["enum"])
     if "anyOf" in schema:
         return " | ".join(kind(part) for part in schema["anyOf"] if part.get("type") != "null")
+    if schema["type"] == "array":
+        return f"list of {kind(schema['items'])}s"
     return schema["type"]
+
+
+def unset(default: object) -> bool:
+    return default in (None, "", [])
 
 
 def bounds(schema: dict[str, Any]) -> list[str]:
@@ -65,6 +71,8 @@ def bounds(schema: dict[str, Any]) -> list[str]:
         return [f"at least {least}"]
     if "maxLength" in found:
         return [f"at most {found['maxLength']} characters"]
+    if "maxItems" in found:
+        return [f"at most {found['maxItems']} values"]
     return []
 
 
@@ -74,7 +82,7 @@ def parameter(name: str, schema: dict[str, Any], *, required: bool) -> str:
         "required"
         if required
         else "optional"
-        if default is None
+        if unset(default)
         else f"default {json.dumps(default)}"
     )
     facts = ", ".join([kind(schema), *bounds(schema), given])
@@ -83,7 +91,7 @@ def parameter(name: str, schema: dict[str, Any], *, required: bool) -> str:
 
 def query_value(name: str, schema: dict[str, Any], *, required: bool) -> str:
     default = schema.get("default")
-    if required or default is None:
+    if required or unset(default):
         return f"<{name}>"
     return json.dumps(default) if isinstance(default, bool) else str(default)
 
@@ -133,7 +141,7 @@ def llms_text(origin: str) -> str:
 
 
 def opensearch(origin: str) -> str:
-    template = quoteattr(f"{origin}/search?q={{searchTerms}}")
+    template = quoteattr(f"{origin}/search?query={{searchTerms}}")
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">\n'

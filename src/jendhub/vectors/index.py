@@ -95,6 +95,10 @@ class Projected:
     modules: list[str]
 
 
+def having(points: list[int]) -> models.Filter:
+    return models.Filter(must=[models.HasIdCondition(has_id=list[models.ExtendedPointId](points))])
+
+
 class VectorIndex:
     def __init__(self, client: AsyncQdrantClient) -> None:
         self.client = client
@@ -178,12 +182,20 @@ class VectorIndex:
         )
 
     async def search(
-        self, name: str, config: VectorConfig, vector: Vectors, limit: int
+        self,
+        name: str,
+        config: VectorConfig,
+        vector: Vectors,
+        limit: int,
+        within: list[int] | None = None,
     ) -> list[Neighbor]:
+        if within is not None and not within:
+            return []
         response = await self.client.query_points(
             name,
             query=config.project(vector.reshape(1, -1))[0].tolist(),
             using=CODE,
+            query_filter=None if within is None else having(within),
             search_params=config.search_params(max(limit, SEARCH_EF)),
             limit=limit,
             with_payload=[RELEASE, MODULE],
@@ -213,9 +225,7 @@ class VectorIndex:
             name,
             query=config.project(vector.reshape(1, -1))[0].tolist(),
             using=using,
-            query_filter=models.Filter(
-                must=[models.HasIdCondition(has_id=list[models.ExtendedPointId](points))]
-            ),
+            query_filter=having(points),
             search_params=config.exact_params(),
             limit=len(points),
             with_payload=False,

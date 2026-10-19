@@ -105,7 +105,8 @@ def client_name(ctx: Context) -> str | None:
 
 
 def tool_links(tool: str, given: BaseModel) -> ToolLinks:
-    return ToolLinks(tool, given.model_dump(exclude_unset=True, exclude_none=True))
+    given_values = given.model_dump(exclude_unset=True, exclude_none=True)
+    return ToolLinks(tool, {name: value for name, value in given_values.items() if value != []})
 
 
 def answer(text: str, *, failed: bool = False) -> CallToolResult:
@@ -119,10 +120,11 @@ def tool_server(running: Running[Site], searching: Guard, version: str) -> Serve
         await searching(request)
         site = running.get()
         caller = Caller("mcp", request.headers.get("user-agent"), client_name(ctx))
-        found, searched = await site.search(given.query, given.limit, given.offset, caller)
+        found, searched = await site.search(
+            given.query, given.filters, given.limit, given.offset, caller
+        )
         await site.keep(searched)
-        links = ToolLinks(SEARCH.name, {"query": given.query, "limit": given.limit})
-        return render_results(found, links)
+        return render_results(found, tool_links(SEARCH.name, given))
 
     async def definition(_: Context, arguments: dict[str, Any]) -> str:
         given = DefinitionArguments.model_validate(arguments)

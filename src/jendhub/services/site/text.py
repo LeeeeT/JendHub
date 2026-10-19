@@ -1,5 +1,5 @@
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 from urllib.parse import urlencode
@@ -16,7 +16,7 @@ from jendhub.services.site.views import DefinitionView, PackageView, Result, Res
 INDENT = "   "
 NAMED_FILES = 5
 
-type Argument = str | int | bool
+type Argument = str | int | bool | list[str]
 
 
 class Links(Protocol):
@@ -52,7 +52,7 @@ def call(tool: str, arguments: Mapping[str, Argument]) -> str:
 
 
 def encoded(query: Mapping[str, Argument]) -> str:
-    return urlencode({name: str(value) for name, value in query.items()}, safe="/@*")
+    return urlencode(query, doseq=True, safe="/@*:")
 
 
 @dataclass(frozen=True)
@@ -74,7 +74,7 @@ class ToolLinks:
 class UrlLinks:
     origin: str
     path: str = "/"
-    query: Mapping[str, str] = field(default_factory=dict[str, str])
+    query: Sequence[tuple[str, str]] = ()
 
     def definition(self, id_: str) -> str:
         return f"{self.origin}/{DEFINITION.name}.txt?{encoded(definition_arguments(id_))}"
@@ -87,7 +87,9 @@ class UrlLinks:
         return f"{self.origin}/{FILES.name}.txt?{encoded({'path': path})}"
 
     def next(self, parameter: str, value: int) -> str:
-        return f"More: {self.origin}{self.path}?{encoded({**self.query, parameter: value})}\n"
+        kept = [(name, given) for name, given in self.query if name != parameter]
+        query = urlencode([*kept, (parameter, str(value))], safe="/@*:")
+        return f"More: {self.origin}{self.path}?{query}\n"
 
 
 def indented(text: str) -> str:

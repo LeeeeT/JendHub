@@ -9,8 +9,21 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
 
 - **Users:** AI agents first. Agents get plain text with full URLs, because
   they read text more easily than JSON, and most fetch tools cannot ask for a
-  format. People get the same data as HTML pages with no JavaScript. One
-  service serves both forms, because they are one product with one life cycle.
+  format. People get the same data as HTML pages. One service serves both
+  forms, because they are one product with one life cycle.
+- **Search filters:** `package`, `uses` and `used_in` narrow a search to one
+  package, to the definitions that use a definition, or to the definitions
+  that a definition uses. A filter names a definition by its key,
+  `package/module:name` with no version, because the index holds one release
+  of each package. A person writes the filters in the search box, for example
+  `uses=bend-kit-json/json:parse.bytes decode response`, and a small script
+  turns them into URL parameters before the request, so the URL is the same
+  as the parameters of `/search.txt` and the `search` tool. The script also
+  turns a raw `query` from the OpenSearch template into filters. Each filter
+  narrows the search, also when a kind repeats. The filters become a set of
+  points, and Qdrant searches only in that set, so a filter never empties a
+  ranking that it could fill. With filters and no words, the results are the
+  most used definitions first.
 - **MCP:** the site is also an MCP server, so that an agent can add JendHub
   with one command and sees its tools in every session. It has five tools:
   `search`, `definition`, `read`, `grep` and `files`. Each text path
@@ -122,7 +135,7 @@ BendHub ──> syncer ──> Postgres, library <── worker ──> Qdrant
 | For agents (plain text) | For people (HTML) | Answer |
 |---|---|---|
 | `GET /llms.txt` | `GET /` | How to use JendHub. The home page also shows the size of the live index. |
-| `GET /search.txt?query=<query>&limit=10&offset=0` | `GET /search?q=<query>&offset=0` | The best definitions with their import line, the name to call and the definition URL. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
+| `GET /search.txt?query=<query>&package=<package>&uses=<key>&used_in=<key>&limit=10&offset=0` | `GET /search?query=<query>&package=<package>&uses=<key>&used_in=<key>&offset=0` | The best definitions with their import line, the name to call and the definition URL. Each filter can repeat, and each one narrows the search. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
 | `GET /definition.txt?path=<file>&name=<name>` | `GET /definitions/<id>` | A definition of the index: its code, the import lines that its code uses as exact releases, its lines in its file, and the definitions that it uses. |
 | `GET /read.txt?path=<file>&start_line=1&end_line=<line>` | `GET /files/<release>/<path>` | Lines of a file of any stored release, also an invalid or unindexed one, as `N<tab>text`. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | `GET /grep.txt?pattern=<regex>&path=<release>` | | The lines, paths or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters: `glob`, `mode` (`lines`, `files` or `counts`), `context`, `before`, `after`, `ignore_case`, `multiline`, `limit` (1 to 1000, 250) and `offset`. |
@@ -142,7 +155,7 @@ agent with one of these commands:
 
 | Tool | Answer |
 |---|---|
-| `search(query, limit=10, offset=0)` | The same as `/search.txt`. |
+| `search(query="", package=[], uses=[], used_in=[], limit=10, offset=0)` | The same as `/search.txt`. |
 | `definition(path, name)` | The same as `/definition.txt`. |
 | `read(path, start_line=1, end_line=None)` | The same as `/read.txt`. |
 | `grep(pattern, path, ...)` | The same as `/grep.txt`. |
@@ -181,9 +194,9 @@ Every service has `/healthz` (the process runs) and `/readyz` (it can do its
 job) on its port, and `/metrics` for Prometheus on the internal port 9000 only.
 The services log JSON lines. Each response has `X-Content-Type-Options`,
 `Referrer-Policy`, `Strict-Transport-Security`, and a strict
-Content-Security-Policy that allows no script. `/robots.txt` keeps crawlers
-away from the search pages, and allows the rest, because some LLM tools do not
-fetch a URL that `robots.txt` disallows.
+Content-Security-Policy that allows only the script of the site.
+`/robots.txt` keeps crawlers away from the search pages, and allows the rest,
+because some LLM tools do not fetch a URL that `robots.txt` disallows.
 
 ### Index generations
 
@@ -437,7 +450,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
-| Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
+| Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, filters, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
 | Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
 | The library, `data/library` | The files of each package in the `BEND_LIB` layout (`lib/<hash>/<path>`, and `lib/names/<name@version>` with the hash), and `base/<tag>/base.bend`. |
 

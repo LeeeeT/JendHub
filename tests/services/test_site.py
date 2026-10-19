@@ -193,13 +193,65 @@ async def test_search_pages_through_one_fixed_ranking(site: httpx.AsyncClient) -
     assert (await site.get("/search.txt", params={"query": "x", "offset": 50})).status_code == 400
 
 
+def call_names(text: str) -> list[str]:
+    return [line.split()[1] for line in text.splitlines() if line[:1].isdigit()]
+
+
+async def search_text(site: httpx.AsyncClient, params: list[tuple[str, str]]) -> str:
+    return (await site.get("/search.txt", params=tuple(params))).text
+
+
+async def test_agents_filter_a_search_by_package_and_uses(site: httpx.AsyncClient) -> None:
+    assert call_names(await search_text(site, [("uses", "kit/main:double")])) == ["App.quadruple"]
+    assert sorted(call_names(await search_text(site, [("used_in", "app/main:quadruple")]))) == [
+        "Kit.double",
+        "Nat",
+    ]
+    in_app = await search_text(site, [("query", "double a number"), ("package", "app")])
+    assert call_names(in_app) == ["App.quadruple"]
+    both = [("uses", "kit/main:double"), ("uses", "Nat")]
+    assert call_names(await search_text(site, both)) == ["App.quadruple"]
+    assert await search_text(site, [("uses", "kit/main:double"), ("package", "kit")]) == (
+        "No results.\n"
+    )
+
+
+async def test_filtered_pages_keep_every_filter(site: httpx.AsyncClient) -> None:
+    params = [("used_in", "app/main:quadruple"), ("package", "Base"), ("limit", "1")]
+    assert call_names(await search_text(site, params)) == ["Nat"]
+    assert (await search_text(site, [("used_in", "app/main:quadruple"), ("limit", "1")])).endswith(
+        f"More: {SITE_URL}/search.txt?used_in=app/main:quadruple&limit=1&offset=1\n"
+    )
+    failed, text = await call_tool(
+        site, "search", {"used_in": ["app/main:quadruple"], "uses": [], "limit": 1}
+    )
+    assert not failed
+    assert text.endswith('More: search(used_in=["app/main:quadruple"], limit=1, offset=1)\n')
+
+
+@pytest.mark.parametrize(
+    ("params", "status"),
+    [
+        ([], httpx.codes.BAD_REQUEST),
+        ([("query", " "), ("uses", "")], httpx.codes.BAD_REQUEST),
+        ([("uses", "kit/main:nothing")], httpx.codes.NOT_FOUND),
+        ([("used_in", "kit@1.0.0.0/main:double")], httpx.codes.NOT_FOUND),
+        ([("package", "nothing")], httpx.codes.NOT_FOUND),
+    ],
+)
+async def test_agents_get_a_failure_for_a_wrong_filter(
+    site: httpx.AsyncClient, params: list[tuple[str, str]], status: int
+) -> None:
+    assert (await site.get("/search.txt", params=tuple(params))).status_code == status
+
+
 async def test_each_search_is_stored_with_its_client_and_whole_ranking(
     site: httpx.AsyncClient, pool: Pool
 ) -> None:
     await site.get(
         "/search.txt", params={"query": "double", "limit": 1}, headers={"user-agent": "a/1"}
     )
-    await site.get("/search", params={"q": "double a number"}, headers={"user-agent": "b/2"})
+    await site.get("/search", params={"query": "double a number"}, headers={"user-agent": "b/2"})
     [agents, web] = await stored_searches(pool)
     assert agents[:6] == ("agents", "a/1", None, "double", 0, 1)
     assert web[:6] == ("web", "b/2", None, "double a number", 0, 20)
@@ -282,9 +334,7 @@ async def test_agents_get_a_failure_as_text(
     assert response.headers["content-type"].startswith("text/plain")
 
 
-@pytest.mark.parametrize(
-    "params", [{"query": ""}, {"query": "map", "limit": 0}, {"query": "x" * 1001}]
-)
+@pytest.mark.parametrize("params", [{"query": "map", "limit": 0}, {"query": "x" * 1001}])
 async def test_agents_get_an_invalid_query_as_text(
     site: httpx.AsyncClient, params: dict[str, str | int]
 ) -> None:
@@ -427,23 +477,36 @@ async def test_mcp_clients_get_an_error_for_an_unknown_tool(site: httpx.AsyncCli
 async def test_browsers_get_a_search_description(site: httpx.AsyncClient) -> None:
     response = await site.get("/opensearch.xml")
     assert response.headers["content-type"].startswith("application/opensearchdescription+xml")
-    assert f'template="{SITE_URL}/search?q={{searchTerms}}"' in response.text
+    assert f'template="{SITE_URL}/search?query={{searchTerms}}"' in response.text
     home = (await site.get("/")).text
     assert '<link rel="search" type="application/opensearchdescription+xml"' in home
 
 
 async def test_people_get_the_results_as_a_page(site: httpx.AsyncClient) -> None:
-    response = await site.get("/search", params={"q": "double a number"})
+    response = await site.get("/search", params={"query": "double a number"})
     assert response.headers["content-type"].startswith("text/html")
     html = response.text
     assert f'href="/definitions/{DOUBLE}"' in html
     assert 'href="/packages/kit"' in html
     assert "import kit@1.0.0.0/main.bend as Kit" in html
-    assert 'type="text/plain" href="/search.txt?query=double+a+number"' in html
+    assert 'type="text/plain" href="/search.txt?query=double%20a%20number"' in html
+
+
+async def test_people_filter_a_search_and_see_the_filters_in_the_box(
+    site: httpx.AsyncClient, pool: Pool
+) -> None:
+    params = [("uses", "kit/main:double"), ("query", "times four")]
+    html = (await site.get("/search", params=tuple(params))).text
+    assert 'value="uses=kit/main:double times four"' in html
+    assert f'href="/definitions/{QUADRUPLE}"' in html
+    assert 'href="/search.txt?uses=kit/main:double&amp;query=times%20four"' in html
+    async with pool.connection() as connection:
+        cursor = await connection.execute("SELECT query, packages, uses, used_in FROM searches")
+        assert await cursor.fetchall() == [("times four", [], ["kit/main:double"], [])]
 
 
 async def test_an_empty_search_goes_home(site: httpx.AsyncClient) -> None:
-    response = await site.get("/search", params={"q": " "})
+    response = await site.get("/search", params={"query": " "})
     assert response.status_code == httpx.codes.SEE_OTHER
     assert response.headers["location"] == "/"
 
@@ -490,11 +553,11 @@ async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> Non
 
 
 async def test_every_answer_has_the_security_headers(site: httpx.AsyncClient) -> None:
-    for path in ("/", "/search.txt?query=double", "/style.css"):
+    for path in ("/", "/search.txt?query=double", "/style.css", "/search.js"):
         headers = (await site.get(path)).headers
         assert headers["x-content-type-options"] == "nosniff"
         assert headers["referrer-policy"] == "no-referrer"
-        assert "script-src" not in headers["content-security-policy"]
+        assert "script-src 'self'" in headers["content-security-policy"]
         assert "style-src 'self'" in headers["content-security-policy"]
 
 
@@ -523,7 +586,7 @@ async def test_searches_from_one_client_are_limited(
         other = await client.get(
             "/search.txt?query=double", headers={"cf-connecting-ip": "2.2.2.2"}
         )
-        page = await client.get("/search?q=double", headers={"cf-connecting-ip": "1.1.1.1"})
+        page = await client.get("/search?query=double", headers={"cf-connecting-ip": "1.1.1.1"})
         tool = await call_tool(
             client, "search", {"query": "double"}, {"cf-connecting-ip": "1.1.1.1"}
         )

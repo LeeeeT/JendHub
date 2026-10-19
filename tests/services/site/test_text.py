@@ -130,7 +130,7 @@ def test_lines_are_numbered_and_a_cut_answer_gives_the_next_call() -> None:
 
 
 def test_a_page_of_results_gives_the_next_call() -> None:
-    links = UrlLinks(ORIGIN, "/grep.txt", {"pattern": "f", "path": "kit@1.0.0.0"})
+    links = UrlLinks(ORIGIN, "/grep.txt", (("pattern", "f"), ("path", "kit@1.0.0.0")))
     found = Page(["kit@1.0.0.0/a.bend:1:def f:"], 0, more=True)
     assert render_matches(found, links) == (
         "kit@1.0.0.0/a.bend:1:def f:\n"

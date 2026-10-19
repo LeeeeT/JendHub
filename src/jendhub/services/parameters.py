@@ -8,7 +8,6 @@ MAX_LIMIT = 50
 PAGE = 100
 
 Offset = Annotated[int, Query(ge=0)]
-SearchOffset = Annotated[int, Query(ge=0, lt=MAX_LIMIT)]
 
 
 def invalid_parameters(problems: Iterable[Mapping[str, Any]]) -> str:

@@ -1,6 +1,6 @@
 {% macro search_form(query="", large=False) -%}
 <form class="search-form{% if large %} large{% endif %}" method="get" action="/search" role="search">
-<input type="search" name="q" value="{{ query }}" maxlength="1000" required placeholder="a task or a name" aria-label="Search Bend definitions"{% if large %} autofocus{% endif %}>
+<input type="search" name="query" value="{{ query }}" maxlength="1000" required placeholder="a task or a name" aria-label="Search Bend definitions"{% if large %} autofocus{% endif %}>
 <button type="submit">search</button>
 </form>
 {%- endmacro %}

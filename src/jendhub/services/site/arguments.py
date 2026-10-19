@@ -3,6 +3,7 @@ from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from jendhub.search.filters import Filters
 from jendhub.services.parameters import MAX_LIMIT, MAX_QUERY
 
 MAX_LINES = 2000
@@ -22,6 +23,12 @@ GLOB = (
     " `*.bend`. A glob that starts with `!` leaves out the files that match it."
 )
 LINES_ONLY = "Only for mode `lines`."
+MAX_FILTERS = 10
+DEFINITION_KEY = (
+    "Name it as `package/module:name`, for example `bend-kit-json/json:parse.bytes`. A"
+    " definition of Base is its name, for example `List.map`."
+)
+REPEAT = "Give it more than once to keep only the definitions that match each value."
 
 Mode = Literal["lines", "files", "counts"]
 
@@ -36,19 +43,55 @@ class Arguments(BaseModel):
             return given
         fields = cls.model_fields
         return {
-            name: value
+            name: without_blanks(value)
             for name, value in cast("dict[str, object]", given).items()
             if value != "" or name not in fields or fields[name].is_required()
         }
+
+
+def without_blanks(value: object) -> object:
+    if not isinstance(value, list):
+        return value
+    return [item for item in cast("list[object]", value) if item != ""]
+
+
+Values = list[Annotated[str, Field(min_length=1)]]
 
 
 class SearchArguments(Arguments):
     query: Annotated[
         str,
         Field(
-            min_length=1,
             max_length=MAX_QUERY,
-            description="What you need in a few words.",
+            description="What you need in a few words. Without it, the results are the"
+            " definitions that the filters give, the most used first.",
+        ),
+    ] = ""
+    package: Annotated[
+        Values,
+        Field(
+            default_factory=list,
+            max_length=MAX_FILTERS,
+            description="Search only the definitions of this package, for example"
+            " `bend-kit-json`. Base is `Base`.",
+        ),
+    ]
+    uses: Annotated[
+        Values,
+        Field(
+            default_factory=list,
+            max_length=MAX_FILTERS,
+            description=f"Search only the definitions that use this definition. {DEFINITION_KEY}"
+            f" {REPEAT}",
+        ),
+    ]
+    used_in: Annotated[
+        Values,
+        Field(
+            default_factory=list,
+            max_length=MAX_FILTERS,
+            description="Search only the definitions that this definition uses."
+            f" {DEFINITION_KEY} {REPEAT}",
         ),
     ]
     limit: Annotated[
@@ -62,6 +105,10 @@ class SearchArguments(Arguments):
             description="The number of best results to skip, to get the next page.",
         ),
     ] = 0
+
+    @property
+    def filters(self) -> Filters:
+        return Filters(tuple(self.package), tuple(self.uses), tuple(self.used_in))
 
 
 class DefinitionArguments(Arguments):

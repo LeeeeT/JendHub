@@ -1,6 +1,6 @@
 import hashlib
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from importlib.resources import files
 from typing import cast
@@ -15,7 +15,8 @@ from jendhub.search.sources import BASE, BASE_FILE, Declared, id_source
 
 SITE = "jendhub.services.site"
 STYLE = files(SITE).joinpath("static/style.css").read_text(encoding="utf-8")
-ASSETS = hashlib.sha256(STYLE.encode()).hexdigest()[:12]
+SCRIPT = files(SITE).joinpath("static/search.js").read_text(encoding="utf-8")
+ASSETS = hashlib.sha256(f"{STYLE}{SCRIPT}".encode()).hexdigest()[:12]
 EXAMPLES = ("decompress gzip data", "base64 encode", "sha256 hash of bytes", "parse json")
 IMPORT = re.compile(r"^(import )([^./\s]\S*/\S+\.bend)( as .*)$")
 BASE_IMPORT = re.compile(r"^(import )(Base)(\s*)$")
@@ -68,8 +69,12 @@ def marked_lines(lines: str | None) -> range:
     return range(first, last + 1)
 
 
+def readable(query: Sequence[tuple[str, str]]) -> str:
+    return urlencode(query, safe="/:@", quote_via=quote)
+
+
 def search_href(query: str) -> str:
-    return f"/search?{urlencode({'q': query})}"
+    return f"/search?{readable([('query', query)])}"
 
 
 @dataclass(frozen=True)
@@ -162,11 +167,12 @@ class Pages:
 
 
 def with_offset(request: Request, parameter: str, offset: int) -> str:
-    query = dict(request.query_params)
-    query.pop(parameter, None)
+    query = [
+        (name, value) for name, value in request.query_params.multi_items() if name != parameter
+    ]
     if offset:
-        query[parameter] = str(offset)
-    return f"{request.url.path}?{urlencode(query)}" if query else request.url.path
+        query.append((parameter, str(offset)))
+    return f"{request.url.path}?{readable(query)}" if query else request.url.path
 
 
 @dataclass(frozen=True)

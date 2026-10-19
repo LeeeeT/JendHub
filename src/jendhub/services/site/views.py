@@ -22,6 +22,7 @@ from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.remote.openrouter import INTERACTIVE, open_openrouter
 from jendhub.search.definitions import DefinitionDetail, read_definition
 from jendhub.search.engine import Hit, SearchEngine, Target
+from jendhub.search.filters import Filters, UnknownFilterError, filtered_points
 from jendhub.search.packages import PackageDetail, read_package
 from jendhub.search.ranking import Model, load_model
 from jendhub.search.searches import Caller, Search, record_search
@@ -184,18 +185,33 @@ class Site:
         return self.live.current
 
     async def search(
-        self, query: str, limit: int, offset: int, caller: Caller
+        self, query: str, filters: Filters, limit: int, offset: int, caller: Caller
     ) -> tuple[Results, Search]:
+        query = query.strip()
+        if not query and not filters:
+            raise HTTPException(400, "Give a query or a filter.")
         target = self.target()
         resources = self.resources
         engine = SearchEngine(
             resources.pool, resources.vectors, resources.embedder, resources.model, target
         )
         start = time.perf_counter()
-        [hits] = await engine.search([query], MAX_LIMIT)
+        try:
+            within = (
+                await filtered_points(resources.pool, target.generation, filters)
+                if filters
+                else None
+            )
+        except UnknownFilterError as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
+        if query:
+            [hits] = await engine.search([query], MAX_LIMIT, within)
+        else:
+            hits = await engine.most_used(within or [], MAX_LIMIT)
         searched = Search(
             caller,
             query,
+            filters,
             offset,
             limit,
             target.generation,

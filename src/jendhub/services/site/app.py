@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import Annotated
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -18,10 +18,8 @@ from jendhub.search.searches import Caller
 from jendhub.services.app import Running, service_app
 from jendhub.services.background import every
 from jendhub.services.parameters import (
-    MAX_QUERY,
     PAGE,
     Offset,
-    SearchOffset,
     invalid_parameters,
 )
 from jendhub.services.site.arguments import (
@@ -36,11 +34,13 @@ from jendhub.services.site.limits import RateLimit, client_address
 from jendhub.services.site.pages import (
     COUNTS,
     EXAMPLES,
+    SCRIPT,
     STYLE,
     Span,
     marked_lines,
     page,
     pages,
+    readable,
     source_lines,
 )
 from jendhub.services.site.text import (
@@ -66,7 +66,7 @@ from jendhub.settings import load_settings
 
 WEB_RESULTS = 20
 RELATIVE = UrlLinks("")
-QUIET = frozenset({"/healthz", "/readyz", "/style.css"})
+QUIET = frozenset({"/healthz", "/readyz", "/style.css", "/search.js"})
 ASSET_CACHE = {"cache-control": "public, max-age=31536000, immutable"}
 SEARCHES = frozenset({"/search", "/search.txt"})
 
@@ -91,7 +91,11 @@ def for_agents(path: str) -> bool:
 
 
 def links(site: Site, request: Request) -> UrlLinks:
-    return UrlLinks(site.origin, request.url.path, dict(request.query_params))
+    return UrlLinks(site.origin, request.url.path, tuple(request.query_params.multi_items()))
+
+
+def box_text(given: SearchArguments) -> str:
+    return " ".join([*given.filters.words(), given.query.strip()]).strip()
 
 
 def text(body: str, status: int = 200, headers: dict[str, str] | None = None) -> Response:
@@ -149,7 +153,9 @@ def agent_routes(running: Running[Site], limited: Guard) -> APIRouter:
     ) -> str:
         site = running.get()
         caller = Caller("agents", request.headers.get("user-agent"))
-        found, searched = await site.search(given.query, given.limit, given.offset, caller)
+        found, searched = await site.search(
+            given.query, given.filters, given.limit, given.offset, caller
+        )
         background.add_task(site.keep, searched)
         return render_results(found, links(site, request))
 
@@ -207,26 +213,31 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
     async def style() -> Response:
         return Response(STYLE, media_type="text/css", headers=ASSET_CACHE)
 
+    @router.get("/search.js")
+    async def script() -> Response:
+        return Response(SCRIPT, media_type="text/javascript", headers=ASSET_CACHE)
+
     @router.get("/search")
     async def search(
-        request: Request, background: BackgroundTasks, q: str = "", offset: SearchOffset = 0
+        request: Request, background: BackgroundTasks, given: Annotated[SearchArguments, Query()]
     ) -> Response:
-        query = q.strip()
-        if not query:
+        text = box_text(given)
+        if not text:
             return RedirectResponse("/", status_code=303)
-        if len(query) > MAX_QUERY:
-            raise HTTPException(400, f"A query has at most {MAX_QUERY} characters.")
         site = running.get()
         caller = Caller("web", request.headers.get("user-agent"))
-        found, searched = await site.search(query, WEB_RESULTS, offset, caller)
+        found, searched = await site.search(
+            given.query, given.filters, WEB_RESULTS, given.offset, caller
+        )
         background.add_task(site.keep, searched)
         shown = len(found.results)
+        others = [pair for pair in request.query_params.multi_items() if pair[0] != "offset"]
         return page(
             "search.html",
-            query=query,
+            query=text,
             found=found,
-            pages=pages(request, "offset", Span(offset, shown, found.total), WEB_RESULTS),
-            alternate=f"/search.txt?{urlencode({'query': query})}",
+            pages=pages(request, "offset", Span(given.offset, shown, found.total), WEB_RESULTS),
+            alternate=f"/search.txt?{readable(others)}",
         )
 
     @router.get("/definitions/{id_:path}")
