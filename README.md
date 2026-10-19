@@ -36,8 +36,11 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   `grep` and `glob` take one release, a `read` gives at most 2000 lines and cuts
   a line at 2000 characters, `grep` gives at most 1000 entries (250 by
   default), and `glob` gives at most 1000 paths. As with the Read, Grep and
-  Glob tools, an answer does not tell where the next part starts: the agent
-  asks for it with `offset`. `grep` has no `type` parameter, because the store
+  Glob tools, an answer does not tell that it is cut, and the descriptions do
+  not name the cut of a long line or the path cap. `read` and `grep` take
+  `offset` for the next
+  part, and `glob`, like the Glob tool, has no paging: a release has at most a
+  few hundred files. `grep` has no `type` parameter, because the store
   keeps only `.bend` files. The `offset` of `read` is a true offset, unlike the
   line number of the Read tool: 0 starts at the first line, and 1 skips it.
   This is the only change to the parameters. The descriptions copy those of
@@ -120,7 +123,7 @@ BendHub ──> syncer ──> Postgres, library <── worker ──> Qdrant
 | `GET /read.txt?file_path=<release>/<path>&offset=0&limit=2000` | `GET /files/<release>/<path>` | A file of any stored release, also an invalid or unindexed one, as `N<tab>text` lines. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | | `GET /definitions/<id>` | A definition with the import lines that its code uses, and the definitions that it uses. Its text form is the `read.txt` of its lines. |
 | `GET /grep.txt?pattern=<regex>&path=<release>` | | The paths, lines or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters are those of the Grep tool: `glob`, `output_mode` (`files_with_matches`, `content` or `count`), `-A`, `-B`, `-C`, `context`, `-n`, `-i`, `-o`, `multiline`, `head_limit` (1 to 1000, 250) and `offset`. |
-| `GET /glob.txt?pattern=<glob>&path=<release>&offset=0` | `GET /files/<release>` | The files of one release whose paths match a glob, such as `**/*.bend`. The page shows all files with the number of indexed definitions in each. |
+| `GET /glob.txt?pattern=<glob>&path=<release>` | `GET /files/<release>` | The files of one release whose paths match a glob, such as `**/*.bend`. The page shows all files with the number of indexed definitions in each. |
 | `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
 | `GET /status.txt` | `GET /status` | The generations of the live corpus with their sizes and job counts, and one page of the invalid releases with their load errors, newest first. |
 | | `GET /opensearch.xml` | The OpenSearch description, so that a browser can search JendHub from its address bar. Each page links to it. |
@@ -139,7 +142,7 @@ agent with one of these commands:
 | `search(query, limit=10, offset=0)` | The same as `/search.txt`. |
 | `read(file_path, offset=0, limit=2000)` | The same as `/read.txt`. `file_path` is the path of an import line, for example `kit@1.0.0.0/json.bend`, or `Base/base.bend`. |
 | `grep(pattern, path, ...)` | The same as `/grep.txt`. |
-| `glob(pattern, path, offset=0)` | The same as `/glob.txt`. |
+| `glob(pattern, path)` | The same as `/glob.txt`. |
 
 In tool answers, each link is the tool call that opens it, for example
 `read(file_path="kit@1.0.0.0/json.bend", offset=12, limit=29)`.

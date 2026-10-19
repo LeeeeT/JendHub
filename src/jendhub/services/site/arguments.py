@@ -181,10 +181,6 @@ class GlobArguments(BaseModel):
             " `kit@1.0.0.0`. Base is `Base`.",
         ),
     ]
-    offset: Annotated[
-        int,
-        Field(ge=0, description=f"Skip first N paths. Gives at most {MAX_PATHS} paths."),
-    ] = 0
 
 
 @dataclass(frozen=True)
@@ -216,7 +212,6 @@ READ = ToolSpec(
         "When you already know which part of the file you need, only read that part. This"
         " can be important for larger files.",
         "Results are returned using cat -n format, with line numbers starting at 1",
-        f"A line longer than {MAX_COLUMNS} characters is cut.",
         "Reading a directory or a missing file returns an error rather than content.",
     ),
     ReadArguments,

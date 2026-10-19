@@ -171,11 +171,11 @@ def matching_paths(directory: Path, pattern: str) -> list[str]:
     return [path for path in file_paths(directory) if PurePosixPath(path).full_match(pattern)]
 
 
-async def glob_files(place: Place, pattern: str, offset: int) -> list[str]:
+async def glob_files(place: Place, pattern: str) -> list[str]:
     target = place.target
     if not target.is_dir():
         if target.exists():
             raise HTTPException(400, f"{place.path} is a file. Use read to read it.")
         raise HTTPException(404, f"The store has no directory {place.path}.")
     matched = await asyncio.to_thread(matching_paths, target, pattern)
-    return [f"{place.path}/{path}" for path in matched[offset : offset + MAX_PATHS]]
+    return [f"{place.path}/{path}" for path in matched[:MAX_PATHS]]

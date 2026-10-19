@@ -97,13 +97,10 @@ async def test_grep_explains_an_invalid_pattern(release: Place) -> None:
 
 
 async def test_glob_gives_the_matching_paths(release: Place) -> None:
-    assert await glob_files(release, "*.bend", 0) == [
+    assert await glob_files(release, "*.bend") == [
         f"{LABEL}/.hidden.bend",
         f"{LABEL}/main.bend",
     ]
-    assert await glob_files(release, "**/*.bend", 1) == [
-        f"{LABEL}/main.bend",
-        f"{LABEL}/src/util.bend",
-    ]
+    assert await glob_files(inside(release, "src"), "**/*.bend") == [f"{LABEL}/src/util.bend"]
     with pytest.raises(HTTPException):
-        await glob_files(inside(release, "main.bend"), "*", 0)
+        await glob_files(inside(release, "main.bend"), "*")

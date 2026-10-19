@@ -228,7 +228,7 @@ class Site:
             return await grep_files(place, given)
 
     async def glob(self, given: GlobArguments) -> list[str]:
-        return await glob_files(await self.locate(given.path), given.pattern, given.offset)
+        return await glob_files(await self.locate(given.path), given.pattern)
 
     async def package(self, name: str, offset: int, limit: int) -> PackageView:
         found = await read_package(self.pool, self.target().generation, name, offset, limit)
