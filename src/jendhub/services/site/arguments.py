@@ -92,7 +92,6 @@ class GrepArguments(BaseModel):
             description='Output mode: "content" shows matching lines (supports -A/-B/-C'
             ' context, -n line numbers, head_limit), "files_with_matches" shows file paths'
             ' (supports head_limit), "count" shows match counts (supports head_limit).'
-            ' Defaults to "files_with_matches".'
         ),
     ] = "files_with_matches"
     before: Annotated[
@@ -124,7 +123,7 @@ class GrepArguments(BaseModel):
         bool,
         Field(
             alias="-n",
-            description=f"Show line numbers in output (rg -n). {CONTENT_ONLY} Defaults to true.",
+            description=f"Show line numbers in output (rg -n). {CONTENT_ONLY}",
         ),
     ] = True
     ignore_case: Annotated[
@@ -135,15 +134,14 @@ class GrepArguments(BaseModel):
         Field(
             alias="-o",
             description="Print only the matched (non-empty) parts of each matching line, one"
-            f" match per output line (rg -o / --only-matching). {CONTENT_ONLY}"
-            " Defaults to false.",
+            f" match per output line (rg -o / --only-matching). {CONTENT_ONLY}",
         ),
     ] = False
     multiline: Annotated[
         bool,
         Field(
             description="Enable multiline mode where . matches newlines and patterns can span"
-            " lines (rg -U --multiline-dotall). Default: false."
+            " lines (rg -U --multiline-dotall)."
         ),
     ] = False
     head_limit: Annotated[
@@ -153,8 +151,7 @@ class GrepArguments(BaseModel):
             le=MAX_ENTRIES,
             description='Limit output to first N lines/entries, equivalent to "| head -N".'
             " Works across all output modes: content (limits output lines),"
-            " files_with_matches (limits file paths), count (limits count entries). Defaults"
-            f" to 250 when unspecified. At most {MAX_ENTRIES}.",
+            " files_with_matches (limits file paths), count (limits count entries).",
         ),
     ] = 250
     offset: Annotated[
@@ -162,7 +159,7 @@ class GrepArguments(BaseModel):
         Field(
             ge=0,
             description="Skip first N lines/entries before applying head_limit, equivalent to"
-            ' "| tail -n +N | head -N". Works across all output modes. Defaults to 0.',
+            ' "| tail -n +N | head -N". Works across all output modes.',
         ),
     ] = 0
 
