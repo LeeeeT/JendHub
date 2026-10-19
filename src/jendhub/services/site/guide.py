@@ -9,34 +9,37 @@ ROBOTS = "User-agent: *\nDisallow: /search?\n"
 OPENSEARCH_TYPE = "application/opensearchdescription+xml"
 
 
-SUMMARY = f"""JendHub is a search engine for the definitions of Base and of the packages on
-BendHub ({HUB})."""
+SUMMARY = (
+    "JendHub is a search engine for the definitions of Base and of the packages on BendHub"
+    f" ({HUB})."
+)
+SEARCH_FIRST = (
+    "Before you write a Bend function or type, use the search tool to find one that exists."
+    " Tell what you need in a few words: the task, some keywords or a short description, for"
+    " example `decompress gzip data`, `base64 encode` or `sha256 hash of bytes`."
+)
+IMPORTS = (
+    "Import a result only when it does exactly what you need. Write its import line at the"
+    " top of your Bend file and call it by the name that the result gives. For example, after"
+    " `import kit@1.0.0.0/json.bend as Json`, call `Json.parse(text)`. Base needs only"
+    " `import Base`."
+)
+SOURCES = (
+    "When you are not sure that a result fits, read its code. When a result is close to what"
+    " you need, copy its code and its import lines into your project and change it. An import"
+    " of `./` or `../` names a file of the same release. You can read and copy all code on"
+    " BendHub."
+)
+FOLLOW = (
+    "To read the code of a result, make the read call that the result gives. To find code in"
+    " one release, use grep and glob."
+)
+TOOLS_INTRO = (
+    "Each tool is a GET path that takes its parameters in the query string. The answer is"
+    " plain text, also for an error."
+)
 
-QUERIES = """Tell what you need in a few words: the task, some keywords or a short
-description, for example `decompress gzip data`, `base64 encode` or
-`sha256 hash of bytes`."""
-
-IMPORTS = """Import a result only when it does exactly what you need. Write its import line
-at the top of your Bend file and call it by the name that the result gives. For
-example, after `import kit@1.0.0.0/json.bend as Json`, call `Json.parse(text)`.
-Base needs only `import Base`."""
-
-SOURCES = """When you are not sure that a result fits, read its code. When a result is
-close to what you need, copy its code and its import lines into your project
-and change it. An import of `./` or `../` names a file of the same release. You
-can read and copy all code on BendHub."""
-
-INSTRUCTIONS = f"""{SUMMARY}
-
-Before you write a Bend function or type, use the search tool to find one that
-exists. {QUERIES}
-
-{IMPORTS}
-
-{SOURCES}
-
-To read the code of a result, make the read call that the result gives. To find
-code in one release, use grep and glob."""
+INSTRUCTIONS = f"{SUMMARY}\n\n{SEARCH_FIRST}\n\n{IMPORTS}\n\n{SOURCES}\n\n{FOLLOW}"
 
 
 def kind(schema: dict[str, Any]) -> str:
@@ -96,14 +99,12 @@ Parameters:
 
 
 def llms_text(origin: str) -> str:
-    summary = "\n".join(f"> {line}" for line in SUMMARY.splitlines())
     tools = "\n".join(tool_section(origin, spec) for spec in TOOLS)
     return f"""# JendHub
 
-{summary}
+> {SUMMARY}
 
-Before you write a Bend function or type, use the search tool to find one that
-exists. {QUERIES}
+{SEARCH_FIRST}
 
 {IMPORTS}
 
@@ -111,8 +112,7 @@ exists. {QUERIES}
 
 ## Tools
 
-Each tool is a GET path that takes its parameters in the query string. The
-answer is plain text, also for an error.
+{TOOLS_INTRO}
 
 {tools}"""
 
