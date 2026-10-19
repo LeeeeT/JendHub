@@ -7,7 +7,7 @@ from jendhub.embedding.model import DIMENSIONS, Vectors
 from jendhub.hub.api import Listing, Package, Release
 from jendhub.hub.base import Base
 from jendhub.hub.store import PackageStore
-from jendhub.indexing.schedule import promote_ready, schedule_live
+from jendhub.indexing.schedule import schedule_live, wait_until_live
 from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.indexing.worker import Worker
 from jendhub.search.engine import Target
@@ -15,6 +15,7 @@ from jendhub.search.tokens import tokens
 from jendhub.vectors.index import VectorIndex
 from tests.indexing.library_fixture import BASE, TAG
 
+POLL_SECONDS = 0.05
 KIT_V1 = "0x" + "1" * 32
 KIT_V2 = "0x" + "2" * 32
 APP = "0x" + "3" * 32
@@ -45,7 +46,7 @@ async def index_live(packages: PackageStore, vectors: VectorIndex) -> tuple[Inde
     worker = Worker(index, packages, vectors, embedder)
     [generation] = await index.generations(LIVE)
     await worker.drain(generation.id)
-    await promote_ready(index, LIVE)
+    await wait_until_live(index, vectors, generation, POLL_SECONDS)
     live = await index.live(LIVE)
     assert live is not None
     return index, Target(live.id, live.collection, live.config)

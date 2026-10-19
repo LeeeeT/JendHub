@@ -241,9 +241,13 @@ the live generation from Postgres.
   (`PRODUCTION` in `vectors/index.py`):** the syncer creates a new generation
   and queues a job for Base and for each latest release. The worker gets the
   vectors of unchanged documents from the embedding cache, so a new vector
-  setting pays for no embedding. The old
-  generation stays live until the new one has no unfinished job. Then the new
-  one goes live, and the old one is deleted after 10 minutes.
+  setting pays for no embedding. While the new generation has unfinished
+  jobs, its Qdrant collection builds no HNSW graph: otherwise Qdrant merges
+  segments and builds the graph again and again as points arrive, and on a
+  small server the upserts time out. When the jobs are done, the syncer turns
+  the indexing on, and the new generation goes live at a later sync, when
+  Qdrant reports the collection green. Until then the old generation stays
+  live, and it is deleted 10 minutes after the switch.
 - **A failed job** waits 1, 2, 4, 8 minutes and so on, at most 1 hour. After 5
   attempts it stops, and `jendhub index retry <generation>` queues it again. A
   job also fails when its worker stops, for example out of memory, during each

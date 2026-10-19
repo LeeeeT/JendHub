@@ -22,7 +22,7 @@ from jendhub.indexing.schedule import (
     GenerationSpec,
     corpus_name,
     ensure_generation,
-    promote_ready,
+    wait_until_live,
 )
 from jendhub.indexing.store import IndexStore
 from jendhub.indexing.worker import Worker
@@ -75,7 +75,7 @@ async def dev_index(services: Services, listed: DevCorpus) -> int:
     generation = await ensure_generation(index, services.vectors, spec)
     worker = Worker(index, services.packages, services.vectors, services.embedder)
     await worker.drain(generation.id)
-    await promote_ready(index, corpus)
+    await wait_until_live(index, services.vectors, generation)
     return generation.id
 
 

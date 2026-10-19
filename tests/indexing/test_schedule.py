@@ -7,14 +7,14 @@ from jendhub.embedding.model import Vectors
 from jendhub.hub.base import Base
 from jendhub.hub.store import PackageStore
 from jendhub.indexing import schedule
-from jendhub.indexing.schedule import clean_retired, promote_ready, schedule_live
+from jendhub.indexing.schedule import clean_retired, schedule_live, wait_until_live
 from jendhub.indexing.store import LIVE, MAX_ATTEMPTS, IndexStore
 from jendhub.indexing.worker import IndexingError, Worker
 from jendhub.search.engine import SearchEngine, Target
 from jendhub.search.ranking import load_model
-from jendhub.vectors.index import VectorConfig, VectorIndex
+from jendhub.vectors.index import INDEXING_THRESHOLD, VectorConfig, VectorIndex
 from tests.indexing.library_fixture import BASE
-from tests.indexing.live import WordEmbedder, index_live, seed
+from tests.indexing.live import POLL_SECONDS, WordEmbedder, index_live, seed
 
 NEW_TAG = "v2.0.38"
 
@@ -37,10 +37,13 @@ async def test_a_new_base_builds_a_new_generation_beside_the_live_one(
     await schedule_live(index, packages, vectors)
     assert await states(index, LIVE) == ["live", "building"]
     [_, new] = await index.generations(LIVE)
+    assert await vectors.indexing_threshold(new.collection) == 0
+    assert await vectors.indexing_threshold(old.collection) == INDEXING_THRESHOLD
     worker = Worker(index, packages, vectors, WordEmbedder())
     await worker.drain(new.id)
-    await promote_ready(index, LIVE)
+    await wait_until_live(index, vectors, new, POLL_SECONDS)
     assert await states(index, LIVE) == ["live"]
+    assert await vectors.indexing_threshold(new.collection) == INDEXING_THRESHOLD
     assert (await index.generations(LIVE))[0].base_tag == NEW_TAG
     monkeypatch.setattr(schedule, "RETIREMENT_GRACE", timedelta(0))
     await clean_retired(index, vectors)
@@ -66,7 +69,7 @@ async def test_a_new_vector_setting_builds_a_new_generation_beside_the_live_one(
     assert await vectors.exists(new.collection)
     worker = Worker(index, packages, vectors, WordEmbedder())
     await worker.drain(new.id)
-    await promote_ready(index, LIVE)
+    await wait_until_live(index, vectors, new, POLL_SECONDS)
     live = await index.live(LIVE)
     assert live is not None
     assert (live.id, live.config) == (new.id, setting)

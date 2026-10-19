@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass
@@ -56,18 +57,35 @@ async def ensure_generation(
         )
     await vectors.create(generation.collection, generation.config)
     await index.enqueue(generation.id, spec.releases)
+    if generation.state == "building" and await index.unfinished(generation.id):
+        await vectors.pause_indexing(generation.collection)
     return generation
 
 
-async def promote_ready(index: IndexStore, corpus: str) -> Generation | None:
+async def promote_ready(index: IndexStore, vectors: VectorIndex, corpus: str) -> Generation | None:
     for generation in reversed(await index.generations(corpus)):
         if generation.state == "live":
             return None
-        if not await index.unfinished(generation.id):
-            await index.promote(generation.id)
-            logger.info("generation %d of %s is live", generation.id, corpus)
-            return generation
+        if await index.unfinished(generation.id):
+            continue
+        if not await vectors.finish_indexing(generation.collection):
+            logger.info("generation %d of %s waits for its vector index", generation.id, corpus)
+            return None
+        await index.promote(generation.id)
+        logger.info("generation %d of %s is live", generation.id, corpus)
+        return generation
     return None
+
+
+async def wait_until_live(
+    index: IndexStore, vectors: VectorIndex, generation: Generation, seconds: float = 1.0
+) -> None:
+    while True:
+        await promote_ready(index, vectors, generation.corpus)
+        live = await index.live(generation.corpus)
+        if live is not None and live.id >= generation.id:
+            return
+        await asyncio.sleep(seconds)
 
 
 async def schedule_live(index: IndexStore, packages: PackageStore, vectors: VectorIndex) -> None:
@@ -80,7 +98,7 @@ async def schedule_live(index: IndexStore, packages: PackageStore, vectors: Vect
     await ensure_generation(index, vectors, GenerationSpec(LIVE, tag, releases, PRODUCTION))
     for generation in await index.generations(LIVE):
         await index.enqueue(generation.id, releases)
-    await promote_ready(index, LIVE)
+    await promote_ready(index, vectors, LIVE)
 
 
 async def clean_retired(index: IndexStore, vectors: VectorIndex) -> None:

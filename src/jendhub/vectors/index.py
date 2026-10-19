@@ -21,6 +21,7 @@ HNSW_EF_CONSTRUCT = 128
 OVERSAMPLING = 2.0
 SEARCH_EF = 200
 UPSERT_BATCH = 64
+INDEXING_THRESHOLD = 10_000
 TIMEOUT_SECONDS = 120
 
 
@@ -171,11 +172,34 @@ class VectorIndex:
                     quantization_config=config.quantization_config(),
                 ),
             },
+            optimizers_config=models.OptimizersConfigDiff(indexing_threshold=INDEXING_THRESHOLD),
         )
         for field in (RELEASE, USES):
             await self.client.create_payload_index(
                 name, field, field_schema=models.PayloadSchemaType.KEYWORD
             )
+
+    async def indexing_threshold(self, name: str) -> int:
+        described = await self.client.get_collection(name)
+        return described.config.optimizer_config.indexing_threshold or 0
+
+    async def pause_indexing(self, name: str) -> None:
+        if await self.indexing_threshold(name):
+            await self.client.update_collection(
+                name, optimizers_config=models.OptimizersConfigDiff(indexing_threshold=0)
+            )
+
+    async def finish_indexing(self, name: str) -> bool:
+        described = await self.client.get_collection(name)
+        if not described.config.optimizer_config.indexing_threshold:
+            await self.client.update_collection(
+                name,
+                optimizers_config=models.OptimizersConfigDiff(
+                    indexing_threshold=INDEXING_THRESHOLD
+                ),
+            )
+            return False
+        return described.status == models.CollectionStatus.GREEN
 
     async def drop(self, name: str) -> None:
         await self.client.delete_collection(name)
