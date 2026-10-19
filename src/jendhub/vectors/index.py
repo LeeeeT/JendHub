@@ -15,6 +15,7 @@ CODE: VectorName = "code"
 NAME: VectorName = "name"
 RELEASE = "release"
 MODULE = "module"
+USES = "uses"
 HNSW_M = 16
 HNSW_EF_CONSTRUCT = 128
 OVERSAMPLING = 2.0
@@ -93,6 +94,28 @@ class Projected:
     code: Vectors
     names: Vectors
     modules: list[str]
+    uses: list[list[str]]
+
+
+@dataclass(frozen=True)
+class Scope:
+    release: str | None = None
+    uses: tuple[str, ...] = ()
+    points: frozenset[int] | None = None
+
+    def query_filter(self) -> models.Filter:
+        conditions: list[models.Condition] = [
+            models.FieldCondition(key=USES, match=models.MatchValue(value=key)) for key in self.uses
+        ]
+        if self.release is not None:
+            conditions.append(
+                models.FieldCondition(key=RELEASE, match=models.MatchValue(value=self.release))
+            )
+        if self.points is not None:
+            conditions.append(
+                models.HasIdCondition(has_id=list[models.ExtendedPointId](sorted(self.points)))
+            )
+        return models.Filter(must=conditions)
 
 
 def having(points: list[int]) -> models.Filter:
@@ -149,9 +172,10 @@ class VectorIndex:
                 ),
             },
         )
-        await self.client.create_payload_index(
-            name, RELEASE, field_schema=models.PayloadSchemaType.KEYWORD
-        )
+        for field in (RELEASE, USES):
+            await self.client.create_payload_index(
+                name, field, field_schema=models.PayloadSchemaType.KEYWORD
+            )
 
     async def drop(self, name: str) -> None:
         await self.client.delete_collection(name)
@@ -167,7 +191,10 @@ class VectorIndex:
                     ids=list[models.ExtendedPointId](found.points[batch]),
                     vectors={CODE: code[batch].tolist(), NAME: names[batch].tolist()},
                     payloads=[
-                        {RELEASE: release, MODULE: module} for module in found.modules[batch]
+                        {RELEASE: release, MODULE: module, USES: uses}
+                        for module, uses in zip(
+                            found.modules[batch], found.uses[batch], strict=True
+                        )
                     ],
                 ),
                 wait=True,
@@ -187,15 +214,13 @@ class VectorIndex:
         config: VectorConfig,
         vector: Vectors,
         limit: int,
-        within: list[int] | None = None,
+        scope: Scope | None = None,
     ) -> list[Neighbor]:
-        if within is not None and not within:
-            return []
         response = await self.client.query_points(
             name,
             query=config.project(vector.reshape(1, -1))[0].tolist(),
             using=CODE,
-            query_filter=None if within is None else having(within),
+            query_filter=None if scope is None else scope.query_filter(),
             search_params=config.search_params(max(limit, SEARCH_EF)),
             limit=limit,
             with_payload=[RELEASE, MODULE],

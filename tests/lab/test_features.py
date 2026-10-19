@@ -28,7 +28,7 @@ def definition(id_: str, origin: Origin) -> Definition:
 def features(columns: tuple[str, ...] = FEATURES) -> Features:
     definitions = [definition(id_, PACKAGE if ":" in id_ else BASE) for id_ in CODE]
     facts = {
-        found.id: Facts(None, documented=True, helper=False, users=1, external=False)
+        found.id: Facts(None, documented=True, helper=False, release_users=1, external=False)
         for found in definitions
     }
     code = np.array(list(CODE.values()), dtype=np.float32)

@@ -29,7 +29,10 @@ def basis(size: int, dimensions: int = 8) -> np.ndarray[tuple[int, int], np.dtyp
 def projected(
     points: list[int], code: np.ndarray[tuple[int, int], np.dtype[np.float32]]
 ) -> Projected:
-    return Projected(points, code, code[::-1].copy(), [f"module{point}" for point in points])
+    modules = [f"module{point}" for point in points]
+    return Projected(
+        points, code, code[::-1].copy(), modules, [[f"use{point}"] for point in points]
+    )
 
 
 @pytest.fixture

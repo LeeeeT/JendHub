@@ -65,6 +65,7 @@ class Worker:
         documents = [definition.document for definition in artifacts.definitions]
         names = [definition.name_document for definition in artifacts.definitions]
         modules = [definition.definition.origin.module for definition in artifacts.definitions]
+        uses = [sorted(definition.used_keys) for definition in artifacts.definitions]
         for start in range(0, len(documents), CHUNK):
             await self.embedder.embed(documents[start : start + CHUNK])
             await self.embedder.embed(names[start : start + CHUNK])
@@ -83,11 +84,12 @@ class Worker:
                 await self.embedder.embed(documents[chunk]),
                 await self.embedder.embed(names[chunk]),
                 modules[chunk],
+                uses[chunk],
             )
             await self.vectors.upsert(generation.collection, generation.config, found, job.release)
         if not await self.index.release_size(generation.id, job.release):
             await self.vectors.delete_release(generation.collection, job.release)
-        await self.index.refresh_external(generation.id, written.keys)
+
         await self.index.finish(job, "done")
         JOBS.labels("done").inc()
         logger.info(

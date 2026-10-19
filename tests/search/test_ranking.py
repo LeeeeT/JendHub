@@ -17,7 +17,7 @@ def signals(name: str, code: float, **changes: object) -> Signals:
             signature=None,
             documented=True,
             helper=False,
-            users=0,
+            release_users=0,
             external=False,
             module="Base",
             code=code,

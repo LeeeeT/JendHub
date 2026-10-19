@@ -20,10 +20,28 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   turns them into URL parameters before the request, so the URL is the same
   as the parameters of `/search.txt` and the `search` tool. The script also
   turns a raw `query` from the OpenSearch template into filters. Each filter
-  narrows the search, also when a kind repeats. The filters become a set of
-  points, and Qdrant searches only in that set, so a filter never empties a
-  ranking that it could fill. With filters and no words, the results are the
-  most used definitions first.
+  narrows the search, also when a kind repeats. With words, the filters become
+  a Qdrant filter, so a filter never empties a ranking that it could fill:
+  `package` matches the `release` payload, `uses` matches the `uses` payload
+  (the keys that a point uses), and `used_by` is the short list of points that
+  one definition uses. No filter sends Qdrant a list that grows with the
+  index. With filters and no words, Postgres gives the most used definitions
+  first. When the smallest filter matches at most 10,000 definitions, the
+  query reads that set and sorts it. Otherwise it walks `user_counts` in the
+  order of its count and stops at the first 50 matches, which is short
+  because a large set matches often.
+- **User counts:** `user_counts` holds the number of definitions that use each
+  key, in all packages, and "used by N", the order of "most used" and the
+  `uses` filter all agree with it. The worker changes it in the transaction
+  that writes a release: it subtracts the uses of the removed releases, adds
+  the uses of the new release, and writes all changes in one upsert in the
+  order of the key, as the last statement. The changes add, so concurrent
+  workers need no lock other than the row locks of that upsert, the sorted
+  order prevents deadlocks, and a hot key such as `Bool` stays locked only
+  until the commit. A count belongs to a key, not to a definition row, so a
+  new release of a package keeps the uses that other packages have of its
+  keys. `definitions.release_users` counts only the users in the same
+  release, because the ranking model learned that feature.
 - **MCP:** the site is also an MCP server, so that an agent can add JendHub
   with one command and sees its tools in every session. It has five tools:
   `search`, `definition`, `read`, `grep` and `files`. Each text path
@@ -447,7 +465,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `packages`, `rejected_packages`, `base_releases` | The releases of BendHub and of Base that the library has, and the rejected packages. |
 | Postgres `generations`, `index_jobs` | The index generations with their vector settings, and the job queue. |
 | Postgres `invalid_releases` | The releases that never go into the index, with the load error of each file that does not load. |
-| Postgres `definitions`, `uses`, `external_uses` | The definitions of each generation, with their features and their uses. |
+| Postgres `definitions`, `uses`, `external_uses`, `user_counts` | The definitions of each generation, with their features, their uses and the number of definitions that use each key. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
 | Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, filters, page, generation, the whole ranking and the search time. JendHub never deletes a row. |

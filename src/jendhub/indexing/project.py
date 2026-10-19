@@ -5,7 +5,7 @@ import numpy as np
 from jendhub.embedding.cache import EmbeddingCache
 from jendhub.embedding.model import Vectors
 from jendhub.errors import JendHubError
-from jendhub.indexing.store import Generation, IndexStore, Projection, projections
+from jendhub.indexing.store import Generation, IndexStore, Projection, projections, used_keys
 from jendhub.vectors.index import Projected, VectorIndex
 
 CHUNK = 512
@@ -18,6 +18,7 @@ class ProjectionError(JendHubError):
 
 
 async def project(
+    index: IndexStore,
     vectors: VectorIndex,
     cache: EmbeddingCache,
     generation: Generation,
@@ -25,7 +26,7 @@ async def project(
 ) -> None:
     async with vectors.bulk(generation.collection):
         for release in found:
-            await project_release(vectors, cache, generation, release)
+            await project_release(index, vectors, cache, generation, release)
     logger.info(
         "projected %d releases of generation %d into %s",
         len(found),
@@ -35,14 +36,20 @@ async def project(
 
 
 async def project_release(
-    vectors: VectorIndex, cache: EmbeddingCache, generation: Generation, release: Projection
+    index: IndexStore,
+    vectors: VectorIndex,
+    cache: EmbeddingCache,
+    generation: Generation,
+    release: Projection,
 ) -> None:
     await vectors.delete_release(generation.collection, release.release)
+    keys = await used_keys(index.pool, generation.id, release.release)
+    uses = [keys.get(point, []) for point in release.points]
     for start in range(0, len(release.points), CHUNK):
         chunk = slice(start, start + CHUNK)
         code = await cached(cache, release.release, release.digests[chunk])
         names = await cached(cache, release.release, release.name_digests[chunk])
-        found = Projected(release.points[chunk], code, names, release.modules[chunk])
+        found = Projected(release.points[chunk], code, names, release.modules[chunk], uses[chunk])
         await vectors.upsert(generation.collection, generation.config, found, release.release)
 
 
@@ -68,6 +75,6 @@ async def restore_vectors(
             != len(release.points)
         ]
         if incomplete:
-            await project(vectors, cache, generation, incomplete)
+            await project(index, vectors, cache, generation, incomplete)
             restored.append(generation.collection)
     return restored

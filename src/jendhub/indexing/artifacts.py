@@ -27,8 +27,9 @@ class IndexedDefinition:
     signature: Signature | None
     documented: bool
     helper: bool
-    users: int
+    release_users: int
     external_targets: frozenset[str]
+    used_keys: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -191,6 +192,11 @@ async def build(
             is_helper(definition, graph, by_id),
             len(graph.users.get(definition.id, frozenset())),
             frozenset(external[definition.id]),
+            frozenset(
+                definition_key(by_id[target].origin, by_id[target].name)
+                for target in graph.used.get(definition.id, frozenset())
+            )
+            | external[definition.id],
         )
         for definition in definitions
     ]

@@ -14,6 +14,7 @@ from jendhub.hub.api import Release
 from jendhub.hub.library import Library
 from jendhub.hub.store import PackageStore
 from jendhub.remote.openrouter import OpenRouterError
+from jendhub.search import filters
 from jendhub.search.ranking import load_model
 from jendhub.services.site.app import create_app
 from jendhub.services.site.views import Resources
@@ -201,16 +202,27 @@ async def search_text(site: httpx.AsyncClient, params: list[tuple[str, str]]) ->
     return (await site.get("/search.txt", params=tuple(params))).text
 
 
-async def test_agents_filter_a_search_by_package_and_uses(site: httpx.AsyncClient) -> None:
+@pytest.mark.parametrize("largest_read", [0, filters.LARGEST_READ])
+async def test_agents_filter_a_search_by_package_and_uses(
+    site: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, largest_read: int
+) -> None:
+    monkeypatch.setattr(filters, "LARGEST_READ", largest_read)
     assert call_names(await search_text(site, [("uses", "kit/main:double")])) == ["App.quadruple"]
+    assert call_names(await search_text(site, [("uses", "Nat"), ("package", "kit")])) == [
+        "Kit.double"
+    ]
+    assert call_names(await search_text(site, [("package", "Base")])) == ["Nat", "Nat.add"]
     assert sorted(call_names(await search_text(site, [("used_by", "app/main:quadruple")]))) == [
         "Kit.double",
         "Nat",
     ]
     in_app = await search_text(site, [("query", "double a number"), ("package", "app")])
     assert call_names(in_app) == ["App.quadruple"]
+    with_words = [("query", "double a number"), ("uses", "kit/main:double")]
+    assert call_names(await search_text(site, with_words)) == ["App.quadruple"]
     both = [("uses", "kit/main:double"), ("uses", "Nat")]
     assert call_names(await search_text(site, both)) == ["App.quadruple"]
+    assert await search_text(site, [("package", "kit"), ("package", "app")]) == "No results.\n"
     assert await search_text(site, [("uses", "kit/main:double"), ("package", "kit")]) == (
         "No results.\n"
     )

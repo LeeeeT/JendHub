@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal
@@ -14,7 +15,7 @@ from jendhub.indexing.artifacts import Artifacts
 from jendhub.indexing.failures import LoadError, errors_json, summary
 from jendhub.vectors.index import Quantization, VectorConfig, collection_name
 
-INDEXER_VERSION = 3
+INDEXER_VERSION = 4
 LIVE = "live"
 MAX_ATTEMPTS = 5
 RETRY_BASE = timedelta(minutes=1)
@@ -53,7 +54,6 @@ class Job:
 class Written:
     points: list[int]
     removed: list[str]
-    keys: list[str]
 
 
 @dataclass(frozen=True)
@@ -332,11 +332,11 @@ class IndexStore:
                 if newer is not None:
                     return Superseded(newer)
                 removed += await older_releases(connection, generation_id, artifacts)
-            keys = await delete_releases(connection, generation_id, removed)
+            changes = await delete_releases(connection, generation_id, removed)
             points = await insert(connection, generation_id, artifacts)
-        new_keys = {indexed.key for indexed in artifacts.definitions}
-        targets = {key for indexed in artifacts.definitions for key in indexed.external_targets}
-        return Written(points, removed, sorted(keys | new_keys | targets))
+            changes.update(added_users(artifacts))
+            await count_users(connection, generation_id, artifacts, changes)
+        return Written(points, removed)
 
     async def release_size(self, generation_id: int, release: str) -> int:
         async with self.pool.connection() as connection:
@@ -346,16 +346,6 @@ class IndexStore:
             )
             row = await cursor.fetchone()
         return 0 if row is None else row[0]
-
-    async def refresh_external(self, generation_id: int, keys: list[str]) -> None:
-        async with self.pool.connection() as connection:
-            await connection.execute(
-                "UPDATE definitions d SET external = EXISTS ("
-                "  SELECT 1 FROM external_uses e"
-                "  WHERE e.generation = d.generation AND e.target_key = d.key)"
-                " WHERE d.generation = %s AND d.key = ANY(%s)",
-                (generation_id, keys),
-            )
 
 
 async def newer_release(
@@ -387,19 +377,50 @@ async def older_releases(
 
 async def delete_releases(
     connection: AsyncConnection, generation_id: int, releases: list[str]
-) -> set[str]:
+) -> Counter[str]:
     cursor = await connection.execute(
-        "SELECT DISTINCT e.target_key FROM external_uses e"
+        "SELECT key, release_users FROM definitions"
+        " WHERE generation = %(generation)s AND release = ANY(%(releases)s)"
+        " UNION ALL SELECT e.target_key, count(*) FROM external_uses e"
         " JOIN definitions d ON d.point = e.user_point"
-        " WHERE d.generation = %s AND d.release = ANY(%s)",
+        " WHERE d.generation = %(generation)s AND d.release = ANY(%(releases)s)"
+        " GROUP BY e.target_key",
+        {"generation": generation_id, "releases": releases},
+    )
+    changes: Counter[str] = Counter()
+    for key, users in await cursor.fetchall():
+        changes[key] -= users
+    await connection.execute(
+        "DELETE FROM definitions WHERE generation = %s AND release = ANY(%s)",
         (generation_id, releases),
     )
-    targets = {key for (key,) in await cursor.fetchall()}
-    cursor = await connection.execute(
-        "DELETE FROM definitions WHERE generation = %s AND release = ANY(%s) RETURNING key",
-        (generation_id, releases),
+    return changes
+
+
+def added_users(artifacts: Artifacts) -> Counter[str]:
+    changes: Counter[str] = Counter()
+    for indexed in artifacts.definitions:
+        changes[indexed.key] += indexed.release_users
+        for key in indexed.external_targets:
+            changes[key] += 1
+    return changes
+
+
+async def count_users(
+    connection: AsyncConnection, generation_id: int, artifacts: Artifacts, changes: Counter[str]
+) -> None:
+    keys = sorted(
+        {key for key, change in changes.items() if change}
+        | {indexed.key for indexed in artifacts.definitions}
     )
-    return targets | {key for (key,) in await cursor.fetchall()}
+    await connection.execute(
+        "INSERT INTO user_counts (generation, target_key, users)"
+        " SELECT %s, target_key, users FROM unnest(%s::text[], %s::integer[])"
+        " AS changed (target_key, users) ORDER BY target_key"
+        " ON CONFLICT (generation, target_key)"
+        " DO UPDATE SET users = user_counts.users + EXCLUDED.users",
+        (generation_id, keys, [changes[key] for key in keys]),
+    )
 
 
 async def insert(
@@ -442,7 +463,7 @@ async def insert(
             None if indexed.signature is None else Jsonb(indexed.signature.result_json()),
             indexed.documented,
             indexed.helper,
-            indexed.users,
+            indexed.release_users,
             None if indexed.parent is None else by_id[indexed.parent],
             sorted(children.get(indexed.definition.id, [])),
         )
@@ -452,7 +473,7 @@ async def insert(
         await many.executemany(
             "INSERT INTO definitions (point, generation, release, id, key, kind, name, package,"
             " version, module, text, head, first_line, end_line, document_digest, name_digest,"
-            " parameters, result, documented, helper, users, parent, children)"
+            " parameters, result, documented, helper, release_users, parent, children)"
             " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
             " %s, %s, %s, %s, %s)",
             rows,
@@ -495,3 +516,20 @@ async def projections(pool: Pool, generation_id: int) -> list[Projection]:
         Projection(release, list(points), list(digests), list(name_digests), list(modules))
         for release, points, digests, name_digests, modules in rows
     ]
+
+
+async def used_keys(pool: Pool, generation_id: int, release: str) -> dict[int, list[str]]:
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT used.user_point, array_agg(used.key ORDER BY used.key) FROM ("
+            " SELECT uses.user_point, t.key FROM definitions d"
+            " JOIN uses ON uses.user_point = d.point"
+            " JOIN definitions t ON t.point = uses.target_point"
+            " WHERE d.generation = %(generation)s AND d.release = %(release)s"
+            " UNION SELECT e.user_point, e.target_key FROM definitions d"
+            " JOIN external_uses e ON e.user_point = d.point"
+            " WHERE d.generation = %(generation)s AND d.release = %(release)s"
+            ") used (user_point, key) GROUP BY used.user_point",
+            {"generation": generation_id, "release": release},
+        )
+        return {point: list(keys) for point, keys in await cursor.fetchall()}

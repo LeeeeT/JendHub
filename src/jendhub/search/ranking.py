@@ -66,7 +66,7 @@ class Signals:
     signature: Signature | None
     documented: bool
     helper: bool
-    users: int
+    release_users: int
     external: bool
     module: Hashable
     code: float
@@ -158,8 +158,8 @@ def feature_matrix(text: str, candidates: list[Signals]) -> Matrix:
     for values in relative:
         columns += [values, values - values.max(), standardized(values)]
     columns += [
-        column(lambda found: float(found.users == 0)),
-        column(lambda found: math.log1p(found.users)),
+        column(lambda found: float(found.release_users == 0)),
+        column(lambda found: math.log1p(found.release_users)),
         column(lambda found: float(found.external)),
         column(lambda found: float(found.documented)),
         column(lambda found: float(found.helper)),

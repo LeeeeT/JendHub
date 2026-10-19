@@ -29,12 +29,28 @@ async def ids(pool: Pool, generation: int) -> set[str]:
         return {id_ for (id_,) in await cursor.fetchall()}
 
 
-async def external(pool: Pool, id_: str) -> bool:
+async def stored_users(pool: Pool, generation: int) -> dict[str, int]:
     async with pool.connection() as connection:
-        cursor = await connection.execute("SELECT external FROM definitions WHERE id = %s", (id_,))
-        row = await cursor.fetchone()
-    assert row is not None
-    return row[0]
+        cursor = await connection.execute(
+            "SELECT target_key, users FROM user_counts WHERE generation = %s AND users <> 0",
+            (generation,),
+        )
+        return dict(await cursor.fetchall())
+
+
+async def counted_users(pool: Pool, generation: int) -> dict[str, int]:
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT t.key, count(*) FROM uses JOIN definitions t ON t.point = uses.target_point"
+            " WHERE t.generation = %(generation)s GROUP BY t.key"
+            " UNION ALL SELECT target_key, count(*) FROM external_uses"
+            " WHERE generation = %(generation)s GROUP BY target_key",
+            {"generation": generation},
+        )
+        counted: dict[str, int] = {}
+        for key, users in await cursor.fetchall():
+            counted[key] = counted.get(key, 0) + users
+        return counted
 
 
 async def test_a_new_release_replaces_the_old_one(
@@ -50,8 +66,10 @@ async def test_a_new_release_replaces_the_old_one(
         "kit@1.0.0.0/main:double",
         "app@1.0.0.0/main:quadruple",
     }
-    assert await external(pool, "kit@1.0.0.0/main:double")
-    assert not await external(pool, "app@1.0.0.0/main:quadruple")
+    users = await stored_users(pool, target.generation)
+    assert users == await counted_users(pool, target.generation)
+    assert users["kit/main:double"] == 1
+    assert "app/main:quadruple" not in users
 
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), KIT_SOURCE + BOX[12:])
     await schedule_live(index, packages, vectors)
@@ -60,7 +78,9 @@ async def test_a_new_release_replaces_the_old_one(
     found = await ids(pool, target.generation)
     assert "kit@1.0.0.0/main:double" not in found
     assert {"kit@2.0.0.0/main:double", "kit@2.0.0.0/main:open"} <= found
-    assert await external(pool, "kit@2.0.0.0/main:double")
+    users = await stored_users(pool, target.generation)
+    assert users == await counted_users(pool, target.generation)
+    assert users["kit/main:double"] == 1
 
     engine = SearchEngine(pool, vectors, WordEmbedder(), load_model(), target)
     [hits] = await engine.search(["double a number"], 3)

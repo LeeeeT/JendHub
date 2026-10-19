@@ -84,7 +84,7 @@ class Features:
                 fact.signature,
                 fact.documented,
                 fact.helper,
-                fact.users,
+                fact.release_users,
                 fact.external,
                 self.modules[index],
                 float(similarities[index]),

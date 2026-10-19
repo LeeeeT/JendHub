@@ -3,15 +3,21 @@ from collections.abc import Hashable, Iterable
 from dataclasses import dataclass
 
 import numpy as np
-from psycopg import sql
 
 from jendhub.db.pool import Pool
 from jendhub.embedding.embedder import Embedder
 from jendhub.embedding.model import Vectors, instructed, normalized
-from jendhub.search.filters import USER_COUNT
 from jendhub.search.ranking import Model, Signals, feature_matrix
 from jendhub.search.signatures import Signature
-from jendhub.vectors.index import CODE, NAME, Neighbor, VectorConfig, VectorIndex, VectorName
+from jendhub.vectors.index import (
+    CODE,
+    NAME,
+    Neighbor,
+    Scope,
+    VectorConfig,
+    VectorIndex,
+    VectorName,
+)
 
 TASK_INSTRUCTION = (
     "Given a programming task, retrieve the Bend library function or type"
@@ -43,7 +49,7 @@ class Candidate:
     signature: Signature | None
     documented: bool
     helper: bool
-    users: int
+    release_users: int
     external: bool
     parent: int | None
     children: list[int]
@@ -91,22 +97,6 @@ def module_key(neighbor: Neighbor) -> Hashable:
     return (neighbor.release, neighbor.module)
 
 
-async def most_used(pool: Pool, within: list[int], limit: int) -> list[Hit]:
-    async with pool.connection() as connection:
-        cursor = await connection.execute(
-            sql.SQL(
-                "SELECT id, key, kind, name, package, version, module, head, {count} AS used"
-                " FROM definitions d WHERE point = ANY(%s) ORDER BY used DESC, key LIMIT %s"
-            ).format(count=USER_COUNT),
-            (within, limit),
-        )
-        rows = await cursor.fetchall()
-    return [
-        Hit(id_, key, kind, name, package, version, module, head, float(used))
-        for id_, key, kind, name, package, version, module, head, used in rows
-    ]
-
-
 class SearchEngine:
     def __init__(
         self,
@@ -123,7 +113,7 @@ class SearchEngine:
         self.target = target
 
     async def search(
-        self, queries: list[str], limit: int, within: list[int] | None = None
+        self, queries: list[str], limit: int, scope: Scope | None = None
     ) -> list[list[Hit]]:
         texts = [instructed(TASK_INSTRUCTION, query) for query in queries]
         vectors = normalized(await self.embedder.embed(texts))
@@ -131,7 +121,7 @@ class SearchEngine:
 
         async def bounded(query: str, vector: Vectors) -> list[Hit]:
             async with slots:
-                return await self.search_one(query, vector, limit, within)
+                return await self.search_one(query, vector, limit, scope)
 
         return list(
             await asyncio.gather(
@@ -140,11 +130,11 @@ class SearchEngine:
         )
 
     async def search_one(
-        self, text: str, vector: Vectors, limit: int, within: list[int] | None
+        self, text: str, vector: Vectors, limit: int, scope: Scope | None
     ) -> list[Hit]:
         target = self.target
         neighbors = await self.vectors.search(
-            target.collection, target.config, vector, DEPTH, within
+            target.collection, target.config, vector, DEPTH, scope
         )
         if not neighbors:
             return []
@@ -172,7 +162,7 @@ class SearchEngine:
                 candidate.signature,
                 candidate.documented,
                 candidate.helper,
-                candidate.users,
+                candidate.release_users,
                 candidate.external,
                 module_key(neighbor),
                 neighbor.score,
@@ -204,9 +194,12 @@ class SearchEngine:
     async def candidates(self, points: list[int]) -> dict[int, Candidate]:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT point, id, key, kind, name, package, version, module, head, length(text),"
-                " parameters, result, documented, helper, users, external, parent, children"
-                " FROM definitions WHERE point = ANY(%s)",
+                "SELECT d.point, d.id, d.key, d.kind, d.name, d.package, d.version, d.module,"
+                " d.head, length(d.text), d.parameters, d.result, d.documented, d.helper,"
+                " d.release_users, c.users > d.release_users, d.parent, d.children"
+                " FROM definitions d JOIN user_counts c"
+                " ON c.generation = d.generation AND c.target_key = d.key"
+                " WHERE d.point = ANY(%s)",
                 (points,),
             )
             rows = await cursor.fetchall()

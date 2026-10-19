@@ -21,8 +21,15 @@ from jendhub.indexing.status import (
 from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.remote.openrouter import INTERACTIVE, open_openrouter
 from jendhub.search.definitions import DefinitionDetail, read_definition
-from jendhub.search.engine import Hit, SearchEngine, Target, most_used
-from jendhub.search.filters import Filters, UnknownFilterError, filtered_points, user_counts
+from jendhub.search.engine import Hit, SearchEngine, Target
+from jendhub.search.filters import (
+    Filters,
+    Resolved,
+    UnknownFilterError,
+    most_used,
+    resolve,
+    users_by_key,
+)
 from jendhub.search.packages import PackageDetail, read_package
 from jendhub.search.ranking import Model, load_model
 from jendhub.search.searches import Caller, Search, record_search
@@ -204,18 +211,7 @@ class Site:
             resources.pool, resources.vectors, resources.embedder, resources.model, target
         )
         start = time.perf_counter()
-        try:
-            within = (
-                await filtered_points(resources.pool, target.generation, filters)
-                if filters
-                else None
-            )
-        except UnknownFilterError as unknown:
-            raise HTTPException(404, str(unknown)) from unknown
-        if query:
-            [hits] = await engine.search([query], MAX_LIMIT, within)
-        else:
-            hits = await most_used(resources.pool, within or [], MAX_LIMIT)
+        hits = await self.found(engine, query, filters)
         searched = Search(
             caller,
             query,
@@ -227,17 +223,40 @@ class Site:
             time.perf_counter() - start,
         )
         page = hits[offset : offset + limit]
-        counts = await user_counts(self.pool, target.generation, [hit.key for hit in page])
+        users = await users_by_key(self.pool, target.generation, [hit.key for hit in page])
         shown = [
-            Result(hit, usage(hit.name, hit.package, hit.version, hit.module), counts[hit.key])
+            Result(
+                hit, usage(hit.name, hit.package, hit.version, hit.module), users.get(hit.key, 0)
+            )
             for hit in page
         ]
         return Results(query, shown, len(hits), offset), searched
 
+    async def resolve(self, filters: Filters) -> Resolved:
+        try:
+            return await resolve(self.pool, self.target().generation, filters)
+        except UnknownFilterError as unknown:
+            raise HTTPException(404, str(unknown)) from unknown
+
+    async def found(self, engine: SearchEngine, query: str, filters: Filters) -> list[Hit]:
+        if not query:
+            return await most_used(self.pool, await self.resolve(filters), MAX_LIMIT)
+        if not filters:
+            [hits] = await engine.search([query], MAX_LIMIT)
+            return hits
+        within = await self.resolve(filters)
+        if within.empty:
+            return []
+        [hits] = await engine.search([query], MAX_LIMIT, within.scope)
+        return hits
+
     async def preview(self, filters: Filters) -> Preview:
-        found = await filtered_points(self.pool, self.target().generation, filters)
+        found = await self.resolve(filters)
         hits = await most_used(self.pool, found, PREVIEW)
-        return Preview([hit.id for hit in hits], len(found))
+        sizes = [used.users for used in found.used]
+        if found.targets is not None:
+            sizes.append(len(found.targets))
+        return Preview([hit.id for hit in hits], min(sizes))
 
     async def keep(self, searched: Search) -> None:
         try:
