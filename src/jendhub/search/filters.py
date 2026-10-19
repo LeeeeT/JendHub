@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import LiteralString
 
-from psycopg import AsyncConnection
+from psycopg import AsyncConnection, sql
 
 from jendhub.db.pool import Pool
 from jendhub.search.sources import BASE
@@ -17,8 +17,26 @@ class Filters:
         return bool(self.packages or self.uses or self.used_by)
 
 
+USER_COUNT = sql.SQL(
+    "(SELECT count(*) FROM (SELECT user_point FROM uses WHERE target_point = d.point"
+    " UNION SELECT user_point FROM external_uses"
+    " WHERE generation = d.generation AND target_key = d.key) users)"
+)
+
+
 class UnknownFilterError(Exception):
     pass
+
+
+async def user_counts(pool: Pool, generation: int, keys: list[str]) -> dict[str, int]:
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            sql.SQL(
+                "SELECT key, {count} FROM definitions d WHERE generation = %s AND key = ANY(%s)"
+            ).format(count=USER_COUNT),
+            (generation, keys),
+        )
+        return dict(await cursor.fetchall())
 
 
 async def points(

@@ -14,6 +14,7 @@
 <span class="muted">{{ found.offset + loop.index }}.</span>
 <span class="muted">{{ hit.kind }}</span>
 <a class="id" href="{{ definition_href(hit.id) }}">{{ hit.name }}</a>
+<span class="muted">(<a href="{{ filter_href('uses', hit.key) }}">used by {{ result.used_by }}</a>)</span>
 </div>
 <p class="meta">{{ macros.release(hit.package, hit.version) }} · <a href="{{ file_href(result.usage.file) }}">{{ result.usage.file.split('/', 1)[1] }}</a></p>
 <pre class="head"><code>{{ shortened(hit.head) }}</code></pre>

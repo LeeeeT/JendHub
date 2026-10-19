@@ -50,6 +50,7 @@ def result(id_: str, package: str | None) -> Result:
     version = None if package is None else "1.0.0.0"
     found = Hit(
         id_,
+        f"{package}/main:map" if package else id_,
         "def",
         "map" if package else id_,
         package,
@@ -58,7 +59,7 @@ def result(id_: str, package: str | None) -> Result:
         "# Maps.\ndef map(xs):",
         1.0,
     )
-    return Result(found, usage(found.name, package, version, "main"))
+    return Result(found, usage(found.name, package, version, "main"), 0)
 
 
 def test_results_show_how_to_use_and_open_each_definition() -> None:

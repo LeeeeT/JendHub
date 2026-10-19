@@ -22,7 +22,7 @@ from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.remote.openrouter import INTERACTIVE, open_openrouter
 from jendhub.search.definitions import DefinitionDetail, read_definition
 from jendhub.search.engine import Hit, SearchEngine, Target, most_used
-from jendhub.search.filters import Filters, UnknownFilterError, filtered_points
+from jendhub.search.filters import Filters, UnknownFilterError, filtered_points, user_counts
 from jendhub.search.packages import PackageDetail, read_package
 from jendhub.search.ranking import Model, load_model
 from jendhub.search.searches import Caller, Search, record_search
@@ -128,6 +128,7 @@ async def open_resources(query_cache_size: int) -> AsyncGenerator[Resources]:
 class Result:
     hit: Hit
     usage: Usage
+    used_by: int
 
 
 @dataclass(frozen=True)
@@ -225,9 +226,11 @@ class Site:
             [hit.id for hit in hits],
             time.perf_counter() - start,
         )
+        page = hits[offset : offset + limit]
+        counts = await user_counts(self.pool, target.generation, [hit.key for hit in page])
         shown = [
-            Result(hit, usage(hit.name, hit.package, hit.version, hit.module))
-            for hit in hits[offset : offset + limit]
+            Result(hit, usage(hit.name, hit.package, hit.version, hit.module), counts[hit.key])
+            for hit in page
         ]
         return Results(query, shown, len(hits), offset), searched
 

@@ -499,6 +499,7 @@ async def test_people_filter_a_search_and_see_the_filters_in_the_box(
     assert 'value="uses=kit/main:double times four"' in html
     assert f'href="/definitions/{QUADRUPLE}"' in html
     assert 'href="/search.txt?uses=kit/main:double&amp;query=times%20four"' in html
+    assert '(<a href="/search?uses=app/main:quadruple">used by 0</a>)' in html
     async with pool.connection() as connection:
         cursor = await connection.execute("SELECT query, packages, uses, used_by FROM searches")
         assert await cursor.fetchall() == [("times four", [], ["kit/main:double"], [])]

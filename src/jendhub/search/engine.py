@@ -3,10 +3,12 @@ from collections.abc import Hashable, Iterable
 from dataclasses import dataclass
 
 import numpy as np
+from psycopg import sql
 
 from jendhub.db.pool import Pool
 from jendhub.embedding.embedder import Embedder
 from jendhub.embedding.model import Vectors, instructed, normalized
+from jendhub.search.filters import USER_COUNT
 from jendhub.search.ranking import Model, Signals, feature_matrix
 from jendhub.search.signatures import Signature
 from jendhub.vectors.index import CODE, NAME, Neighbor, VectorConfig, VectorIndex, VectorName
@@ -30,6 +32,7 @@ class Target:
 class Candidate:
     point: int
     id: str
+    key: str
     kind: str
     name: str
     package: str | None
@@ -53,6 +56,7 @@ class Candidate:
 @dataclass(frozen=True)
 class Hit:
     id: str
+    key: str
     kind: str
     name: str
     package: str | None
@@ -65,6 +69,7 @@ class Hit:
 def hit(candidate: Candidate, score: float) -> Hit:
     return Hit(
         candidate.id,
+        candidate.key,
         candidate.kind,
         candidate.name,
         candidate.package,
@@ -89,14 +94,16 @@ def module_key(neighbor: Neighbor) -> Hashable:
 async def most_used(pool: Pool, within: list[int], limit: int) -> list[Hit]:
     async with pool.connection() as connection:
         cursor = await connection.execute(
-            "SELECT id, kind, name, package, version, module, head, users FROM definitions"
-            " WHERE point = ANY(%s) ORDER BY users DESC, key LIMIT %s",
+            sql.SQL(
+                "SELECT id, key, kind, name, package, version, module, head, {count} AS used"
+                " FROM definitions d WHERE point = ANY(%s) ORDER BY used DESC, key LIMIT %s"
+            ).format(count=USER_COUNT),
             (within, limit),
         )
         rows = await cursor.fetchall()
     return [
-        Hit(id_, kind, name, package, version, module, head, float(users))
-        for id_, kind, name, package, version, module, head, users in rows
+        Hit(id_, key, kind, name, package, version, module, head, float(used))
+        for id_, key, kind, name, package, version, module, head, used in rows
     ]
 
 
@@ -197,7 +204,7 @@ class SearchEngine:
     async def candidates(self, points: list[int]) -> dict[int, Candidate]:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT point, id, kind, name, package, version, module, head, length(text),"
+                "SELECT point, id, key, kind, name, package, version, module, head, length(text),"
                 " parameters, result, documented, helper, users, external, parent, children"
                 " FROM definitions WHERE point = ANY(%s)",
                 (points,),
@@ -214,13 +221,14 @@ class SearchEngine:
                 row[6],
                 row[7],
                 row[8],
-                None if row[9] is None else Signature.from_json(row[9], row[10]),
-                row[11],
+                row[9],
+                None if row[10] is None else Signature.from_json(row[10], row[11]),
                 row[12],
                 row[13],
                 row[14],
                 row[15],
-                list(row[16]),
+                row[16],
+                list(row[17]),
             )
             for row in rows
         }
