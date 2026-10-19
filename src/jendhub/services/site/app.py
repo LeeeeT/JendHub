@@ -70,6 +70,8 @@ RELATIVE = UrlLinks("")
 QUIET = frozenset({"/healthz", "/readyz", "/style.css", "/search.js"})
 ASSET_CACHE = {"cache-control": "public, max-age=31536000, immutable"}
 SEARCHES = frozenset({"/search", "/search.txt"})
+QUERY = "query"
+FILTERS = frozenset({"package", "uses", "used_by"})
 
 
 class SiteSettings(BaseSettings):
@@ -95,8 +97,13 @@ def links(site: Site, request: Request) -> UrlLinks:
     return UrlLinks(site.origin, request.url.path, tuple(request.query_params.multi_items()))
 
 
-def box_text(given: SearchArguments) -> str:
-    return " ".join([*given.filters.words(), given.query.strip()]).strip()
+def box_text(request: Request) -> str:
+    words = [
+        value.strip() if name == QUERY else f"{name}={value}"
+        for name, value in request.query_params.multi_items()
+        if name == QUERY or name in FILTERS
+    ]
+    return " ".join(word for word in words if word)
 
 
 def text(body: str, status: int = 200, headers: dict[str, str] | None = None) -> Response:
@@ -222,7 +229,7 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
     async def search(
         request: Request, background: BackgroundTasks, given: Annotated[SearchArguments, Query()]
     ) -> Response:
-        text = box_text(given)
+        text = box_text(request)
         if not text:
             return RedirectResponse("/", status_code=303)
         site = running.get()

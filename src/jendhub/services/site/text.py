@@ -127,7 +127,6 @@ def render_definition(view: DefinitionView, links: Links) -> str:
     return (
         f"{used.call_name}: {detail.kind} of {where}\n"
         f"Import: {used.import_line}\n"
-        f"Call: {used.call_name}\n"
         f"Lines {first}-{last} of {used.file}: {links.read(used.file, first, last)}\n\n"
         f"{code}\n\n"
         + heading("Uses", len(detail.uses), len(detail.uses), 0)

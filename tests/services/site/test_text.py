@@ -107,7 +107,6 @@ def test_a_definition_gives_its_code_imports_lines_and_uses() -> None:
     assert render_definition(view, ToolLinks("definition")) == (
         "Kit.map: def of kit@1.0.0.0\n"
         "Import: import kit@1.0.0.0/main.bend as Kit\n"
-        "Call: Kit.map\n"
         'Lines 5-6 of kit@1.0.0.0/main.bend: read(path="kit@1.0.0.0/main.bend", start_line=5,'
         " end_line=6)\n\n"
         "import Base\n\ndef map(xs):\n  xs\n\n"

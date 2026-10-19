@@ -1,4 +1,5 @@
 const FILTERS = ["package", "uses", "used_by"];
+const QUERY = "query";
 
 function readable(value) {
 	return encodeURIComponent(value).replace(/%2F/g, "/").replace(/%3A/g, ":").replace(/%40/g, "@");
@@ -13,30 +14,46 @@ function filter(word) {
 function searchUrl(text) {
 	const pairs = [];
 	const words = [];
+	let place = null;
 	for (const word of text.trim().split(/\s+/).filter(Boolean)) {
 		const found = filter(word);
 		if (found) {
 			pairs.push(found);
 		} else {
+			place ??= pairs.length;
 			words.push(word);
 		}
 	}
 	if (words.length) {
-		pairs.push(["query", words.join(" ")]);
+		pairs.splice(place, 0, [QUERY, words.join(" ")]);
 	}
 	return `/search?${pairs.map(([name, value]) => `${name}=${readable(value)}`).join("&")}`;
 }
 
-for (const form of document.querySelectorAll(".search-form")) {
+function boxText(params) {
+	return [...params]
+		.filter(([name]) => name === QUERY || FILTERS.includes(name))
+		.map(([name, value]) => (name === QUERY ? value.trim() : `${name}=${value}`))
+		.filter(Boolean)
+		.join(" ");
+}
+
+const forms = document.querySelectorAll(".search-form");
+for (const form of forms) {
 	form.addEventListener("submit", (event) => {
 		event.preventDefault();
 		location.assign(searchUrl(form.elements.query.value));
 	});
 }
 
-const given = new URLSearchParams(location.search);
-const query = given.get("query") ?? "";
-if (location.pathname === "/search" && query.split(/\s+/).some((word) => filter(word))) {
-	const filters = FILTERS.flatMap((name) => given.getAll(name).map((value) => `${name}=${value}`));
-	location.replace(searchUrl([...filters, query].join(" ")));
+if (location.pathname === "/search") {
+	const given = new URLSearchParams(location.search);
+	const text = boxText(given);
+	if ((given.get(QUERY) ?? "").split(/\s+/).some((word) => filter(word))) {
+		location.replace(searchUrl(text));
+	} else {
+		for (const form of forms) {
+			form.elements.query.value = text;
+		}
+	}
 }

@@ -16,13 +16,6 @@ class Filters:
     def __bool__(self) -> bool:
         return bool(self.packages or self.uses or self.used_by)
 
-    def words(self) -> list[str]:
-        return [
-            *(f"package={package}" for package in self.packages),
-            *(f"uses={key}" for key in self.uses),
-            *(f"used_by={key}" for key in self.used_by),
-        ]
-
 
 class UnknownFilterError(Exception):
     pass

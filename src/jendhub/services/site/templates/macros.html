@@ -23,13 +23,17 @@
 {% if package is none %}<a href="{{ release_href('Base') }}">Base</a>{% else %}<a href="{{ package_href(package) }}">{{ package }}</a>@<a href="{{ release_href(package ~ '@' ~ version) }}">{{ version }}</a>{% endif %}
 {%- endmacro %}
 
-{% macro preview(found, href) -%}
+{% macro preview(title, found, href, empty) -%}
+<h2>{{ title }} <span>({% if found.total %}<a href="{{ href }}">{{ found.total }}</a>{% else %}0{% endif %})</span></h2>
+{% if found.total %}
 <ul class="ids">
 {% for id in found.ids %}
 <li><a href="{{ definition_href(id) }}">{{ id }}</a></li>
 {% endfor %}
 </ul>
-<p class="all"><a href="{{ href }}">All</a></p>
+{% else %}
+<p class="muted">{{ empty }}</p>
+{% endif %}
 {%- endmacro %}
 
 {% macro import_line(usage) -%}
