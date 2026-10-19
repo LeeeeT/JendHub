@@ -346,8 +346,6 @@ button:hover {
 
 .head {
 	margin: 0.6em 0 0;
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
 }
 
 .import {
