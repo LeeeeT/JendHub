@@ -78,10 +78,20 @@ def parameter(name: str, schema: dict[str, Any], *, required: bool) -> str:
     return f"- `{name}` ({facts}): {schema['description']}"
 
 
+def query_value(name: str, schema: dict[str, Any], *, required: bool) -> str:
+    default = schema.get("default")
+    if required or default is None:
+        return f"<{name}>"
+    return json.dumps(default) if isinstance(default, bool) else str(default)
+
+
 def tool_section(origin: str, spec: ToolSpec) -> str:
     schema = spec.arguments.model_json_schema()
     required: list[str] = schema.get("required", [])
-    query = "&".join(f"{name}=<{name}>" for name in required)
+    query = "&".join(
+        f"{name}={query_value(name, field, required=name in required)}"
+        for name, field in schema["properties"].items()
+    )
     parameters = "\n".join(
         parameter(name, field, required=name in required)
         for name, field in schema["properties"].items()
