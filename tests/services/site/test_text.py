@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 
-from jendhub.indexing.failures import Place, Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease, JobCounts
 from jendhub.search.definitions import DefinitionDetail, ImportLine
 from jendhub.search.engine import Hit
@@ -29,6 +28,7 @@ from jendhub.services.site.views import (
     Results,
     StatusView,
 )
+from jendhub.uses.failures import Place, Problem
 
 ORIGIN = "https://jend.test"
 LINKS = UrlLinks(ORIGIN)

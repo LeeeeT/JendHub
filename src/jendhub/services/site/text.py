@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Protocol
 from urllib.parse import urlencode
 
-from jendhub.indexing.failures import Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease
 from jendhub.search.packages import ReleaseDetail
 from jendhub.search.sources import id_source, usage
@@ -12,6 +11,7 @@ from jendhub.services.site.arguments import DEFINITION, FILES, MAX_COLUMNS, READ
 from jendhub.services.site.files import Lines, Page
 from jendhub.services.site.pages import shortened
 from jendhub.services.site.views import DefinitionView, PackageView, Result, Results, StatusView
+from jendhub.uses.failures import Problem
 
 INDENT = "   "
 NAMED_FILES = 5

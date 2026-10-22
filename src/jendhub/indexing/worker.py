@@ -16,10 +16,10 @@ from jendhub.embedding.embedder import Embedder
 from jendhub.errors import JendHubError
 from jendhub.hub.store import PackageStore
 from jendhub.indexing.artifacts import Artifacts, build
-from jendhub.indexing.failures import LoadError, summary
 from jendhub.indexing.store import LIVE, Generation, IndexStore, Job, Superseded
 from jendhub.json import Json
 from jendhub.search.sources import BASE_RELEASE
+from jendhub.uses.failures import LoadError, summary
 from jendhub.vectors.index import Projected, VectorIndex
 
 LEASE = timedelta(minutes=15)

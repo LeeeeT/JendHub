@@ -558,7 +558,7 @@ this table. The tests in `tests` have the same layout.
 | `db`, `remote` | The Postgres pool and migrations; the HTTP client and OpenRouter. |
 | `hub` | Read BendHub and GitHub, store packages, and keep the local package copy. |
 | `corpus` | Extract definitions from source files, and select the dev corpus. |
-| `uses` | The use graph and the call to the Rust indexer. |
+| `uses` | The use graph, the call to the Rust indexer, and the highlights and load errors that it gives. |
 | `embedding` | The embedding model, the remote embedder and the caches. |
 | `enrich` | The enricher, its windows and its store. |
 | `vectors` | The Qdrant collections and the vector settings. |

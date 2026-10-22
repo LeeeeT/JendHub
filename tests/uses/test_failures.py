@@ -1,6 +1,6 @@
 import pytest
 
-from jendhub.indexing.failures import (
+from jendhub.uses.failures import (
     LoadError,
     Place,
     Problem,

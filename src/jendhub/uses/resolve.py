@@ -6,7 +6,7 @@ from pathlib import Path
 
 from jendhub.errors import JendHubError
 from jendhub.json import Json
-from jendhub.search.highlights import Highlight, HighlightError, highlight_lines
+from jendhub.uses.highlights import Highlight, HighlightError, highlight_lines
 
 INDEXER = "jendhub-index"
 

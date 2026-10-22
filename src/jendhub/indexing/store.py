@@ -12,8 +12,8 @@ from jendhub.embedding.model import digest
 from jendhub.errors import JendHubError
 from jendhub.hub.api import Release
 from jendhub.indexing.artifacts import Artifacts
-from jendhub.indexing.failures import LoadError, errors_json, summary
 from jendhub.search.highlights import lines_json
+from jendhub.uses.failures import LoadError, errors_json, summary
 from jendhub.vectors.index import Quantization, VectorConfig, collection_name
 
 INDEXER_VERSION = 5

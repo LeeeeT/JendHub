@@ -1,5 +1,5 @@
 from jendhub.search.definitions import DefinitionDetail, ImportLine
-from jendhub.search.highlights import Extent, Highlight, Kind
+from jendhub.search.highlights import Extent
 from jendhub.search.sources import SourceFile
 from jendhub.services.site.pages import (
     Link,
@@ -18,6 +18,7 @@ from jendhub.services.site.pages import (
     source_line,
     styled,
 )
+from jendhub.uses.highlights import Highlight, Kind
 
 HASH = "0x" + "a" * 32
 MAP = "kit/main:map.go"

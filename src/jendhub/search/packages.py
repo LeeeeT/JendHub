@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 from jendhub.db.pool import Pool
-from jendhub.indexing.failures import Problem, parse_errors, problems
 from jendhub.json import Json
+from jendhub.uses.failures import Problem, parse_errors, problems
 
 type ReleaseState = Literal["indexed", "invalid", "unindexed"]
 

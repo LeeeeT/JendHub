@@ -7,12 +7,13 @@ from pathlib import Path
 from jendhub.corpus.definitions import BASE, Definition, Origin, SourceFile, extract
 from jendhub.hub.api import Release
 from jendhub.hub.library import Library
-from jendhub.indexing.failures import LoadError, Place
 from jendhub.search.documents import name_document, origin_document
-from jendhub.search.highlights import Highlight, LineHighlights
+from jendhub.search.highlights import LineHighlights
 from jendhub.search.signatures import Signature, head_signature
 from jendhub.search.sources import BASE_FILE, file_path
+from jendhub.uses.failures import LoadError, Place
 from jendhub.uses.graph import UseGraph, reached
+from jendhub.uses.highlights import Highlight
 from jendhub.uses.resolve import Declaration, ResolvedFile, resolve
 
 type Owners = Callable[[list[str]], Awaitable[dict[str, Release | None]]]

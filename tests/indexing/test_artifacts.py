@@ -5,9 +5,9 @@ import pytest
 from jendhub.hub.api import Release
 from jendhub.hub.library import Library
 from jendhub.indexing.artifacts import Artifacts, IndexedDefinition, build
-from jendhub.indexing.failures import Place
 from jendhub.search.sources import BASE_RELEASE
 from jendhub.uses import resolve
+from jendhub.uses.failures import Place
 from jendhub.uses.resolve import UsesError
 from tests.indexing.library_fixture import BOX, LIB, LIB_HASH, OTHER, OTHER_HASH, TAG, library
 

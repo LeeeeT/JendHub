@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from jendhub.db.pool import Pool
-from jendhub.indexing.failures import Problem, parse_errors, problems
 from jendhub.indexing.store import GenerationState
+from jendhub.uses.failures import Problem, parse_errors, problems
 from jendhub.vectors.index import VectorConfig
 
 

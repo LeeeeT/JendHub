@@ -15,11 +15,11 @@ from jendhub.hub.library import Library
 from jendhub.hub.store import PackageStore
 from jendhub.remote.openrouter import OpenRouterError
 from jendhub.search import filters
-from jendhub.search.highlights import HighlightError
 from jendhub.search.ranking import load_model
 from jendhub.services.site.app import create_app
 from jendhub.services.site.views import Resources
 from jendhub.settings import DatabaseSettings, QdrantSettings
+from jendhub.uses.highlights import HighlightError
 from jendhub.vectors.index import PRODUCTION, VectorIndex, open_vector_index
 from tests.indexing.live import (
     APP,

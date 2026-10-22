@@ -13,8 +13,9 @@ from jinja2 import Environment, PackageLoader, StrictUndefined, select_autoescap
 
 from jendhub.indexing.status import GenerationStatus
 from jendhub.search.definitions import DefinitionDetail
-from jendhub.search.highlights import Extent, Highlight, LineHighlights
+from jendhub.search.highlights import Extent, LineHighlights
 from jendhub.search.sources import BASE, BASE_FILE, SourceFile, id_source
+from jendhub.uses.highlights import Highlight
 
 SITE = "jendhub.services.site"
 STYLE = files(SITE).joinpath("static/style.css").read_text(encoding="utf-8")

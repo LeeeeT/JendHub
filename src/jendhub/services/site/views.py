@@ -32,7 +32,6 @@ from jendhub.search.filters import (
 )
 from jendhub.search.highlights import (
     Extent,
-    Highlight,
     LineHighlights,
     read_extents,
     read_file_highlights,
@@ -78,6 +77,7 @@ from jendhub.settings import (
     QdrantSettings,
     load_settings,
 )
+from jendhub.uses.highlights import Highlight
 from jendhub.vectors.index import VectorIndex, open_vector_index
 
 logger = logging.getLogger(__name__)
