@@ -493,6 +493,12 @@ async def test_browsers_get_a_search_description(site: httpx.AsyncClient) -> Non
     assert '<link rel="search" type="application/opensearchdescription+xml"' in home
 
 
+NAT_LINK = '<a href="/files/Base/base.bend?lines=1-3#L1"><span class="type">Nat</span></a>'
+DOUBLE_LINK = (
+    '<a href="/files/kit@1.0.0.0/main.bend?lines=3-5#L3"><span class="function">K.double</span></a>'
+)
+
+
 async def test_people_get_the_results_as_a_page(site: httpx.AsyncClient) -> None:
     response = await site.get("/search", params={"query": "double a number"})
     assert response.headers["content-type"].startswith("text/html")
@@ -502,8 +508,8 @@ async def test_people_get_the_results_as_a_page(site: httpx.AsyncClient) -> None
     assert "import kit@1.0.0.0/main.bend as Kit" in html
     assert '<span class="comment"># Doubles a number.</span>' in html
     assert (
-        '<span class="keyword">def</span> '
-        '<span class="function declared">double</span>(n: <span class="type">Nat</span>)' in html
+        f'<span class="keyword">def</span> <a href="/definitions/{DOUBLE}">'
+        f'<span class="function declared">double</span></a>(n: {NAT_LINK})' in html
     )
     assert 'type="text/plain" href="/search.txt?query=double%20a%20number"' in html
 
@@ -535,8 +541,9 @@ async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.Async
     assert 'href="/files/app@1.0.0.0/main.bend#L5"' in html
     assert (
         '<span class="keyword">def</span> '
-        '<span class="function declared">quadruple</span>(n: <span class="type">Nat</span>)' in html
+        f'<span class="function declared">quadruple</span>(n: {NAT_LINK})' in html
     )
+    assert f"  {DOUBLE_LINK}({DOUBLE_LINK}(n))" in html
     assert f'href="/definitions/{DOUBLE}"' in html
     assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert 'href="/definition.txt?path=app@1.0.0.0/main.bend&amp;name=quadruple"' in html

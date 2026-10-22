@@ -216,6 +216,12 @@ import is bold where the import declares it. The import boxes of the search
 results are not highlighted. The highlights come from the index, so a file of
 an unindexed or invalid release shows plain text.
 
+Each global name in the code is a link to the lines of its definition in the
+file page, as `/files/<release>/<path>?lines=<first>-<last>#L<first>`. A
+constructor links to the whole definition of its type. A name where it is
+declared links to the definition page, but not on the page of that definition.
+A name whose definition is not indexed keeps its color and has no link.
+
 Each client IP gets at most 30 searches and 600 requests a minute, with a
 burst of 10 searches and 120 requests. More get `429 Too Many Requests` with
 `Retry-After`. Each MCP request counts as a request, and each call of the
@@ -485,7 +491,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `generations`, `index_jobs` | The index generations with their vector settings, and the job queue. |
 | Postgres `invalid_releases` | The releases that never go into the index, with the load error of each file that does not load. |
 | Postgres `definitions`, `uses`, `external_uses`, `user_counts` | The definitions of each generation, with their features, their uses and the number of definitions that use each key. |
-| Postgres `highlights` | The highlights of each line of each indexed file, for each generation: the column range, the class and whether the token declares its name. |
+| Postgres `highlights` | The highlights of each line of each indexed file, for each generation: the column range, the class, whether the token declares its name, and the id of the definition that the name refers to. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
 | Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, filters, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
@@ -516,7 +522,9 @@ compiler loads the file it checks. It writes the uses, the declared names and
 the highlights of each line as JSON. The highlights come from the `highlight`
 module of `bend2-lsp-rs`, which also gives the semantic tokens of the language
 server: the lexer gives the class of each token, and the meaning of each name
-gives the class of each identifier. The uses inside one release are the graph of that release. A use of
+gives the class of each identifier and the declaration that the identifier
+names. The indexer replaces that declaration with the definition that holds it,
+which for a constructor is its type. The uses inside one release are the graph of that release. A use of
 another release is stored by the module and name of its target, without the
 version.
 

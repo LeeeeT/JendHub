@@ -38,6 +38,7 @@ from jendhub.services.site.pages import (
     HEAD_LINES,
     SCRIPT,
     STYLE,
+    Links,
     Span,
     body_lines,
     file_lines,
@@ -245,8 +246,10 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
         shown = len(found.results)
         others = [pair for pair in request.query_params.multi_items() if pair[0] != "offset"]
         highlights = await site.heads(found, HEAD_LINES)
+        extents = await site.extents(line for lines in highlights.values() for line in lines)
+        links = Links(extents, declarations=True)
         heads = {
-            result.hit.id: head_lines(result.hit.head, highlights.get(result.hit.id))
+            result.hit.id: head_lines(result.hit.head, highlights.get(result.hit.id), links)
             for result in found.results
         }
         return page(
@@ -268,11 +271,12 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
             site.preview(Filters(uses=(key,))),
             site.highlights(view.detail),
         )
+        links = Links(await site.extents(highlights.values()), declarations=False)
         return page(
             "definition.html",
             view=view,
-            imports=import_lines(view.detail, highlights),
-            body=body_lines(view.detail, highlights),
+            imports=import_lines(view.detail, highlights, links),
+            body=body_lines(view.detail, highlights, links),
             uses=uses,
             used_by=used_by,
             alternate=RELATIVE.definition(id_),
@@ -304,13 +308,15 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
 
     @router.get("/files/{release}/{path:path}")
     async def file(release: str, path: str, lines: str | None = None) -> Response:
-        view = await running.get().file(release, path)
+        site = running.get()
+        view = await site.file(release, path)
         found = view.file
         alternate = RELATIVE.read(f"{found.release}/{found.path}")
+        links = Links(await site.extents(view.highlights or []), declarations=True)
         return page(
             "file.html",
             view=view,
-            lines=file_lines(found, view.declared, view.highlights),
+            lines=file_lines(found, view.highlights, links),
             marked=marked_lines(lines),
             alternate=alternate,
         )

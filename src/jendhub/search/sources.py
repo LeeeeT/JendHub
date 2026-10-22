@@ -1,5 +1,4 @@
 import asyncio
-import itertools
 import posixpath
 import re
 from dataclasses import dataclass
@@ -251,29 +250,6 @@ async def read_file(
         if stored is None:
             return None
         return await package_source(connection, library, stored, path)
-
-
-@dataclass(frozen=True)
-class Declared:
-    id: str
-    name: str
-    line: int
-
-
-def declared_line(first_line: int, head: str) -> int:
-    comments = len(list(itertools.takewhile(lambda line: line.startswith("#"), head.split("\n"))))
-    return first_line + comments + 1
-
-
-async def read_declared(pool: Pool, generation: int, file: SourceFile) -> list[Declared]:
-    async with pool.connection() as connection:
-        cursor = await connection.execute(
-            "SELECT id, name, first_line, head FROM definitions"
-            " WHERE generation = %s AND release = %s AND module = %s ORDER BY first_line",
-            (generation, file.indexed_release, file.module),
-        )
-        rows = await cursor.fetchall()
-    return [Declared(id_, name, declared_line(first, head)) for id_, name, first, head in rows]
 
 
 async def read_release_files(

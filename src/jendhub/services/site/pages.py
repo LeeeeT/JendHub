@@ -13,8 +13,8 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 
 from jendhub.indexing.status import GenerationStatus
 from jendhub.search.definitions import DefinitionDetail
-from jendhub.search.highlights import Highlight, LineHighlights
-from jendhub.search.sources import BASE, BASE_FILE, Declared, SourceFile, id_source
+from jendhub.search.highlights import Extent, Highlight, LineHighlights
+from jendhub.search.sources import BASE, BASE_FILE, SourceFile, id_source
 
 SITE = "jendhub.services.site"
 STYLE = files(SITE).joinpath("static/style.css").read_text(encoding="utf-8")
@@ -133,15 +133,29 @@ class SourceLine:
     runs: list[Run]
 
 
-def style(found: Highlight) -> str | None:
+@dataclass(frozen=True)
+class Links:
+    extents: dict[str, Extent]
+    declarations: bool
+
+    def href(self, found: Highlight[str]) -> str | None:
+        if found.target is None or (extent := self.extents.get(found.target)) is None:
+            return None
+        if found.declaration:
+            return definition_href(found.target) if self.declarations else None
+        file, _ = id_source(found.target)
+        return lines_href(file, extent.first_line + 1, extent.end_line)
+
+
+def style(found: Highlight[str]) -> str | None:
     if found.declaration and found.kind in DECLARED:
         return f"{found.kind} declared"
     return found.kind if found.kind in STYLED else None
 
 
-def qualified(highlights: list[Highlight]) -> list[Highlight]:
+def qualified(highlights: list[Highlight[str]]) -> list[Highlight[str]]:
     return [
-        replace(found, kind=after.kind)
+        replace(found, kind=after.kind, target=after.target)
         if found.kind == "namespace"
         and not found.declaration
         and after is not None
@@ -152,35 +166,35 @@ def qualified(highlights: list[Highlight]) -> list[Highlight]:
     ]
 
 
-def styled(text: str, highlights: list[Highlight], start: int = 0) -> list[Piece]:
-    pieces: list[Piece] = []
+def joined(runs: list[Run], piece: Piece, href: str | None) -> None:
+    if runs and runs[-1].href == href:
+        runs[-1] = Run([*runs[-1].pieces, piece], href)
+    else:
+        runs.append(Run([piece], href))
+
+
+def styled(text: str, highlights: list[Highlight[str]], links: Links, start: int = 0) -> list[Run]:
+    runs: list[Run] = []
     done = 0
     for found in qualified(highlights):
         name = style(found)
+        href = links.href(found)
         first = max(found.start - start, done)
         last = min(found.end - start, len(text))
-        if name is None or first >= last:
+        if (name is None and href is None) or first >= last:
             continue
         gap = text[done:first]
-        if gap == "." and pieces and pieces[-1].style == name:
-            pieces[-1] = Piece(pieces[-1].text + text[done:last], name)
+        if gap == "." and runs and runs[-1].href == href and runs[-1].pieces[-1].style == name:
+            *pieces, piece = runs[-1].pieces
+            runs[-1] = Run([*pieces, Piece(piece.text + text[done:last], name)], href)
         else:
             if gap:
-                pieces.append(Piece(gap, None))
-            pieces.append(Piece(text[first:last], name))
+                joined(runs, Piece(gap, None), None)
+            joined(runs, Piece(text[first:last], name), href)
         done = last
     if done < len(text):
-        pieces.append(Piece(text[done:], None))
-    return pieces
-
-
-def declaration_link(text: str, declared: Declared) -> Link | None:
-    found = re.search(rf"(?<![\w.]){re.escape(declared.name)}(?![\w.])", text)
-    if found is None:
-        return None
-    return Link(
-        text[: found.start()], declared.name, definition_href(declared.id), text[found.end() :]
-    )
+        joined(runs, Piece(text[done:], None), None)
+    return runs
 
 
 def import_link(text: str) -> Link | None:
@@ -191,66 +205,48 @@ def import_link(text: str) -> Link | None:
     return None
 
 
-def linked(link: Link, before: list[Piece], label: list[Piece], after: list[Piece]) -> SourceLine:
-    return SourceLine([Run(before), Run(label, link.href), Run(after)])
-
-
-def styled_as(text: str, highlights: list[Highlight], start: int) -> list[Piece]:
+def styled_as(text: str, highlights: list[Highlight[str]], start: int) -> list[Piece]:
     found = next((found for found in highlights if found.start == start), None)
     return [Piece(text, None if found is None else style(found))] if text else []
 
 
 def source_line(
-    text: str,
-    highlights: list[Highlight],
-    shown: str | None = None,
-    declared: Declared | None = None,
+    text: str, highlights: list[Highlight[str]], links: Links, shown: str | None = None
 ) -> SourceLine:
     shown = text if shown is None else shown
-    if (link := import_link(shown)) is not None:
-        after = len(text) - len(link.after)
-        if not (text.startswith(link.before) and text.endswith(link.after)):
-            highlights = []
-        return linked(
-            link,
-            styled(link.before, highlights),
-            styled_as(link.label, highlights, len(link.before)),
-            styled(link.after, highlights, after),
-        )
-    found = highlights if shown == text else []
-    link = None if declared is None else declaration_link(shown, declared)
-    if link is None:
-        return SourceLine([Run(styled(shown, found))])
-    after = len(shown) - len(link.after)
-    return linked(
-        link,
-        styled(link.before, found),
-        styled(link.label, found, len(link.before)),
-        styled(link.after, found, after),
+    if (link := import_link(shown)) is None:
+        return SourceLine(styled(shown, highlights if shown == text else [], links))
+    after = len(text) - len(link.after)
+    if not (text.startswith(link.before) and text.endswith(link.after)):
+        highlights = []
+    return SourceLine(
+        [
+            *styled(link.before, highlights, links),
+            Run(styled_as(link.label, highlights, len(link.before)), link.href),
+            *styled(link.after, highlights, links, after),
+        ]
     )
 
 
 def file_lines(
-    file: SourceFile, declared: list[Declared], highlights: LineHighlights | None
+    file: SourceFile, highlights: LineHighlights | None, links: Links
 ) -> list[SourceLine]:
-    by_line = {found.line: found for found in declared}
     lines = file.text.removesuffix("\n").split("\n") if file.text else []
     found = highlights if highlights is not None and len(highlights) == len(lines) else None
     return [
-        source_line(
-            line, [] if found is None else found[index], file.shown(line), by_line.get(index + 1)
-        )
+        source_line(line, [] if found is None else found[index], links, file.shown(line))
         for index, line in enumerate(lines)
     ]
 
 
 def import_lines(
-    detail: DefinitionDetail, highlights: dict[int, list[Highlight]]
+    detail: DefinitionDetail, highlights: dict[int, list[Highlight[str]]], links: Links
 ) -> list[SourceLine]:
     return [
         source_line(
             line.text,
             [] if line.number is None else highlights.get(line.number, []),
+            links,
             line.shown,
         )
         for line in detail.imports
@@ -258,20 +254,20 @@ def import_lines(
 
 
 def body_lines(
-    detail: DefinitionDetail, highlights: dict[int, list[Highlight]]
+    detail: DefinitionDetail, highlights: dict[int, list[Highlight[str]]], links: Links
 ) -> list[SourceLine]:
     return [
-        SourceLine([Run(styled(line, highlights.get(detail.first_line + index, [])))])
+        SourceLine(styled(line, highlights.get(detail.first_line + index, []), links))
         for index, line in enumerate(detail.text.split("\n"))
     ]
 
 
-def head_lines(head: str, highlights: LineHighlights | None) -> list[SourceLine]:
+def head_lines(head: str, highlights: LineHighlights | None, links: Links) -> list[SourceLine]:
     lines = head.split("\n")
     found = highlights or []
     kept = lines if len(lines) <= HEAD_LINES else lines[: HEAD_LINES - 1]
     shown = [
-        SourceLine([Run(styled(line, found[index] if index < len(found) else []))])
+        SourceLine(styled(line, found[index] if index < len(found) else [], links))
         for index, line in enumerate(kept)
     ]
     if len(kept) < len(lines):

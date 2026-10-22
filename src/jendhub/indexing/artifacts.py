@@ -9,7 +9,7 @@ from jendhub.hub.api import Release
 from jendhub.hub.library import Library
 from jendhub.indexing.failures import LoadError, Place
 from jendhub.search.documents import name_document, origin_document
-from jendhub.search.highlights import LineHighlights
+from jendhub.search.highlights import Highlight, LineHighlights
 from jendhub.search.signatures import Signature, head_signature
 from jendhub.search.sources import BASE_FILE, file_path
 from jendhub.uses.graph import UseGraph, reached
@@ -82,15 +82,42 @@ class Targets:
     base: Path
     owners: dict[str, Release | None]
 
-    def key(self, target: Declaration) -> str | None:
+    def origin(self, target: Declaration) -> Origin | None:
         if target.file == self.base:
-            return target.name
+            return BASE
+        if not target.file.is_relative_to(self.library):
+            return None
         hash_, *path = target.file.relative_to(self.library).parts
         package = self.owners.get(hash_)
         if package is None:
             return None
-        module = "/".join(path).removesuffix(".bend")
-        return f"{package.name}/{module}:{target.name}"
+        return Origin(package, "/".join(path).removesuffix(".bend"))
+
+    def key(self, target: Declaration) -> str | None:
+        origin = self.origin(target)
+        return None if origin is None else definition_key(origin, target.name)
+
+    def id(self, target: Declaration) -> str | None:
+        origin = self.origin(target)
+        return None if origin is None else f"{origin.prefix}{target.name}"
+
+
+def linked(
+    lines: list[list[Highlight[Declaration]]], ids: Callable[[Declaration], str | None]
+) -> LineHighlights:
+    return [
+        [
+            Highlight(
+                found.start,
+                found.end,
+                found.kind,
+                found.declaration,
+                None if found.target is None else ids(found.target),
+            )
+            for found in line
+        ]
+        for line in lines
+    ]
 
 
 def parents(definitions: list[Definition]) -> dict[str, str]:
@@ -160,8 +187,11 @@ async def build(
     targets = {
         hash_
         for file in resolved
-        for use in file.uses
-        if (hash_ := package_hash(lib, use.target.file)) is not None
+        for target in [
+            *(use.target for use in file.uses),
+            *(found.target for line in file.highlights for found in line),
+        ]
+        if target is not None and (hash_ := package_hash(lib, target.file)) is not None
     }
     real_base = await asyncio.to_thread(base.resolve)
     found_targets = Targets(lib, real_base, await owners(sorted(targets)))
@@ -214,5 +244,13 @@ async def build(
         for file in resolved
         if file.error is None and frozenset(extracted[file.path]) != file.declarations
     }
-    highlights = {files[file.path].origin.module: file.highlights for file in resolved}
+
+    def target_id(target: Declaration) -> str | None:
+        if target.file in files:
+            return f"{files[target.file].origin.prefix}{target.name}"
+        return found_targets.id(target)
+
+    highlights = {
+        files[file.path].origin.module: linked(file.highlights, target_id) for file in resolved
+    }
     return Artifacts(release, package, indexed, sorted(set(edges)), errors, mismatches, highlights)

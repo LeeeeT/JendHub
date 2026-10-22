@@ -9,7 +9,7 @@ use bend2_lsp::{
     analysis::{DocumentSnapshot, Revision},
     frontend::{Disk, Env, ErrorText, Files, Load, LoadedFile, Meaning, load},
     highlight::{Class, Highlight, highlights},
-    semantic::Semantics,
+    semantic::{Identity, Semantics},
 };
 use serde::{Deserialize, Serialize};
 
@@ -34,12 +34,22 @@ struct Entry {
     declarations: BTreeSet<String>,
     uses: BTreeSet<Use>,
     highlights: Vec<Vec<Span>>,
+    targets: Vec<Declaration>,
 }
 
 /// A highlight on one line: its first and its end column, in characters,
-/// its class, and whether it declares its name.
+/// its class, whether it declares its name, and the index of the target
+/// that its name refers to.
 #[derive(Debug, Eq, PartialEq, Serialize)]
-struct Span(usize, usize, &'static str, bool);
+struct Span(usize, usize, &'static str, bool, Option<usize>);
+
+/// The highlights of an entry by line, and the definitions that their names
+/// refer to, each one time.
+#[derive(Debug, Default)]
+struct Highlighted {
+    lines: Vec<Vec<Span>>,
+    targets: Vec<Declaration>,
+}
 
 /// Why a load stopped: what the loader expected, what it observed, and the
 /// canonical path and the 1-based line of the file where it stopped.
@@ -59,7 +69,7 @@ struct Use {
 }
 
 /// A declaration: the canonical path of its file and its name there.
-#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 struct Declaration {
     file: String,
     name: String,
@@ -202,8 +212,9 @@ fn class_name(class: Class) -> &'static str {
 }
 
 /// The highlights of each line of a source, as its lines split at each
-/// newline, without the empty line after a final newline.
-fn lines(source: &str, found: &[Highlight]) -> Vec<Vec<Span>> {
+/// newline, without the empty line after a final newline. Each highlight
+/// comes with the index of its target.
+fn lines(source: &str, found: &[(Highlight, Option<usize>)]) -> Vec<Vec<Span>> {
     let mut out = Vec::new();
     let mut start = 0;
     let mut rest = found;
@@ -214,7 +225,7 @@ fn lines(source: &str, found: &[Highlight]) -> Vec<Vec<Span>> {
                 .map_or(0, |before| before.chars().count())
         };
         let mut spans = Vec::new();
-        while let Some((highlight, after)) = rest.split_first()
+        while let Some(((highlight, target), after)) = rest.split_first()
             && highlight.range.start < end
         {
             let first = highlight.range.start.max(start);
@@ -226,6 +237,7 @@ fn lines(source: &str, found: &[Highlight]) -> Vec<Vec<Span>> {
                     column(last),
                     class,
                     highlight.declaration,
+                    *target,
                 ));
             }
             if highlight.range.end > end {
@@ -239,9 +251,21 @@ fn lines(source: &str, found: &[Highlight]) -> Vec<Vec<Span>> {
     out
 }
 
+/// The definition that holds a declaration: the declaration itself, or the
+/// type of a constructor, since a type and its constructors are one
+/// definition.
+fn definition(semantics: &Semantics, identity: &Identity) -> Option<Declaration> {
+    let found = semantics.declaration(identity)?;
+    let holder = semantics.holder(found.tld)?;
+    Some(Declaration {
+        file: holder.identity.path.to_string_lossy().into_owned(),
+        name: holder.identity.name.clone(),
+    })
+}
+
 /// The highlights of an entry, by the names of its load. An entry that the
 /// load does not reach gets only the highlights of its tokens.
-fn entry_highlights(loaded: Load, path: &str) -> Vec<Vec<Span>> {
+fn entry_highlights(loaded: Load, path: &str) -> Highlighted {
     let semantics = Semantics::new(loaded);
     let source = match semantics.entry() {
         Some(entry) => entry.source.clone(),
@@ -249,7 +273,28 @@ fn entry_highlights(loaded: Load, path: &str) -> Vec<Vec<Span>> {
     };
     let snapshot = DocumentSnapshot::new(Revision(0), source);
     let found = highlights(&snapshot.syntax, semantics.entry().map(|_| &semantics));
-    lines(&snapshot.text, &found)
+    let mut targets = Vec::new();
+    let mut indices = HashMap::new();
+    let found: Vec<_> = found
+        .into_iter()
+        .map(|highlight| {
+            let target = highlight
+                .target
+                .as_ref()
+                .and_then(|identity| definition(&semantics, identity))
+                .map(|declaration| {
+                    *indices.entry(declaration.clone()).or_insert_with(|| {
+                        targets.push(declaration);
+                        targets.len() - 1
+                    })
+                });
+            (highlight, target)
+        })
+        .collect();
+    Highlighted {
+        lines: lines(&snapshot.text, &found),
+        targets,
+    }
 }
 
 fn real(path: &str) -> String {
@@ -274,8 +319,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let declarations = entry_declarations(&loaded);
         let uses = uses(&loaded);
         let error = failure(&loaded);
+        let highlighted = entry_highlights(loaded, &entry);
         entries.push(Entry {
-            highlights: entry_highlights(loaded, &entry),
+            highlights: highlighted.lines,
+            targets: highlighted.targets,
             path: entry,
             error,
             declarations,
@@ -498,15 +545,13 @@ mod tests {
             "lib/0xaa/main.bend",
             "import Base\n\n# “quoted”\ndef root(x: Nat) -> Nat:\n  x\n",
         );
-        let found = entry_highlights(fixture.load(&main), &main);
+        let found = entry_highlights(fixture.load(&main), &main).lines;
         assert_eq!(found.len(), 5);
         assert_eq!(found[1], vec![]);
-        assert_eq!(found[2], vec![Span(0, 10, "comment", false)]);
-        assert!(found[3].contains(&Span(0, 3, "keyword", false)));
-        assert!(found[3].contains(&Span(4, 8, "function", true)));
-        assert!(found[3].contains(&Span(9, 10, "variable", true)));
-        assert!(found[3].contains(&Span(12, 15, "type", false)));
-        assert_eq!(found[4], vec![Span(2, 3, "variable", false)]);
+        assert_eq!(found[2], vec![Span(0, 10, "comment", false, None)]);
+        assert!(found[3].contains(&Span(0, 3, "keyword", false, None)));
+        assert!(found[3].contains(&Span(9, 10, "variable", true, None)));
+        assert_eq!(found[4], vec![Span(2, 3, "variable", false, None)]);
     }
 
     #[test]
@@ -517,24 +562,59 @@ mod tests {
             "import Base\nimport ./missing.bend as M\n\ndef root(x: Nat) -> Nat:\n  x\n",
         );
         let found = entry_highlights(fixture.load(&main), &main);
-        assert!(found[3].contains(&Span(0, 3, "keyword", false)));
-        assert!(found[3].iter().all(|span| span.2 != "function"));
+        assert!(found.lines[3].contains(&Span(0, 3, "keyword", false, None)));
+        assert!(found.lines[3].iter().all(|span| span.2 != "function"));
+        assert_eq!(found.targets, Vec::<Declaration>::new());
     }
 
     #[test]
     fn a_highlight_over_lines_splits_at_each_newline() {
         let source = "ab\ncd\n";
-        let found = [Highlight {
-            range: bend2_lsp::analysis::TextRange::new(1, 4),
-            class: Class::String,
-            declaration: false,
-        }];
+        let found = [(
+            Highlight {
+                range: bend2_lsp::analysis::TextRange::new(1, 4),
+                class: Class::String,
+                declaration: false,
+                target: None,
+            },
+            None,
+        )];
         assert_eq!(
             lines(source, &found),
             vec![
-                vec![Span(1, 2, "string", false)],
-                vec![Span(0, 1, "string", false)]
+                vec![Span(1, 2, "string", false, None)],
+                vec![Span(0, 1, "string", false, None)]
             ]
         );
+    }
+
+    #[test]
+    fn a_name_targets_the_definition_that_holds_its_declaration() {
+        let fixture = Fixture::new("targets");
+        let shapes = fixture.write(
+            "lib/0xaa/shapes.bend",
+            "import Base\n\ntype Shape is Data:\n  Circle{radius: Nat}\n",
+        );
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\nimport ./shapes.bend as S\n\ndef root(x: Nat) -> S.Shape:\n  S.Circle{x}\n",
+        );
+        let base = real(&fixture.root.join("base.bend").to_string_lossy());
+        let found = entry_highlights(fixture.load(&main), &main);
+        let target = |line: usize, column: usize| {
+            found.lines[line]
+                .iter()
+                .find(|span| span.0 == column)
+                .and_then(|span| span.4)
+                .and_then(|index| found.targets.get(index))
+                .map(|declaration| (declaration.file.clone(), declaration.name.clone()))
+        };
+        assert_eq!(target(3, 4), Some((main.clone(), "root".into())));
+        assert_eq!(target(3, 9), None);
+        assert_eq!(target(3, 12), Some((base, "Nat".into())));
+        assert_eq!(target(3, 20), None);
+        assert_eq!(target(3, 22), Some((shapes.clone(), "Shape".into())));
+        assert_eq!(target(4, 4), Some((shapes, "Shape".into())));
+        assert_eq!(found.targets.len(), 3);
     }
 }

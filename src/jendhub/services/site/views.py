@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Iterable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 
@@ -31,23 +31,24 @@ from jendhub.search.filters import (
     users_by_key,
 )
 from jendhub.search.highlights import (
+    Extent,
     Highlight,
     LineHighlights,
+    read_extents,
     read_file_highlights,
     read_head_highlights,
     read_line_highlights,
+    targets,
 )
 from jendhub.search.packages import PackageDetail, read_package
 from jendhub.search.ranking import Model, load_model
 from jendhub.search.searches import Caller, Search, record_search
 from jendhub.search.sources import (
-    Declared,
     ReleaseFiles,
     SourceFile,
     Usage,
     definition_id,
     indexed_file,
-    read_declared,
     read_file,
     read_release_files,
     usage,
@@ -174,7 +175,6 @@ class PackageView:
 @dataclass(frozen=True)
 class FileView:
     file: SourceFile
-    declared: list[Declared]
     highlights: LineHighlights | None
 
 
@@ -352,14 +352,17 @@ class Site:
 
     async def file(self, release: str, path: str) -> FileView:
         found = await self.source(release, path)
-        generation = self.target().generation
         async with self.pool.connection() as connection:
             highlights = await read_file_highlights(
-                connection, generation, found.indexed_release, found.module
+                connection, self.target().generation, found.indexed_release, found.module
             )
-        return FileView(found, await read_declared(self.pool, generation, found), highlights)
+        return FileView(found, highlights)
 
-    async def highlights(self, detail: DefinitionDetail) -> dict[int, list[Highlight]]:
+    async def extents(self, lines: Iterable[list[Highlight[str]]]) -> dict[str, Extent]:
+        async with self.pool.connection() as connection:
+            return await read_extents(connection, self.target().generation, targets(lines))
+
+    async def highlights(self, detail: DefinitionDetail) -> dict[int, list[Highlight[str]]]:
         numbers = [line.number for line in detail.imports if line.number is not None]
         numbers += list(range(detail.first_line, detail.end_line))
         async with self.pool.connection() as connection:

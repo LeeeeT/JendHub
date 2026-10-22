@@ -1,11 +1,12 @@
 import json
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from jendhub.errors import JendHubError
 from jendhub.json import Json
-from jendhub.search.highlights import HighlightError, LineHighlights, highlight_lines
+from jendhub.search.highlights import Highlight, HighlightError, highlight_lines
 
 INDEXER = "jendhub-index"
 
@@ -40,7 +41,7 @@ class ResolvedFile:
     error: Failure | None
     declarations: frozenset[str]
     uses: list[Use]
-    highlights: LineHighlights
+    highlights: list[list[Highlight[Declaration]]]
 
 
 def declaration(found: Json) -> Declaration:
@@ -57,6 +58,19 @@ def resolved_use(found: Json) -> Use:
             return Use(declaration(user), declaration(target))
         case _:
             raise UsesError(f"{INDEXER} returned an invalid use: {found!r}")
+
+
+def target_of(targets: list[Declaration]) -> Callable[[Json], Declaration | None]:
+    def target(found: Json) -> Declaration | None:
+        match found:
+            case None:
+                return None
+            case int() as index if 0 <= index < len(targets):
+                return targets[index]
+            case _:
+                raise HighlightError(f"invalid highlight target: {found!r}")
+
+    return target
 
 
 def failure(found: Json) -> Failure | None:
@@ -82,10 +96,11 @@ def resolved_file(found: Json) -> ResolvedFile:
             "declarations": list() as declarations,
             "uses": list() as uses,
             "highlights": highlights,
+            "targets": list() as targets,
         } if all(isinstance(name, str) for name in declarations):
             names = frozenset(name for name in declarations if isinstance(name, str))
             try:
-                lines = highlight_lines(highlights)
+                lines = highlight_lines(highlights, target_of([declaration(t) for t in targets]))
             except HighlightError as error:
                 raise UsesError(f"{INDEXER} returned {error}") from error
             return ResolvedFile(

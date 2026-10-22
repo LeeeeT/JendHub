@@ -1,3 +1,4 @@
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from typing import Literal, cast, get_args
 
@@ -28,38 +29,78 @@ class HighlightError(JendHubError):
 
 
 @dataclass(frozen=True)
-class Highlight:
+class Highlight[T]:
     start: int
     end: int
     kind: Kind
     declaration: bool
+    target: T | None
 
 
-type LineHighlights = list[list[Highlight]]
+type LineHighlights = list[list[Highlight[str]]]
 
 
-def highlight(found: Json) -> Highlight:
+@dataclass(frozen=True)
+class Extent:
+    first_line: int
+    end_line: int
+
+
+def highlight[T](found: Json, target: Callable[[Json], T | None]) -> Highlight[T]:
     match found:
-        case [int() as start, int() as end, str() as kind, bool() as declaration] if (
+        case [int() as start, int() as end, str() as kind, bool() as declaration, found_target] if (
             0 <= start < end and kind in KINDS
         ):
-            return Highlight(start, end, cast("Kind", kind), declaration)
+            return Highlight(start, end, cast("Kind", kind), declaration, target(found_target))
         case _:
             raise HighlightError(f"invalid highlight: {found!r}")
 
 
-def highlight_lines(found: Json) -> LineHighlights:
+def highlight_lines[T](found: Json, target: Callable[[Json], T | None]) -> list[list[Highlight[T]]]:
     match found:
         case list() as lines if all(isinstance(line, list) for line in lines):
-            return [[highlight(item) for item in cast("list[Json]", line)] for line in lines]
+            return [
+                [highlight(item, target) for item in cast("list[Json]", line)] for line in lines
+            ]
         case _:
             raise HighlightError(f"invalid highlight lines: {found!r}")
 
 
+def definition_id(found: Json) -> str | None:
+    match found:
+        case str() | None:
+            return found
+        case _:
+            raise HighlightError(f"invalid highlight target: {found!r}")
+
+
+def stored_lines(found: Json) -> LineHighlights:
+    return highlight_lines(found, definition_id)
+
+
 def lines_json(lines: LineHighlights) -> Jsonb:
     return Jsonb(
-        [[[item.start, item.end, item.kind, item.declaration] for item in line] for line in lines]
+        [
+            [[item.start, item.end, item.kind, item.declaration, item.target] for item in line]
+            for line in lines
+        ]
     )
+
+
+def targets(lines: Iterable[list[Highlight[str]]]) -> frozenset[str]:
+    return frozenset(item.target for line in lines for item in line if item.target is not None)
+
+
+async def read_extents(
+    connection: AsyncConnection, generation: int, ids: Collection[str]
+) -> dict[str, Extent]:
+    if not ids:
+        return {}
+    cursor = await connection.execute(
+        "SELECT id, first_line, end_line FROM definitions WHERE generation = %s AND id = ANY(%s)",
+        (generation, sorted(ids)),
+    )
+    return {id_: Extent(first, end) for id_, first, end in await cursor.fetchall()}
 
 
 def line_path(numbers: list[int]) -> str:
@@ -68,7 +109,7 @@ def line_path(numbers: list[int]) -> str:
 
 async def read_line_highlights(
     connection: AsyncConnection, generation: int, release: str, module: str, numbers: list[int]
-) -> list[list[Highlight]] | None:
+) -> LineHighlights | None:
     if not numbers:
         return []
     cursor = await connection.execute(
@@ -79,7 +120,7 @@ async def read_line_highlights(
     row = await cursor.fetchone()
     if row is None:
         return None
-    found = highlight_lines(row[0])
+    found = stored_lines(row[0])
     return found if len(found) == len(numbers) else None
 
 
@@ -91,7 +132,7 @@ async def read_file_highlights(
         (generation, release, module),
     )
     row = await cursor.fetchone()
-    return None if row is None else highlight_lines(row[0])
+    return None if row is None else stored_lines(row[0])
 
 
 async def read_head_highlights(
@@ -105,4 +146,4 @@ async def read_head_highlights(
         " WHERE d.generation = %s AND d.id = ANY(%s)",
         (count, generation, ids),
     )
-    return {id_: highlight_lines(lines) for id_, lines in await cursor.fetchall()}
+    return {id_: stored_lines(lines) for id_, lines in await cursor.fetchall()}
