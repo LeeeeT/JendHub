@@ -79,3 +79,17 @@ async def test_a_job_whose_process_runs_past_its_lease_is_tried_again(
         assert await cursor.fetchall() == [
             ("queued", "its indexing process ran for more than 0.5 s")
         ]
+
+
+async def test_a_job_whose_process_gives_no_outcome_is_tried_again(
+    pool: Pool, packages: PackageStore, vectors: VectorIndex, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker, generation = await new_generation(packages, vectors)
+    monkeypatch.setattr(worker_module, "CHILD", "tests.indexing.silent")
+    assert await worker.step(worker.attempt_in_child)
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT state, error FROM index_jobs WHERE generation = %s AND attempts = 1",
+            (generation,),
+        )
+        assert await cursor.fetchall() == [("queued", "its indexing process gave no outcome")]

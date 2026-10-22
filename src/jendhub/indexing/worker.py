@@ -8,7 +8,7 @@ import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal
+from typing import Literal, cast, get_args
 
 from prometheus_client import Counter
 
@@ -18,6 +18,7 @@ from jendhub.hub.store import PackageStore
 from jendhub.indexing.artifacts import Artifacts, build
 from jendhub.indexing.failures import LoadError, summary
 from jendhub.indexing.store import LIVE, Generation, IndexStore, Job, Superseded
+from jendhub.json import Json
 from jendhub.search.sources import BASE_RELEASE
 from jendhub.vectors.index import Projected, VectorIndex
 
@@ -35,6 +36,8 @@ MISMATCHES = Counter(
 logger = logging.getLogger(__name__)
 
 type Outcome = Literal["done", "superseded", "invalid", "retried", "failed"]
+
+OUTCOMES: frozenset[str] = frozenset(get_args(Outcome.__value__))
 
 
 @dataclass(frozen=True)
@@ -165,8 +168,20 @@ class Worker:
             return await self.failed(
                 job, f"its indexing process stopped with exit code {process.returncode}"
             )
-        found = json.loads(stdout)
-        return Attempt(found["outcome"], found["mismatches"])
+        return await self.outcome(job, stdout)
+
+    async def outcome(self, job: Job, stdout: bytes) -> Attempt:
+        try:
+            found: Json = json.loads(stdout)
+        except json.JSONDecodeError:
+            found = None
+        match found:
+            case {"outcome": str() as outcome, "mismatches": int() as mismatches} if (
+                outcome in OUTCOMES
+            ):
+                return Attempt(cast("Outcome", outcome), mismatches)
+            case _:
+                return await self.failed(job, "its indexing process gave no outcome")
 
     async def step(self, attempter: Attempter | None = None) -> bool:
         for release in await self.index.fail_abandoned():
