@@ -1,7 +1,7 @@
 import pytest
 
 from jendhub.search.sources import (
-    absolute_imports,
+    SourceFile,
     alias,
     call_name,
     file_path,
@@ -49,8 +49,8 @@ def test_imports_name_exact_releases() -> None:
         "def f(n: Nat) -> Nat:\n"
         "  n\n"
     )
-    labels = {HASH: "bytes@0.3.0.0"}
-    assert absolute_imports(text, "kit@1.0.0.0", "src/a/main.bend", labels) == (
+    file = SourceFile("kit@1.0.0.0", HASH, "src/a/main.bend", text, {HASH: "bytes@0.3.0.0"})
+    assert "\n".join(file.shown(line) for line in text.split("\n")) == (
         "import Base\n"
         "import kit@1.0.0.0/src/lib/nat.bend as N\n"
         "import kit@1.0.0.0/src/a/state.bend as ST\n"
@@ -63,7 +63,8 @@ def test_imports_name_exact_releases() -> None:
 
 def test_an_import_outside_the_package_or_of_an_unnamed_hash_stays() -> None:
     text = f"import ../../up.bend as U\nimport {HASH}/bytes.bend as Bytes"
-    assert absolute_imports(text, "kit@1.0.0.0", "main.bend", {}) == text
+    file = SourceFile("kit@1.0.0.0", HASH, "main.bend", text, {})
+    assert [file.shown(line) for line in text.split("\n")] == text.split("\n")
     assert imported_hashes(text) == [HASH]
 
 
@@ -75,10 +76,10 @@ def test_a_definition_keeps_only_the_imports_that_its_code_uses() -> None:
         "import kit@1.0.0.0/lazy.bend as NL\n"
     )
     code = "def f(xs: L.List) -> Nat:\n  N.add(NL.force(xs), Main.N.x)"
-    assert used_imports(file, code) == [
-        "import Base",
-        "import kit@1.0.0.0/nat.bend as N",
-        "import kit@1.0.0.0/list.bend as L",
-        "import kit@1.0.0.0/lazy.bend as NL",
-    ]
-    assert used_imports(file, "def g() -> Nat:\n  Main.N.x") == ["import Base"]
+    assert used_imports(file, code) == [0, 1, 2, 3]
+    assert used_imports(file, "def g() -> Nat:\n  Main.N.x") == [0]
+
+
+def test_a_repeated_import_line_is_used_once() -> None:
+    file = "import Base\nimport kit@1.0.0.0/nat.bend as N\nimport kit@1.0.0.0/nat.bend as N  \n"
+    assert used_imports(file, "def f() -> Nat:\n  N.zero") == [0, 1]

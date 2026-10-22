@@ -201,6 +201,21 @@ write the relative imports and the hash imports of a file as `name@version`
 paths. Each page links to its text form with
 `<link rel="alternate" type="text/plain">`.
 
+The file page, the definition page and the search results highlight the code
+of indexed files. Comments are grey. Keywords, functions, types, constants
+(numbers and constructors) and strings each have one color. A keyword, as
+`import`, `as`, `type`, `is` or `def`, has the same color everywhere. The five
+colors have the same perceived lightness, and each has a contrast of at least
+4.5:1 in the light and the dark theme. The path of an import has the color of
+a string. A qualified name, as `Bytes.Bytes`, has the color of its name.
+`Type`, `Data`, `Kind` and `Quant` are types. A def or a law whose result is a
+universe, as `def IO(-A: Type) -> Type` or `law File: Type`, is a type too.
+Variables and operators stay plain. The name of each def, law, type and
+constructor has its color and is bold where it is declared. The alias of an
+import is bold where the import declares it. The import boxes of the search
+results are not highlighted. The highlights come from the index, so a file of
+an unindexed or invalid release shows plain text.
+
 Each client IP gets at most 30 searches and 600 requests a minute, with a
 burst of 10 searches and 120 requests. More get `429 Too Many Requests` with
 `Retry-After`. Each MCP request counts as a request, and each call of the
@@ -470,6 +485,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `generations`, `index_jobs` | The index generations with their vector settings, and the job queue. |
 | Postgres `invalid_releases` | The releases that never go into the index, with the load error of each file that does not load. |
 | Postgres `definitions`, `uses`, `external_uses`, `user_counts` | The definitions of each generation, with their features, their uses and the number of definitions that use each key. |
+| Postgres `highlights` | The highlights of each line of each indexed file, for each generation: the column range, the class and whether the token declares its name. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
 | Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, filters, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
@@ -496,8 +512,11 @@ compiler's repository, the parsed terms are byte-identical, and every
 identifier token has the meaning that the compiler gives it.
 
 The `jendhub-index` program in `indexer/` loads each file of a release as the
-compiler loads the file it checks. It writes the uses and the declared names
-as JSON. The uses inside one release are the graph of that release. A use of
+compiler loads the file it checks. It writes the uses, the declared names and
+the highlights of each line as JSON. The highlights come from the `highlight`
+module of `bend2-lsp-rs`, which also gives the semantic tokens of the language
+server: the lexer gives the class of each token, and the meaning of each name
+gives the class of each identifier. The uses inside one release are the graph of that release. A use of
 another release is stored by the module and name of its target, without the
 version.
 

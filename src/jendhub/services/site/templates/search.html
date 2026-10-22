@@ -17,7 +17,8 @@
 <span class="muted">(<a href="{{ filter_href('uses', hit.key) }}">used by {{ result.used_by }}</a>)</span>
 </div>
 <p class="meta">{{ macros.release(hit.package, hit.version) }} · <a href="{{ file_href(result.usage.file) }}">{{ result.usage.file.split('/', 1)[1] }}</a></p>
-<pre class="head"><code>{{ shortened(hit.head) }}</code></pre>
+<pre class="head"><code>{% for line in heads[hit.id] %}{{ macros.code(line) }}{% if not loop.last %}
+{% endif %}{% endfor %}</code></pre>
 {{ macros.import_line(result.usage) }}
 </li>
 {% endfor %}

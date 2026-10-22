@@ -29,6 +29,14 @@ async def ids(pool: Pool, generation: int) -> set[str]:
         return {id_ for (id_,) in await cursor.fetchall()}
 
 
+async def highlighted(pool: Pool, generation: int) -> set[tuple[str, str]]:
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT release, module FROM highlights WHERE generation = %s", (generation,)
+        )
+        return set(await cursor.fetchall())
+
+
 async def stored_users(pool: Pool, generation: int) -> dict[str, int]:
     async with pool.connection() as connection:
         cursor = await connection.execute(
@@ -70,6 +78,11 @@ async def test_a_new_release_replaces_the_old_one(
     assert users == await counted_users(pool, target.generation)
     assert users["kit/main:double"] == 1
     assert "app/main:quadruple" not in users
+    assert await highlighted(pool, target.generation) == {
+        ("base", ""),
+        (KIT_V1, "main"),
+        (APP, "main"),
+    }
 
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), KIT_SOURCE + BOX[12:])
     await schedule_live(index, packages, vectors)
@@ -78,6 +91,11 @@ async def test_a_new_release_replaces_the_old_one(
     found = await ids(pool, target.generation)
     assert "kit@1.0.0.0/main:double" not in found
     assert {"kit@2.0.0.0/main:double", "kit@2.0.0.0/main:open"} <= found
+    assert await highlighted(pool, target.generation) == {
+        ("base", ""),
+        (KIT_V2, "main"),
+        (APP, "main"),
+    }
     users = await stored_users(pool, target.generation)
     assert users == await counted_users(pool, target.generation)
     assert users["kit/main:double"] == 1

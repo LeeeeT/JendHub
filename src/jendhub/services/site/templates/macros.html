@@ -56,3 +56,7 @@
 </div>
 {% endfor %}
 {%- endmacro %}
+
+{% macro code(line) -%}
+{% for run in line.runs %}{% if run.href is not none %}<a href="{{ run.href }}">{% endif %}{% for piece in run.pieces %}{% if piece.style is none %}{{ piece.text }}{% else %}<span class="{{ piece.style }}">{{ piece.text }}</span>{% endif %}{% endfor %}{% if run.href is not none %}</a>{% endif %}{% endfor %}
+{%- endmacro %}

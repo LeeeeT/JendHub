@@ -5,6 +5,7 @@ from pathlib import Path
 
 from jendhub.errors import JendHubError
 from jendhub.json import Json
+from jendhub.search.highlights import HighlightError, LineHighlights, highlight_lines
 
 INDEXER = "jendhub-index"
 
@@ -39,6 +40,7 @@ class ResolvedFile:
     error: Failure | None
     declarations: frozenset[str]
     uses: list[Use]
+    highlights: LineHighlights
 
 
 def declaration(found: Json) -> Declaration:
@@ -79,10 +81,15 @@ def resolved_file(found: Json) -> ResolvedFile:
             "error": error,
             "declarations": list() as declarations,
             "uses": list() as uses,
+            "highlights": highlights,
         } if all(isinstance(name, str) for name in declarations):
             names = frozenset(name for name in declarations if isinstance(name, str))
+            try:
+                lines = highlight_lines(highlights)
+            except HighlightError as error:
+                raise UsesError(f"{INDEXER} returned {error}") from error
             return ResolvedFile(
-                Path(path), failure(error), names, [resolved_use(use) for use in uses]
+                Path(path), failure(error), names, [resolved_use(use) for use in uses], lines
             )
         case _:
             raise UsesError(f"{INDEXER} returned an invalid entry: {found!r}")

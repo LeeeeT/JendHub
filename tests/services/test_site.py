@@ -500,6 +500,11 @@ async def test_people_get_the_results_as_a_page(site: httpx.AsyncClient) -> None
     assert f'href="/definitions/{DOUBLE}"' in html
     assert 'href="/packages/kit"' in html
     assert "import kit@1.0.0.0/main.bend as Kit" in html
+    assert '<span class="comment"># Doubles a number.</span>' in html
+    assert (
+        '<span class="keyword">def</span> '
+        '<span class="function declared">double</span>(n: <span class="type">Nat</span>)' in html
+    )
     assert 'type="text/plain" href="/search.txt?query=double%20a%20number"' in html
 
 
@@ -528,6 +533,10 @@ async def test_an_empty_search_goes_home(site: httpx.AsyncClient) -> None:
 async def test_people_get_a_definition_with_its_lines_and_uses(site: httpx.AsyncClient) -> None:
     html = (await site.get(f"/definitions/{QUADRUPLE}")).text
     assert 'href="/files/app@1.0.0.0/main.bend#L5"' in html
+    assert (
+        '<span class="keyword">def</span> '
+        '<span class="function declared">quadruple</span>(n: <span class="type">Nat</span>)' in html
+    )
     assert f'href="/definitions/{DOUBLE}"' in html
     assert 'href="/files/app@1.0.0.0/main.bend?lines=4-5#L4"' in html
     assert 'href="/definition.txt?path=app@1.0.0.0/main.bend&amp;name=quadruple"' in html
@@ -554,7 +563,10 @@ async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient
     assert '<span class="line" id="L3">' in file
     assert 'href="/files/kit@1.0.0.0/main.bend"' in file
     assert 'href="/files/Base/base.bend"' in file
-    assert f'href="/definitions/{QUADRUPLE}">quadruple</a>' in file
+    assert (
+        f'<a href="/definitions/{QUADRUPLE}"><span class="function declared">quadruple</span></a>'
+        in file
+    )
 
 
 async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) -> None:

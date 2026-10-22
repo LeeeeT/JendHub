@@ -6,6 +6,11 @@
 	--line: #000000;
 	--faint: #c8c8c8;
 	--mark: #dcdcdc;
+	--keyword: #396a2e;
+	--function: #305d96;
+	--type: #006b6c;
+	--constant: #764781;
+	--string: #884a16;
 	--measure: 100ch;
 	--prose: 72ch;
 }
@@ -19,6 +24,11 @@
 		--line: #ffffff;
 		--faint: #3c3c3c;
 		--mark: #303030;
+		--keyword: #9aca90;
+		--function: #91bef7;
+		--type: #68cecd;
+		--constant: #d6a7e1;
+		--string: #eaaa7f;
 	}
 }
 
@@ -378,6 +388,43 @@ button:hover {
 
 .use code {
 	color: var(--text);
+}
+
+pre .comment {
+	color: var(--muted);
+}
+
+pre .keyword {
+	color: var(--keyword);
+}
+
+pre .string {
+	color: var(--string);
+}
+
+pre .number,
+pre .constructor {
+	color: var(--constant);
+}
+
+pre .type {
+	color: var(--type);
+}
+
+pre .function {
+	color: var(--function);
+}
+
+pre .declared {
+	font-weight: 700;
+}
+
+pre a:has(> .declared) {
+	border-bottom: 0;
+}
+
+pre a:hover span {
+	color: inherit;
 }
 
 .source {

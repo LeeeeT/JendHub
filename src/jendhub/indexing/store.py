@@ -13,9 +13,10 @@ from jendhub.errors import JendHubError
 from jendhub.hub.api import Release
 from jendhub.indexing.artifacts import Artifacts
 from jendhub.indexing.failures import LoadError, errors_json, summary
+from jendhub.search.highlights import lines_json
 from jendhub.vectors.index import Quantization, VectorConfig, collection_name
 
-INDEXER_VERSION = 4
+INDEXER_VERSION = 5
 LIVE = "live"
 MAX_ATTEMPTS = 5
 RETRY_BASE = timedelta(minutes=1)
@@ -394,6 +395,10 @@ async def delete_releases(
         "DELETE FROM definitions WHERE generation = %s AND release = ANY(%s)",
         (generation_id, releases),
     )
+    await connection.execute(
+        "DELETE FROM highlights WHERE generation = %s AND release = ANY(%s)",
+        (generation_id, releases),
+    )
     return changes
 
 
@@ -488,6 +493,13 @@ async def insert(
                 (generation_id, by_id[indexed.definition.id], key)
                 for indexed in artifacts.definitions
                 for key in sorted(indexed.external_targets)
+            ],
+        )
+        await many.executemany(
+            "INSERT INTO highlights (generation, release, module, lines) VALUES (%s, %s, %s, %s)",
+            [
+                (generation_id, artifacts.release, module, lines_json(lines))
+                for module, lines in sorted(artifacts.highlights.items())
             ],
         )
     return points

@@ -5,6 +5,6 @@
 {% block main %}
 <h1 class="id">{{ file.path }}</h1>
 <p class="meta">{% if file.hash is none %}{{ macros.release(none, none) }}{% else %}{% set name, _, version = file.release.partition("@") %}{% if version %}{{ macros.release(name, version) }}{% else %}<a href="{{ release_href(file.release) }}">{{ file.release }}</a>{% endif %}{% endif %} · {{ counted(lines | length, "line") }} · {{ counted(view.declared | length, "definition") }}</p>
-<pre class="source"><code>{% for line in lines %}<span class="line{% if loop.index in marked %} marked{% endif %}" id="L{{ loop.index }}"><a class="n" href="#L{{ loop.index }}">{{ loop.index }}</a>{% if line.link is none %}{{ line.text }}{% else %}{{ line.link.before }}<a href="{{ line.link.href }}">{{ line.link.label }}</a>{{ line.link.after }}{% endif %}
+<pre class="source"><code>{% for line in lines %}<span class="line{% if loop.index in marked %} marked{% endif %}" id="L{{ loop.index }}"><a class="n" href="#L{{ loop.index }}">{{ loop.index }}</a>{{ macros.code(line) }}
 </span>{% endfor %}</code></pre>
 {% endblock %}

@@ -2,12 +2,26 @@ from dataclasses import dataclass
 
 from jendhub.db.pool import Pool
 from jendhub.hub.library import Library
-from jendhub.search.sources import BASE_IMPORT, StoredRelease, package_source, used_imports
+from jendhub.search.sources import (
+    BASE_IMPORT,
+    SourceFile,
+    StoredRelease,
+    package_source,
+    used_imports,
+)
+
+
+@dataclass(frozen=True)
+class ImportLine:
+    text: str
+    shown: str
+    number: int | None
 
 
 @dataclass(frozen=True)
 class DefinitionDetail:
     id: str
+    release: str
     key: str
     kind: str
     name: str
@@ -15,10 +29,18 @@ class DefinitionDetail:
     version: str | None
     module: str
     text: str
-    imports: list[str]
+    imports: list[ImportLine]
     first_line: int
     end_line: int
     uses: list[str]
+
+
+def import_lines(source: SourceFile, code: str) -> list[ImportLine]:
+    lines = source.text.split("\n")
+    return [
+        ImportLine(lines[number], source.shown(lines[number]).rstrip(), number)
+        for number in used_imports(source.text, code)
+    ]
 
 
 async def read_definition(
@@ -35,11 +57,11 @@ async def read_definition(
             return None
         point, release, key, kind, name, package, version, module, text, first_line, end_line = row
         if package is None:
-            imports = [BASE_IMPORT]
+            imports = [ImportLine(BASE_IMPORT, BASE_IMPORT, None)]
         else:
             stored = StoredRelease(f"{package}@{version}", release)
             source = await package_source(connection, library, stored, f"{module}.bend")
-            imports = [] if source is None else used_imports(source, text)
+            imports = [] if source is None else import_lines(source, text)
         cursor = await connection.execute(
             "SELECT t.id FROM uses JOIN definitions t ON t.point = uses.target_point"
             " WHERE uses.user_point = %(point)s"
@@ -50,5 +72,17 @@ async def read_definition(
         )
         uses = [found for (found,) in await cursor.fetchall()]
     return DefinitionDetail(
-        id_, key, kind, name, package, version, module, text, imports, first_line, end_line, uses
+        id_,
+        release,
+        key,
+        kind,
+        name,
+        package,
+        version,
+        module,
+        text,
+        imports,
+        first_line,
+        end_line,
+        uses,
     )

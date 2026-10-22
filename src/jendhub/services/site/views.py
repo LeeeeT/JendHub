@@ -30,6 +30,13 @@ from jendhub.search.filters import (
     resolve,
     users_by_key,
 )
+from jendhub.search.highlights import (
+    Highlight,
+    LineHighlights,
+    read_file_highlights,
+    read_head_highlights,
+    read_line_highlights,
+)
 from jendhub.search.packages import PackageDetail, read_package
 from jendhub.search.ranking import Model, load_model
 from jendhub.search.searches import Caller, Search, record_search
@@ -168,6 +175,7 @@ class PackageView:
 class FileView:
     file: SourceFile
     declared: list[Declared]
+    highlights: LineHighlights | None
 
 
 @dataclass(frozen=True)
@@ -344,4 +352,23 @@ class Site:
 
     async def file(self, release: str, path: str) -> FileView:
         found = await self.source(release, path)
-        return FileView(found, await read_declared(self.pool, self.target().generation, found))
+        generation = self.target().generation
+        async with self.pool.connection() as connection:
+            highlights = await read_file_highlights(
+                connection, generation, found.indexed_release, found.module
+            )
+        return FileView(found, await read_declared(self.pool, generation, found), highlights)
+
+    async def highlights(self, detail: DefinitionDetail) -> dict[int, list[Highlight]]:
+        numbers = [line.number for line in detail.imports if line.number is not None]
+        numbers += list(range(detail.first_line, detail.end_line))
+        async with self.pool.connection() as connection:
+            found = await read_line_highlights(
+                connection, self.target().generation, detail.release, detail.module, numbers
+            )
+        return {} if found is None else dict(zip(numbers, found, strict=True))
+
+    async def heads(self, found: Results, lines: int) -> dict[str, LineHighlights]:
+        ids = [result.hit.id for result in found.results]
+        async with self.pool.connection() as connection:
+            return await read_head_highlights(connection, self.target().generation, ids, lines)

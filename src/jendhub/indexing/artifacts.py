@@ -9,6 +9,7 @@ from jendhub.hub.api import Release
 from jendhub.hub.library import Library
 from jendhub.indexing.failures import LoadError, Place
 from jendhub.search.documents import name_document, origin_document
+from jendhub.search.highlights import LineHighlights
 from jendhub.search.signatures import Signature, head_signature
 from jendhub.search.sources import BASE_FILE, file_path
 from jendhub.uses.graph import UseGraph, reached
@@ -46,6 +47,7 @@ class Artifacts:
     uses: list[tuple[str, str]]
     errors: dict[str, LoadError]
     mismatches: dict[str, Mismatch]
+    highlights: dict[str, LineHighlights]
 
 
 def definition_key(origin: Origin, name: str) -> str:
@@ -212,4 +214,5 @@ async def build(
         for file in resolved
         if file.error is None and frozenset(extracted[file.path]) != file.declarations
     }
-    return Artifacts(release, package, indexed, sorted(set(edges)), errors, mismatches)
+    highlights = {files[file.path].origin.module: file.highlights for file in resolved}
+    return Artifacts(release, package, indexed, sorted(set(edges)), errors, mismatches, highlights)

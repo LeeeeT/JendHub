@@ -35,14 +35,18 @@ from jendhub.services.site.limits import RateLimit, client_address
 from jendhub.services.site.pages import (
     COUNTS,
     EXAMPLES,
+    HEAD_LINES,
     SCRIPT,
     STYLE,
     Span,
+    body_lines,
+    file_lines,
+    head_lines,
+    import_lines,
     marked_lines,
     page,
     pages,
     readable,
-    source_lines,
 )
 from jendhub.services.site.text import (
     UrlLinks,
@@ -240,10 +244,16 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
         background.add_task(site.keep, searched)
         shown = len(found.results)
         others = [pair for pair in request.query_params.multi_items() if pair[0] != "offset"]
+        highlights = await site.heads(found, HEAD_LINES)
+        heads = {
+            result.hit.id: head_lines(result.hit.head, highlights.get(result.hit.id))
+            for result in found.results
+        }
         return page(
             "search.html",
             query=text,
             found=found,
+            heads=heads,
             pages=pages(request, "offset", Span(given.offset, shown, found.total), WEB_RESULTS),
             alternate=f"/search.txt?{readable(others)}",
         )
@@ -253,12 +263,16 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
         site = running.get()
         view = await site.definition(id_)
         key = view.detail.key
-        uses, used_by = await asyncio.gather(
-            site.preview(Filters(used_by=(key,))), site.preview(Filters(uses=(key,)))
+        uses, used_by, highlights = await asyncio.gather(
+            site.preview(Filters(used_by=(key,))),
+            site.preview(Filters(uses=(key,))),
+            site.highlights(view.detail),
         )
         return page(
             "definition.html",
             view=view,
+            imports=import_lines(view.detail, highlights),
+            body=body_lines(view.detail, highlights),
             uses=uses,
             used_by=used_by,
             alternate=RELATIVE.definition(id_),
@@ -296,7 +310,7 @@ def index_routes(running: Running[Site], limited: Guard) -> APIRouter:
         return page(
             "file.html",
             view=view,
-            lines=source_lines(found.text, view.declared),
+            lines=file_lines(found, view.declared, view.highlights),
             marked=marked_lines(lines),
             alternate=alternate,
         )

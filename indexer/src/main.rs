@@ -5,7 +5,12 @@ use std::{
     path::Path,
 };
 
-use bend2_lsp::frontend::{Disk, Env, ErrorText, Load, LoadedFile, Meaning, load};
+use bend2_lsp::{
+    analysis::{DocumentSnapshot, Revision},
+    frontend::{Disk, Env, ErrorText, Files, Load, LoadedFile, Meaning, load},
+    highlight::{Class, Highlight, highlights},
+    semantic::Semantics,
+};
 use serde::{Deserialize, Serialize};
 
 /// Which files to load: each entry as the compiler loads the file it checks,
@@ -28,7 +33,13 @@ struct Entry {
     error: Option<Failure>,
     declarations: BTreeSet<String>,
     uses: BTreeSet<Use>,
+    highlights: Vec<Vec<Span>>,
 }
+
+/// A highlight on one line: its first and its end column, in characters,
+/// its class, and whether it declares its name.
+#[derive(Debug, Eq, PartialEq, Serialize)]
+struct Span(usize, usize, &'static str, bool);
 
 /// Why a load stopped: what the loader expected, what it observed, and the
 /// canonical path and the 1-based line of the file where it stopped.
@@ -149,20 +160,23 @@ fn line_at(source: &str, offset: usize) -> usize {
 
 fn failure(loaded: &Load) -> Option<Failure> {
     let error = loaded.error.as_ref()?;
-    let place = error
-        .at
-        .as_ref()
-        .zip(loaded.error_text)
-        .and_then(|((_, beg, _), text)| match text {
-            ErrorText::Parsed(index) => loaded
-                .files
-                .get(index)
-                .map(|file| (file.real.clone(), line_at(&file.source, file.source_offset(*beg)))),
-            ErrorText::Source(index) => loaded
-                .reading
-                .get(index)
-                .map(|file| (file.real.clone(), line_at(&file.source, *beg))),
-        });
+    let place =
+        error
+            .at
+            .as_ref()
+            .zip(loaded.error_text)
+            .and_then(|((_, beg, _), text)| match text {
+                ErrorText::Parsed(index) => loaded.files.get(index).map(|file| {
+                    (
+                        file.real.clone(),
+                        line_at(&file.source, file.source_offset(*beg)),
+                    )
+                }),
+                ErrorText::Source(index) => loaded
+                    .reading
+                    .get(index)
+                    .map(|file| (file.real.clone(), line_at(&file.source, *beg))),
+            });
     let (file, line) = place.unzip();
     Some(Failure {
         expected: error.exp.clone(),
@@ -170,6 +184,72 @@ fn failure(loaded: &Load) -> Option<Failure> {
         file,
         line,
     })
+}
+
+fn class_name(class: Class) -> &'static str {
+    match class {
+        Class::Keyword => "keyword",
+        Class::Comment => "comment",
+        Class::String => "string",
+        Class::Number => "number",
+        Class::Operator => "operator",
+        Class::Namespace => "namespace",
+        Class::Variable => "variable",
+        Class::Function => "function",
+        Class::Type => "type",
+        Class::Constructor => "constructor",
+    }
+}
+
+/// The highlights of each line of a source, as its lines split at each
+/// newline, without the empty line after a final newline.
+fn lines(source: &str, found: &[Highlight]) -> Vec<Vec<Span>> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut rest = found;
+    for line in source.strip_suffix('\n').unwrap_or(source).split('\n') {
+        let end = start + line.len();
+        let column = |offset: usize| {
+            line.get(..offset - start)
+                .map_or(0, |before| before.chars().count())
+        };
+        let mut spans = Vec::new();
+        while let Some((highlight, after)) = rest.split_first()
+            && highlight.range.start < end
+        {
+            let first = highlight.range.start.max(start);
+            let last = highlight.range.end.min(end);
+            if first < last {
+                let class = class_name(highlight.class);
+                spans.push(Span(
+                    column(first),
+                    column(last),
+                    class,
+                    highlight.declaration,
+                ));
+            }
+            if highlight.range.end > end {
+                break;
+            }
+            rest = after;
+        }
+        out.push(spans);
+        start = end + 1;
+    }
+    out
+}
+
+/// The highlights of an entry, by the names of its load. An entry that the
+/// load does not reach gets only the highlights of its tokens.
+fn entry_highlights(loaded: Load, path: &str) -> Vec<Vec<Span>> {
+    let semantics = Semantics::new(loaded);
+    let source = match semantics.entry() {
+        Some(entry) => entry.source.clone(),
+        None => Disk.read(Path::new(path)).unwrap_or_default(),
+    };
+    let snapshot = DocumentSnapshot::new(Revision(0), source);
+    let found = highlights(&snapshot.syntax, semantics.entry().map(|_| &semantics));
+    lines(&snapshot.text, &found)
 }
 
 fn real(path: &str) -> String {
@@ -191,11 +271,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut entries = Vec::with_capacity(request.entries.len());
     for entry in request.entries {
         let loaded = load(&Disk, &env, &entry);
+        let declarations = entry_declarations(&loaded);
+        let uses = uses(&loaded);
+        let error = failure(&loaded);
         entries.push(Entry {
-            declarations: entry_declarations(&loaded),
-            uses: uses(&loaded),
-            error: failure(&loaded),
+            highlights: entry_highlights(loaded, &entry),
             path: entry,
+            error,
+            declarations,
+            uses,
         });
     }
     let mut output = io::stdout().lock();
@@ -327,7 +411,10 @@ mod tests {
             "import Base\nimport ./missing.bend as M\n\ndef root(x: Nat) -> Nat:\n  x\n",
         );
         let found = failure(&fixture.load(&main));
-        assert_eq!(found.as_ref().and_then(|found| found.file.clone()), Some(main));
+        assert_eq!(
+            found.as_ref().and_then(|found| found.file.clone()),
+            Some(main)
+        );
         assert_eq!(found.and_then(|found| found.line), Some(2));
     }
 
@@ -343,7 +430,10 @@ mod tests {
             "import Base\nimport ./broken.bend as X\n\ndef root(x: Nat) -> Nat:\n  x\n",
         );
         let found = failure(&fixture.load(&main));
-        assert_eq!(found.as_ref().and_then(|found| found.file.clone()), Some(broken));
+        assert_eq!(
+            found.as_ref().and_then(|found| found.file.clone()),
+            Some(broken)
+        );
         assert_eq!(found.and_then(|found| found.line), Some(7));
     }
 
@@ -398,6 +488,53 @@ mod tests {
             fixture
                 .uses(&main)
                 .contains(&(main.clone(), "root".into(), far, "far".into()))
+        );
+    }
+
+    #[test]
+    fn highlights_are_by_line_and_character() {
+        let fixture = Fixture::new("highlights");
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\n\n# “quoted”\ndef root(x: Nat) -> Nat:\n  x\n",
+        );
+        let found = entry_highlights(fixture.load(&main), &main);
+        assert_eq!(found.len(), 5);
+        assert_eq!(found[1], vec![]);
+        assert_eq!(found[2], vec![Span(0, 10, "comment", false)]);
+        assert!(found[3].contains(&Span(0, 3, "keyword", false)));
+        assert!(found[3].contains(&Span(4, 8, "function", true)));
+        assert!(found[3].contains(&Span(9, 10, "variable", true)));
+        assert!(found[3].contains(&Span(12, 15, "type", false)));
+        assert_eq!(found[4], vec![Span(2, 3, "variable", false)]);
+    }
+
+    #[test]
+    fn an_entry_that_does_not_load_has_only_token_highlights() {
+        let fixture = Fixture::new("unloaded");
+        let main = fixture.write(
+            "lib/0xaa/main.bend",
+            "import Base\nimport ./missing.bend as M\n\ndef root(x: Nat) -> Nat:\n  x\n",
+        );
+        let found = entry_highlights(fixture.load(&main), &main);
+        assert!(found[3].contains(&Span(0, 3, "keyword", false)));
+        assert!(found[3].iter().all(|span| span.2 != "function"));
+    }
+
+    #[test]
+    fn a_highlight_over_lines_splits_at_each_newline() {
+        let source = "ab\ncd\n";
+        let found = [Highlight {
+            range: bend2_lsp::analysis::TextRange::new(1, 4),
+            class: Class::String,
+            declaration: false,
+        }];
+        assert_eq!(
+            lines(source, &found),
+            vec![
+                vec![Span(1, 2, "string", false)],
+                vec![Span(0, 1, "string", false)]
+            ]
         );
     }
 }

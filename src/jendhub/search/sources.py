@@ -27,6 +27,18 @@ class SourceFile:
     hash: str | None
     path: str
     text: str
+    labels: dict[str, str]
+
+    @property
+    def indexed_release(self) -> str:
+        return BASE_RELEASE if self.hash is None else self.hash
+
+    @property
+    def module(self) -> str:
+        return "" if self.hash is None else self.path.removesuffix(".bend")
+
+    def shown(self, line: str) -> str:
+        return absolute_line(line, self.release, posixpath.dirname(self.path), self.labels)
 
 
 @dataclass(frozen=True)
@@ -120,11 +132,6 @@ def absolute_line(line: str, release: str, directory: str, labels: dict[str, str
     return line
 
 
-def absolute_imports(text: str, release: str, path: str, labels: dict[str, str]) -> str:
-    directory = posixpath.dirname(path)
-    return "\n".join(absolute_line(line, release, directory, labels) for line in text.split("\n"))
-
-
 def imported_hashes(text: str) -> list[str]:
     return [
         hashed.group(1)
@@ -134,16 +141,15 @@ def imported_hashes(text: str) -> list[str]:
     ]
 
 
-def used_imports(file_text: str, code: str) -> list[str]:
-    used: list[str] = []
-    for line in file_text.split("\n"):
-        if line.rstrip() == BASE_IMPORT:
-            used.append(BASE_IMPORT)
-            continue
+def used_imports(file_text: str, code: str) -> list[int]:
+    used: dict[str, int] = {}
+    for number, line in enumerate(file_text.split("\n")):
         match = IMPORT.match(line)
-        if match is not None and re.search(rf"(?<![\w.]){match.group(2)}\.", code):
-            used.append(line.rstrip())
-    return list(dict.fromkeys(used))
+        if line.rstrip() == BASE_IMPORT or (
+            match is not None and re.search(rf"(?<![\w.]){match.group(2)}\.", code)
+        ):
+            used.setdefault(line.rstrip(), number)
+    return list(used.values())
 
 
 async def stored_release(connection: AsyncConnection, release: str) -> StoredRelease | None:
@@ -223,14 +229,14 @@ async def file_text(directory: Path, path: str) -> str | None:
 
 async def package_source(
     connection: AsyncConnection, library: Library, release: StoredRelease, path: str
-) -> str | None:
+) -> SourceFile | None:
     if release.hash is None:
         return None
     text = await file_text(library.package_directory(release.hash), path)
     if text is None:
         return None
     labels = await hash_labels(connection, imported_hashes(text))
-    return absolute_imports(text, release.label, path, labels)
+    return SourceFile(release.label, release.hash, path, text, labels)
 
 
 async def read_file(
@@ -240,12 +246,11 @@ async def read_file(
         if release == BASE:
             tag = await base_tag(connection, generation) if path == BASE_FILE else None
             text = None if tag is None else await file_text(library.base_directory(tag), path)
-            return None if text is None else SourceFile(BASE, None, BASE_FILE, text)
+            return None if text is None else SourceFile(BASE, None, BASE_FILE, text, {})
         stored = await stored_release(connection, release)
         if stored is None:
             return None
-        text = await package_source(connection, library, stored, path)
-    return None if text is None else SourceFile(stored.label, stored.hash, path, text)
+        return await package_source(connection, library, stored, path)
 
 
 @dataclass(frozen=True)
@@ -261,13 +266,11 @@ def declared_line(first_line: int, head: str) -> int:
 
 
 async def read_declared(pool: Pool, generation: int, file: SourceFile) -> list[Declared]:
-    release = BASE_RELEASE if file.hash is None else file.hash
-    module = "" if file.hash is None else file.path.removesuffix(".bend")
     async with pool.connection() as connection:
         cursor = await connection.execute(
             "SELECT id, name, first_line, head FROM definitions"
             " WHERE generation = %s AND release = %s AND module = %s ORDER BY first_line",
-            (generation, release, module),
+            (generation, file.indexed_release, file.module),
         )
         rows = await cursor.fetchall()
     return [Declared(id_, name, declared_line(first, head)) for id_, name, first, head in rows]

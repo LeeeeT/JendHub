@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from jendhub.indexing.failures import Place, Problem
 from jendhub.indexing.status import GenerationStatus, InvalidRelease, JobCounts
-from jendhub.search.definitions import DefinitionDetail
+from jendhub.search.definitions import DefinitionDetail, ImportLine
 from jendhub.search.engine import Hit
 from jendhub.search.packages import (
     DefinitionSummary,
@@ -92,6 +92,7 @@ def test_no_results_say_so() -> None:
 def test_a_definition_gives_its_code_imports_lines_and_uses() -> None:
     detail = DefinitionDetail(
         "kit@1.0.0.0/main:map",
+        "0x" + "a" * 32,
         "kit/main:map",
         "def",
         "map",
@@ -99,7 +100,7 @@ def test_a_definition_gives_its_code_imports_lines_and_uses() -> None:
         "1.0.0.0",
         "main",
         "def map(xs):\n  xs",
-        ["import Base"],
+        [ImportLine("import Base", "import Base", 0)],
         4,
         6,
         ["List", "kit@1.0.0.0/deep/odd:a?b"],

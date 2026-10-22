@@ -123,7 +123,8 @@ def render_definition(view: DefinitionView, links: Links) -> str:
     detail, used = view.detail, view.usage
     where = "Base" if detail.package is None else f"{detail.package}@{detail.version}"
     first, last = detail.first_line + 1, detail.end_line
-    code = "\n".join([*detail.imports, "", detail.text]) if detail.imports else detail.text
+    imports = [line.shown for line in detail.imports]
+    code = "\n".join([*imports, "", detail.text]) if imports else detail.text
     return (
         f"{used.call_name}: {detail.kind} of {where}\n"
         f"Import: {used.import_line}\n"

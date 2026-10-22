@@ -7,9 +7,9 @@
 <h1 class="id"><span>{{ detail.kind }}</span> {{ detail.name }}</h1>
 <p class="meta">{{ macros.release(detail.package, detail.version) }} · <a href="{{ lines_href(file, detail.first_line + 1, detail.end_line) }}">{{ file.split('/', 1)[1] }}:{{ detail.first_line + 1 }}</a></p>
 {{ macros.import_line(view.usage) }}
-<pre class="source"><code>{% if detail.package is not none %}{% for text in detail.imports %}{% set line = source_line(text) %}<span class="line"><span class="n"></span>{% if line.link is none %}{{ line.text }}{% else %}{{ line.link.before }}<a href="{{ line.link.href }}">{{ line.link.label }}</a>{{ line.link.after }}{% endif %}
-</span>{% endfor %}{% if detail.imports %}<span class="line"><span class="n"></span>
-</span>{% endif %}{% endif %}{% for line in detail.text.split("\n") %}{% set number = detail.first_line + loop.index %}<span class="line"><a class="n" href="{{ file_href(file) }}#L{{ number }}">{{ number }}</a>{{ line }}
+<pre class="source"><code>{% if detail.package is not none %}{% for line in imports %}<span class="line"><span class="n"></span>{{ macros.code(line) }}
+</span>{% endfor %}{% if imports %}<span class="line"><span class="n"></span>
+</span>{% endif %}{% endif %}{% for line in body %}{% set number = detail.first_line + loop.index %}<span class="line"><a class="n" href="{{ file_href(file) }}#L{{ number }}">{{ number }}</a>{{ macros.code(line) }}
 </span>{% endfor %}</code></pre>
 <section>
 {{ macros.preview("Uses", uses, filter_href('used_by', detail.key), "This definition uses no other definition.") }}
