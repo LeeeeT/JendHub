@@ -162,7 +162,12 @@ class Worker:
 
     async def serve(self, stop: asyncio.Event, attempter: Attempter | None = None) -> None:
         while not stop.is_set():
-            if not await self.step(attempter):
+            try:
+                worked = await self.step(attempter)
+            except Exception:
+                logger.exception("a worker step failed")
+                worked = False
+            if not worked:
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(stop.wait(), IDLE_SECONDS)
 

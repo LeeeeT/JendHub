@@ -1,15 +1,17 @@
+import asyncio
 from datetime import timedelta
 
+import psycopg
 import pytest
 
 from jendhub.db.pool import Pool
 from jendhub.embedding.model import Vectors
 from jendhub.hub.base import Base
 from jendhub.hub.store import PackageStore
-from jendhub.indexing import schedule
+from jendhub.indexing import schedule, worker
 from jendhub.indexing.schedule import clean_retired, schedule_live, wait_until_live
-from jendhub.indexing.store import LIVE, MAX_ATTEMPTS, IndexStore
-from jendhub.indexing.worker import IndexingError, Worker
+from jendhub.indexing.store import LIVE, MAX_ATTEMPTS, IndexStore, Job
+from jendhub.indexing.worker import Attempt, IndexingError, Worker
 from jendhub.search.engine import SearchEngine, Target
 from jendhub.search.ranking import load_model
 from jendhub.vectors.index import INDEXING_THRESHOLD, VectorConfig, VectorIndex
@@ -120,3 +122,30 @@ async def test_a_job_whose_worker_stops_each_time_fails_at_last(
     worker = Worker(index, packages, vectors, FailingEmbedder())
     assert not await worker.step()
     assert await index.job_states(generation.id) == {"failed": 3}
+
+
+async def test_a_worker_serves_on_after_a_step_fails(
+    packages: PackageStore, vectors: VectorIndex, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(worker, "IDLE_SECONDS", POLL_SECONDS)
+    await seed(packages)
+    index = IndexStore(packages.pool)
+    await schedule_live(index, packages, vectors)
+    [generation] = await index.generations(LIVE)
+    serving = Worker(index, packages, vectors, WordEmbedder())
+    failed: list[str] = []
+
+    async def flaky(job: Job) -> Attempt:
+        if not failed:
+            failed.append(job.release)
+            raise psycopg.OperationalError("the server closed the connection")
+        return await serving.attempt(job)
+
+    stop = asyncio.Event()
+    served = asyncio.create_task(serving.serve(stop, flaky))
+    async with asyncio.timeout(60):
+        while (await index.job_states(generation.id)).get("done", 0) < 2:
+            assert not served.done()
+            await asyncio.sleep(POLL_SECONDS)
+    stop.set()
+    await served
