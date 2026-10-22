@@ -77,7 +77,10 @@ def parse_dev_package(item: Json) -> PackageRelease:
 
 
 def count_definitions(files: dict[str, bytes]) -> int:
-    return sum(len(extract(SourceFile(BASE, content.decode()))) for content in files.values())
+    return sum(
+        len(extract(SourceFile(BASE, content.decode(errors="replace"))))
+        for content in files.values()
+    )
 
 
 def budget_used(budget: Budget, packages: int, definitions: int) -> int:

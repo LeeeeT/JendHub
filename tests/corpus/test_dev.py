@@ -66,6 +66,10 @@ def test_count_definitions_counts_top_level_declarations() -> None:
     assert count_definitions({"a.bend": source, "b.bend": b"def g() -> T:\n"}) == 4
 
 
+def test_count_definitions_reads_a_file_that_is_not_utf_8() -> None:
+    assert count_definitions({"a.bend": b"# caf\xe9\ndef f() -> T:\n  x\n"}) == 1
+
+
 async def test_select_keeps_the_hottest_release_of_each_named_package(
     router: respx.MockRouter, packages: PackageStore
 ) -> None:
