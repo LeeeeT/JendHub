@@ -23,6 +23,7 @@ from jendhub.vectors.index import PRODUCTION, VectorIndex, open_vector_index
 from tests.indexing.live import (
     APP,
     APP_SOURCE,
+    KIT_SOURCE,
     KIT_V2,
     WordEmbedder,
     index_live,
@@ -34,6 +35,7 @@ SITE_URL = "https://jend.test"
 DOUBLE = "kit@1.0.0.0/main:double"
 DOUBLE_OPEN = f"{SITE_URL}/definition.txt?path=kit@1.0.0.0/main.bend&name=double"
 QUADRUPLE = "app@1.0.0.0/main:quadruple"
+LONE = "0x" + "4" * 32
 BROKEN_SOURCE = "import Base\nimport ./missing.bend as M\n\ndef broken(n: Nat) -> Nat:\n  n\n"
 
 type Opener = Callable[[], AbstractAsyncContextManager[Resources]]
@@ -575,6 +577,16 @@ async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient
         f'<a href="/definitions/{QUADRUPLE}"><span class="function declared">quadruple</span></a>'
         in file
     )
+
+
+async def test_people_get_a_package_with_no_release_in_the_index(
+    site: httpx.AsyncClient, packages: PackageStore
+) -> None:
+    await store_package(packages, LONE, Release("lone", "1.0.0.0"), KIT_SOURCE)
+    response = await site.get("/packages/lone")
+    assert response.status_code == httpx.codes.OK
+    assert "No release of this package is in the index." in response.text
+    assert 'class="badge unindexed"' in response.text
 
 
 async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) -> None:

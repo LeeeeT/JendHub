@@ -50,6 +50,10 @@ class PackageDetail:
     definitions: list[DefinitionSummary]
     definitions_total: int
 
+    @property
+    def indexed(self) -> ReleaseDetail | None:
+        return next((release for release in self.releases if release.state == "indexed"), None)
+
 
 def release_state(errors: Json, *, indexed: bool) -> ReleaseState:
     if errors is not None:

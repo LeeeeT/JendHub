@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set package = view.package %}
-{% set indexed = package.releases | selectattr("state", "equalto", "indexed") | first %}
+{% set indexed = package.indexed %}
 {% block title %}{{ package.name }} · JendHub{% endblock %}
 {% block head %}<meta name="description" content="The releases and definitions of the Bend package {{ package.name }}.">{% endblock %}
 {% block main %}
