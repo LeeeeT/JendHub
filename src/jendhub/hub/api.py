@@ -145,7 +145,7 @@ async def fetch_package(client: httpx.AsyncClient, listing: Listing) -> Package 
     manifest = await fetch(client, f"{HUB}/{listing.hash}/manifest")
     if sha256(manifest)[:32] != listing.hash.removeprefix("0x"):
         raise HubError(f"manifest of {listing.hash} does not match its hash")
-    all_digests = parse_manifest(manifest.decode())
+    all_digests = parse_manifest(manifest.decode(errors="replace"))
     for path in all_digests:
         if not valid_path(path):
             return Rejection(listing.hash, f"invalid file name {path!r}")

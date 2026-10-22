@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 
 import httpx
 import pytest
@@ -102,6 +103,14 @@ def test_fetch_package_rejects_a_package_with_an_invalid_file_name(
     rejection = Rejection(hash_, "invalid file name 'notes~.txt'")
     assert asyncio.run(_fetch_package(Listing(hash_, None))) == rejection
     assert not router.get(f"{HUB}/{hash_}/main.bend").called
+
+
+def test_fetch_package_rejects_a_manifest_that_is_not_utf_8(router: respx.MockRouter) -> None:
+    manifest = b"ab caf\xe9.bend\n"
+    hash_ = "0x" + hashlib.sha256(manifest).hexdigest()[:32]
+    router.get(f"{HUB}/{hash_}/manifest").mock(httpx.Response(200, content=manifest))
+    rejection = Rejection(hash_, "invalid file name 'caf\ufffd.bend'")
+    assert asyncio.run(_fetch_package(Listing(hash_, None))) == rejection
 
 
 def test_fetch_package_rejects_a_file_that_does_not_match_its_manifest(
