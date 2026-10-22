@@ -252,7 +252,8 @@ the live generation from Postgres.
 - **A new package release:** the syncer queues one job. The worker indexes the
   release and removes the older release of the same name in the same
   generation. Search sees the change at once. An older release never replaces
-  a newer one.
+  a newer one. The `highlights` rows of its files show that a release is in a
+  generation, also when it declares nothing.
 - **An invalid release:** if a file of the release does not load, the worker
   writes nothing for it, and records it in `invalid_releases` with the load
   error of each file that does not load. A load error is what the loader

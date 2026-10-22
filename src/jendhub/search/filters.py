@@ -65,7 +65,7 @@ async def package_release(connection: AsyncConnection, generation: int, package:
         return BASE_RELEASE
     cursor = await connection.execute(
         "SELECT p.hash FROM packages p WHERE p.name = %s AND EXISTS ("
-        " SELECT FROM definitions d WHERE d.generation = %s AND d.release = p.hash)",
+        " SELECT FROM highlights h WHERE h.generation = %s AND h.release = p.hash)",
         (package, generation),
     )
     row = await cursor.fetchone()

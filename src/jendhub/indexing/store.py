@@ -353,10 +353,10 @@ async def newer_release(
     connection: AsyncConnection, generation_id: int, artifacts: Artifacts
 ) -> str | None:
     cursor = await connection.execute(
-        "SELECT d.release FROM definitions d JOIN packages p ON p.hash = d.release"
-        " JOIN packages own ON own.hash = %s"
-        " WHERE d.generation = %s AND d.package = own.name AND d.release <> own.hash"
-        " AND p.version_order > own.version_order LIMIT 1",
+        "SELECT h.release FROM packages own JOIN packages p ON p.name = own.name"
+        " JOIN highlights h ON h.release = p.hash"
+        " WHERE own.hash = %s AND h.generation = %s AND p.version_order > own.version_order"
+        " LIMIT 1",
         (artifacts.release, generation_id),
     )
     row = await cursor.fetchone()
@@ -369,9 +369,9 @@ async def older_releases(
     if artifacts.package is None:
         return []
     cursor = await connection.execute(
-        "SELECT DISTINCT release FROM definitions"
-        " WHERE generation = %s AND package = %s AND release <> %s",
-        (generation_id, artifacts.package.name, artifacts.release),
+        "SELECT DISTINCT h.release FROM packages p JOIN highlights h ON h.release = p.hash"
+        " WHERE p.name = %s AND h.generation = %s AND h.release <> %s",
+        (artifacts.package.name, generation_id, artifacts.release),
     )
     return [release for (release,) in await cursor.fetchall()]
 

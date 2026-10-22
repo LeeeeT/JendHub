@@ -604,6 +604,17 @@ async def test_people_get_a_package_with_no_release_in_the_index(
     assert 'class="badge unindexed"' in response.text
 
 
+async def test_a_release_that_declares_nothing_is_in_the_index(
+    site: httpx.AsyncClient, packages: PackageStore, vectors: VectorIndex
+) -> None:
+    await store_package(packages, LONE, Release("lone", "1.0.0.0"), "import Base\n")
+    await index_live(packages, vectors)
+    assert 'class="badge indexed"' in (await site.get("/packages/lone")).text
+    params = {"path": "lone@1.0.0.0/main.bend", "name": "nothing"}
+    answer = (await site.get("/definition.txt", params=params)).text
+    assert "lone@1.0.0.0/main.bend has no definition nothing." in answer
+
+
 async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) -> None:
     status = (await site.get("/status")).text
     assert PRODUCTION.label in status

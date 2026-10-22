@@ -67,7 +67,7 @@ async def read_package(
     async with pool.connection() as connection:
         cursor = await connection.execute(
             "SELECT p.version, p.hash, i.errors, EXISTS ("
-            "  SELECT 1 FROM definitions d WHERE d.generation = %s AND d.release = p.hash)"
+            "  SELECT FROM highlights h WHERE h.generation = %s AND h.release = p.hash)"
             " FROM packages p LEFT JOIN invalid_releases i ON i.hash = p.hash"
             " WHERE p.name = %s ORDER BY p.version_order DESC",
             (generation, name),

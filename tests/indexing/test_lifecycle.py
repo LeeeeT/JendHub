@@ -136,6 +136,37 @@ async def test_an_older_release_never_replaces_a_newer_one(
     assert "kit@1.0.0.0/main:double" not in await ids(pool, target.generation)
 
 
+EMPTY = "import Base\n"
+
+
+async def test_an_older_release_never_replaces_a_newer_one_that_declares_nothing(
+    pool: Pool, packages: PackageStore, vectors: VectorIndex
+) -> None:
+    await packages.store_base(Base(TAG, BASE.encode()))
+    await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), EMPTY)
+    _, target = await index_live(packages, vectors)
+    index = IndexStore(pool)
+    await index.enqueue(target.generation, [(KIT_V1, "kit")])
+    await store_package(packages, KIT_V1, Release("kit", "1.0.0.0"), KIT_SOURCE)
+    await Worker(index, packages, vectors, WordEmbedder()).drain(target.generation)
+    assert not any(id_.startswith("kit@") for id_ in await ids(pool, target.generation))
+    assert await highlighted(pool, target.generation) == {("base", ""), (KIT_V2, "main")}
+    assert (await index.job_states(target.generation))["superseded"] == 1
+
+
+async def test_a_new_release_replaces_an_old_one_that_declares_nothing(
+    pool: Pool, packages: PackageStore, vectors: VectorIndex
+) -> None:
+    await packages.store_base(Base(TAG, BASE.encode()))
+    await store_package(packages, KIT_V1, Release("kit", "1.0.0.0"), EMPTY)
+    _, target = await index_live(packages, vectors)
+    index = IndexStore(pool)
+    await index.enqueue(target.generation, [(KIT_V2, "kit")])
+    await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), KIT_SOURCE)
+    await Worker(index, packages, vectors, WordEmbedder()).drain(target.generation)
+    assert await highlighted(pool, target.generation) == {("base", ""), (KIT_V2, "main")}
+
+
 BROKEN = "import Base\n\ntype Nat is Data:\n  Zero{}\n"
 
 

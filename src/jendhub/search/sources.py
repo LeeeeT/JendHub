@@ -189,7 +189,7 @@ async def indexed_file(pool: Pool, generation: int, path: str) -> bool:
         if stored is None or stored.hash is None:
             return False
         cursor = await connection.execute(
-            "SELECT EXISTS (SELECT FROM definitions"
+            "SELECT EXISTS (SELECT FROM highlights"
             " WHERE generation = %s AND release = %s AND module = %s)",
             (generation, stored.hash, file.removesuffix(".bend")),
         )
