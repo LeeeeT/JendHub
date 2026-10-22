@@ -25,7 +25,7 @@ from starlette.requests import Request
 from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
 
-from jendhub.errors import JendHubError
+from jendhub.remote.openrouter import OpenRouterError
 from jendhub.search.searches import Caller
 from jendhub.services.app import Running
 from jendhub.services.parameters import invalid_parameters
@@ -85,7 +85,7 @@ def answering() -> Generator[None]:
         raise ToolCallError(invalid_parameters(error.errors())) from error
     except HTTPException as error:
         raise ToolCallError(str(error.detail)) from error
-    except JendHubError as error:
+    except OpenRouterError as error:
         raise ToolCallError(EMBEDDING_FAILED) from error
 
 

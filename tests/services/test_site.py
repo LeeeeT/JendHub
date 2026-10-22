@@ -15,6 +15,7 @@ from jendhub.hub.library import Library
 from jendhub.hub.store import PackageStore
 from jendhub.remote.openrouter import OpenRouterError
 from jendhub.search import filters
+from jendhub.search.highlights import HighlightError
 from jendhub.search.ranking import load_model
 from jendhub.services.site.app import create_app
 from jendhub.services.site.views import Resources
@@ -689,6 +690,15 @@ async def test_a_search_without_an_embedding_says_so(
     assert response.status_code == httpx.codes.BAD_GATEWAY
     assert response.text == "The embedding service did not answer. Try again.\n"
     assert tool == (True, "The embedding service did not answer. Try again.")
+
+
+async def test_damaged_highlights_are_not_an_embedding_failure(
+    site: httpx.AsyncClient, pool: Pool
+) -> None:
+    async with pool.connection() as connection:
+        await connection.execute("UPDATE highlights SET lines = '\"damaged\"'")
+    with pytest.raises(HighlightError):
+        await site.get("/files/kit@1.0.0.0/main.bend")
 
 
 async def test_without_a_live_index_search_waits_and_the_status_answers(

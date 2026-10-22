@@ -12,8 +12,8 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from starlette.exceptions import HTTPException
 
-from jendhub.errors import JendHubError
 from jendhub.indexing.store import IndexStore
+from jendhub.remote.openrouter import OpenRouterError
 from jendhub.search.filters import Filters
 from jendhub.search.searches import Caller
 from jendhub.services.app import Running, service_app
@@ -408,8 +408,8 @@ def create_app(resources: OpenResources | None = None) -> FastAPI:
     async def invalid(request: Request, error: RequestValidationError) -> Response:
         return failure(request, 400, invalid_parameters(error.errors()))
 
-    @app.exception_handler(JendHubError)
-    async def upstream(request: Request, _: JendHubError) -> Response:
+    @app.exception_handler(OpenRouterError)
+    async def upstream(request: Request, _: OpenRouterError) -> Response:
         return failure(request, 502, EMBEDDING_FAILED)
 
     async def limited(request: Request) -> None:
