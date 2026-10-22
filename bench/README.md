@@ -31,9 +31,9 @@ jendhub bench check
 
 | File | Content |
 |---|---|
-| `dev.json` | The frozen dev corpus: the Base tag and 44 packages. |
-| `PROMPT.md` | The prompt that made queries 201 to 300. |
-| `queries.jsonl` | 500 queries with graded answers. |
+| `dev.json` | The frozen dev corpus: the Base tag and 41 packages. |
+| `PROMPT.md` | The prompt of the second run of queries. |
+| `queries.jsonl` | 488 queries with graded answers. |
 | `JUDGE.md` | The prompt of the LLM judge. |
 
 ## Queries
@@ -88,7 +88,7 @@ distractors for each added definition:
 | `bend-kit-fmt` | 59 | String formatting and float printing |
 | `bend-kit-csv` | 34 | CSV |
 
-The dev corpus now has 12,208 definitions. Packages that copy whole other
+The dev corpus then had 12,208 definitions. Packages that copy whole other
 packages (`bend-collections-laws-crypto`, `bend-collections-laws-math`, 14,407
 definitions) and generated tables (`bend-kit-unicode`, 13,301 definitions)
 stayed out, because they would more than double the corpus.
@@ -98,20 +98,32 @@ run now point to the same names in the new versions. In 4 of these answers the
 code changed, but the purpose did not, so their grades stayed. The judgments
 of the 26 changed definitions were deleted and judged again by pooling.
 
+### The move to Base v2.0.38
+
+Base v2.0.38 declares the constructor `Event.Text`. `bend-kit-notch` and
+`bend-lint-api` declare a constructor `Text` too, so they do not load.
+`bend-lint-rules` imports `bend-lint-api`, so it does not load either. These
+three packages left the dev corpus, and the corpus went from 12,208 to 11,231
+definitions. The answers in these packages left the queries. 12 queries then
+had no grade-3 answer, so they left too, and 9 queries lost some answers. 488
+queries remain.
+The sections from "Results" to "In production" give the measurements on the
+500 queries, the 44 packages and Base v2.0.37, and were not run again.
+
 | Kind | Queries |
 |---|---|
-| keywords | 146 |
-| phrase | 130 |
-| description | 105 |
-| question | 35 |
-| signature | 30 |
-| name | 24 |
-| exact-name | 15 |
-| exact-signature | 15 |
+| keywords | 144 |
+| phrase | 127 |
+| description | 103 |
+| question | 34 |
+| signature | 29 |
+| name | 23 |
+| exact-name | 14 |
+| exact-signature | 14 |
 
 Grades: `3` is exactly what the query asks for, `2` is a good answer, `1` is
 related and useful. Each query has at least one grade-3 answer. The queries
-hold 2,172 answers: 761 with grade 3, 727 with grade 2 and 684 with grade 1.
+hold 2,100 answers: 741 with grade 3, 697 with grade 2 and 662 with grade 1.
 The third run gave grade 1 to a spec copy of the function a query asks for,
 and no grade to proofs, laws and internal steps.
 
@@ -603,7 +615,8 @@ learned ranker" describe the weighted-sum engine that it replaced. The lab
 pipeline and the engine compute the features with the same code,
 `search/ranking.py`. The lab reads the definitions from memory, and the engine
 reads them from Postgres and Qdrant. `jendhub bench train` trains one model on
-all 500 queries, with the same parameters, and writes `search/ranker.txt`.
+all queries, with the same parameters, and writes `search/ranker.txt`. The
+current model learned from the 500 queries.
 
 The benchmark runs the engine as `production`. Its scores are too high,
 because its model learned from the same queries: 0.899 at 10, 0.889 at 5 and
@@ -657,7 +670,7 @@ scores take the most time, and the server also runs other services.
   read the production search results while it looked for answers. It added
   every query that the corpus answers, but it graded the definitions that it
   found, and the search found many of them.
-- The dev corpus has 12,208 definitions. The search corpus is much larger, with
+- The dev corpus has 11,231 definitions. The search corpus is much larger, with
   more distractors: the live index holds 57,169 definitions of 113 releases.
   The dev corpus cannot show the recall of the HNSW index or of binary
   quantization at that size.
