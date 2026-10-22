@@ -527,10 +527,10 @@ stands for its type.
 JendHub resolves names exactly as the Bend compiler does. Our fork of the
 [Bend 2 language server](https://github.com/IlyaGulya/bend2-lsp-rs), the
 submodule `bend2-lsp-rs`, holds a port of the compiler's front end (Bend
-v2.0.37): its loader, parser and match flattening. Its `tools/oracle` compares
-the port with the compiler itself. With the compiler of Bend v2.0.38, the
-parsed terms are byte-identical in all 8,024 files: the 6,221 files of the
-mirror and the 1,803 files of the compiler's repository. Each identifier token
+v2.0.38): its loader, parser and match flattening. Its `tools/oracle` compares
+the port with the compiler itself. The parsed terms are byte-identical in all
+8,024 files: the 6,221 files of the mirror and the 1,803 files of the
+compiler's repository. Each identifier token
 has the meaning that the compiler gives it. The oracle cannot check 8 local
 names in two proof files of one release, because the compiler's term keeps no
 node for them.
