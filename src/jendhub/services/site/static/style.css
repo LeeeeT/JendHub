@@ -419,7 +419,7 @@ pre .declared {
 	font-weight: 700;
 }
 
-pre a:has(> .declared) {
+pre a {
 	border-bottom: 0;
 }
 
@@ -462,10 +462,6 @@ pre a:hover span {
 
 .source span.n:hover {
 	color: var(--muted);
-}
-
-.source .line a:not(.n) {
-	border-bottom-color: var(--muted);
 }
 
 .source .line:target,
