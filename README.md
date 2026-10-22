@@ -220,7 +220,9 @@ Each global name in the code is a link to the lines of its definition in the
 file page, as `/files/<release>/<path>?lines=<first>-<last>#L<first>`. A
 constructor links to the whole definition of its type. A name where it is
 declared links to the definition page, but not on the page of that definition.
-A name whose definition is not indexed keeps its color and has no link.
+The index keeps one release of each package. A name links to its definition in
+that release, also when the import names a different version. A name whose
+definition is not in that release keeps its color and has no link.
 
 Each client IP gets at most 30 searches and 600 requests a minute, with a
 burst of 10 searches and 120 requests. More get `429 Too Many Requests` with
@@ -491,7 +493,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `generations`, `index_jobs` | The index generations with their vector settings, and the job queue. |
 | Postgres `invalid_releases` | The releases that never go into the index, with the load error of each file that does not load. |
 | Postgres `definitions`, `uses`, `external_uses`, `user_counts` | The definitions of each generation, with their features, their uses and the number of definitions that use each key. |
-| Postgres `highlights` | The highlights of each line of each indexed file, for each generation: the column range, the class, whether the token declares its name, and the id of the definition that the name refers to. |
+| Postgres `highlights` | The highlights of each line of each indexed file, for each generation: the column range, the class, whether the token declares its name, and the key of the definition that the name refers to. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
 | Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
 | Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, filters, page, generation, the whole ranking and the search time. JendHub never deletes a row. |

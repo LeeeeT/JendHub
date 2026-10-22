@@ -6,6 +6,7 @@ from jendhub.indexing.schedule import schedule_live
 from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.indexing.worker import Worker
 from jendhub.search.engine import SearchEngine
+from jendhub.search.highlights import Extent, read_extents, stored_lines, targets
 from jendhub.search.ranking import load_model
 from jendhub.vectors.index import VectorIndex
 from tests.indexing.library_fixture import BASE, BOX, TAG
@@ -35,6 +36,16 @@ async def highlighted(pool: Pool, generation: int) -> set[tuple[str, str]]:
             "SELECT release, module FROM highlights WHERE generation = %s", (generation,)
         )
         return set(await cursor.fetchall())
+
+
+async def linked(pool: Pool, generation: int, release: str) -> dict[str, Extent]:
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT lines FROM highlights WHERE generation = %s AND release = %s",
+            (generation, release),
+        )
+        [(lines,)] = await cursor.fetchall()
+        return await read_extents(connection, generation, targets(stored_lines(lines)))
 
 
 async def stored_users(pool: Pool, generation: int) -> dict[str, int]:
@@ -84,7 +95,7 @@ async def test_a_new_release_replaces_the_old_one(
         (APP, "main"),
     }
 
-    await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), KIT_SOURCE + BOX[12:])
+    await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), f"{BOX}\n{KIT_SOURCE[13:]}")
     await schedule_live(index, packages, vectors)
     worker = Worker(index, packages, vectors, WordEmbedder())
     await worker.drain(target.generation)
@@ -96,6 +107,9 @@ async def test_a_new_release_replaces_the_old_one(
         (KIT_V2, "main"),
         (APP, "main"),
     }
+    assert (await linked(pool, target.generation, APP))["kit/main:double"] == Extent(
+        "kit@2.0.0.0/main:double", 11, 14
+    )
     users = await stored_users(pool, target.generation)
     assert users == await counted_users(pool, target.generation)
     assert users["kit/main:double"] == 1

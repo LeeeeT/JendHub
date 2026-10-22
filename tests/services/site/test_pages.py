@@ -20,7 +20,8 @@ from jendhub.services.site.pages import (
 )
 
 HASH = "0x" + "a" * 32
-MAP = "kit@1.0.0.0/main:map.go"
+MAP = "kit/main:map.go"
+MAP_ID = "kit@1.0.0.0/main:map.go"
 NAT = "Nat"
 NONE = Links({}, declarations=True)
 
@@ -45,7 +46,7 @@ def test_other_lines_have_no_link() -> None:
 
 MAP_FILE = "/files/kit@1.0.0.0/main.bend?lines=2-3#L2"
 NAT_FILE = "/files/Base/base.bend?lines=28-31#L28"
-LINKS = Links({MAP: Extent(1, 3), NAT: Extent(27, 31)}, declarations=True)
+LINKS = Links({MAP: Extent(MAP_ID, 1, 3), NAT: Extent(NAT, 27, 31)}, declarations=True)
 
 
 def test_a_declaration_links_to_its_definition_and_a_use_to_its_lines() -> None:
@@ -67,7 +68,7 @@ def test_a_declaration_links_to_its_definition_and_a_use_to_its_lines() -> None:
         SourceLine(
             [
                 Run([Piece("def", "keyword"), Piece(" ", None)]),
-                Run([Piece("map.go", "function declared")], f"/definitions/{MAP}"),
+                Run([Piece("map.go", "function declared")], f"/definitions/{MAP_ID}"),
                 Run([Piece("(xs: List<", None)]),
                 Run([Piece("Nat", "type")], NAT_FILE),
                 Run([Piece(">) -> ", None)]),
@@ -99,9 +100,18 @@ def test_a_declaration_on_its_own_page_has_no_link() -> None:
 
 
 def test_a_name_whose_definition_is_not_indexed_has_its_color_without_a_link() -> None:
-    highlights = [mark(0, 4, "function", target="kit@1.0.0.0/main:gone")]
+    highlights = [mark(0, 4, "function", target="kit/main:gone")]
     assert styled("gone()", highlights, LINKS) == [
         Run([Piece("gone", "function"), Piece("()", None)])
+    ]
+
+
+def test_a_name_links_to_the_lines_of_the_indexed_version() -> None:
+    links = Links({MAP: Extent("kit@2.0.0.0/main:map.go", 9, 12)}, declarations=True)
+    highlights = [mark(0, 6, "function", target=MAP)]
+    assert styled("map.go()", highlights, links) == [
+        Run([Piece("map.go", "function")], "/files/kit@2.0.0.0/main.bend?lines=10-12#L10"),
+        Run([Piece("()", None)]),
     ]
 
 

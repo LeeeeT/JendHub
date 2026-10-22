@@ -97,13 +97,9 @@ class Targets:
         origin = self.origin(target)
         return None if origin is None else definition_key(origin, target.name)
 
-    def id(self, target: Declaration) -> str | None:
-        origin = self.origin(target)
-        return None if origin is None else f"{origin.prefix}{target.name}"
-
 
 def linked(
-    lines: list[list[Highlight[Declaration]]], ids: Callable[[Declaration], str | None]
+    lines: list[list[Highlight[Declaration]]], keys: Callable[[Declaration], str | None]
 ) -> LineHighlights:
     return [
         [
@@ -112,7 +108,7 @@ def linked(
                 found.end,
                 found.kind,
                 found.declaration,
-                None if found.target is None else ids(found.target),
+                None if found.target is None else keys(found.target),
             )
             for found in line
         ]
@@ -245,12 +241,12 @@ async def build(
         if file.error is None and frozenset(extracted[file.path]) != file.declarations
     }
 
-    def target_id(target: Declaration) -> str | None:
+    def target_key(target: Declaration) -> str | None:
         if target.file in files:
-            return f"{files[target.file].origin.prefix}{target.name}"
-        return found_targets.id(target)
+            return definition_key(files[target.file].origin, target.name)
+        return found_targets.key(target)
 
     highlights = {
-        files[file.path].origin.module: linked(file.highlights, target_id) for file in resolved
+        files[file.path].origin.module: linked(file.highlights, target_key) for file in resolved
     }
     return Artifacts(release, package, indexed, sorted(set(edges)), errors, mismatches, highlights)

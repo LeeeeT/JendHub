@@ -142,8 +142,8 @@ class Links:
         if found.target is None or (extent := self.extents.get(found.target)) is None:
             return None
         if found.declaration:
-            return definition_href(found.target) if self.declarations else None
-        file, _ = id_source(found.target)
+            return definition_href(extent.id) if self.declarations else None
+        file, _ = id_source(extent.id)
         return lines_href(file, extent.first_line + 1, extent.end_line)
 
 

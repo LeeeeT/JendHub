@@ -42,6 +42,7 @@ type LineHighlights = list[list[Highlight[str]]]
 
 @dataclass(frozen=True)
 class Extent:
+    id: str
     first_line: int
     end_line: int
 
@@ -66,7 +67,7 @@ def highlight_lines[T](found: Json, target: Callable[[Json], T | None]) -> list[
             raise HighlightError(f"invalid highlight lines: {found!r}")
 
 
-def definition_id(found: Json) -> str | None:
+def target_key(found: Json) -> str | None:
     match found:
         case str() | None:
             return found
@@ -75,7 +76,7 @@ def definition_id(found: Json) -> str | None:
 
 
 def stored_lines(found: Json) -> LineHighlights:
-    return highlight_lines(found, definition_id)
+    return highlight_lines(found, target_key)
 
 
 def lines_json(lines: LineHighlights) -> Jsonb:
@@ -92,15 +93,16 @@ def targets(lines: Iterable[list[Highlight[str]]]) -> frozenset[str]:
 
 
 async def read_extents(
-    connection: AsyncConnection, generation: int, ids: Collection[str]
+    connection: AsyncConnection, generation: int, keys: Collection[str]
 ) -> dict[str, Extent]:
-    if not ids:
+    if not keys:
         return {}
     cursor = await connection.execute(
-        "SELECT id, first_line, end_line FROM definitions WHERE generation = %s AND id = ANY(%s)",
-        (generation, sorted(ids)),
+        "SELECT key, id, first_line, end_line FROM definitions"
+        " WHERE generation = %s AND key = ANY(%s)",
+        (generation, sorted(keys)),
     )
-    return {id_: Extent(first, end) for id_, first, end in await cursor.fetchall()}
+    return {key: Extent(id_, first, end) for key, id_, first, end in await cursor.fetchall()}
 
 
 def line_path(numbers: list[int]) -> str:
