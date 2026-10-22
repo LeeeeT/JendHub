@@ -47,6 +47,7 @@ from jendhub.search.sources import (
     ReleaseFiles,
     SourceFile,
     Usage,
+    count_definitions,
     definition_id,
     indexed_file,
     read_file,
@@ -175,6 +176,7 @@ class PackageView:
 @dataclass(frozen=True)
 class FileView:
     file: SourceFile
+    definitions: int
     highlights: LineHighlights | None
 
 
@@ -352,11 +354,15 @@ class Site:
 
     async def file(self, release: str, path: str) -> FileView:
         found = await self.source(release, path)
+        generation = self.target().generation
         async with self.pool.connection() as connection:
-            highlights = await read_file_highlights(
-                connection, self.target().generation, found.indexed_release, found.module
+            definitions = await count_definitions(
+                connection, generation, found.indexed_release, found.module
             )
-        return FileView(found, highlights)
+            highlights = await read_file_highlights(
+                connection, generation, found.indexed_release, found.module
+            )
+        return FileView(found, definitions, highlights)
 
     async def extents(self, lines: Iterable[list[Highlight[str]]]) -> dict[str, Extent]:
         async with self.pool.connection() as connection:

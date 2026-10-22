@@ -568,6 +568,7 @@ async def test_people_get_a_package_its_files_and_a_file(site: httpx.AsyncClient
     file = (await site.get("/files/app@1.0.0.0/main.bend", params={"lines": "4-5"})).text
     assert '<span class="line marked" id="L5">' in file
     assert '<span class="line" id="L3">' in file
+    assert "· 5 lines · 1 definition</p>" in file
     assert 'href="/files/kit@1.0.0.0/main.bend"' in file
     assert 'href="/files/Base/base.bend"' in file
     assert (

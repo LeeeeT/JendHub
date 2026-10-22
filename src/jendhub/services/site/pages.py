@@ -9,7 +9,7 @@ from urllib.parse import quote, urlencode
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse
-from jinja2 import Environment, PackageLoader, select_autoescape
+from jinja2 import Environment, PackageLoader, StrictUndefined, select_autoescape
 
 from jendhub.indexing.status import GenerationStatus
 from jendhub.search.definitions import DefinitionDetail
@@ -314,6 +314,7 @@ def environment() -> Environment:
     templates = Environment(
         loader=PackageLoader(SITE, "templates"),
         autoescape=select_autoescape(["html"]),
+        undefined=StrictUndefined,
     )
     shared = cast("dict[str, object]", templates.globals)
     shared.update(

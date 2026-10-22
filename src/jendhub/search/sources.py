@@ -238,6 +238,17 @@ async def package_source(
     return SourceFile(release.label, release.hash, path, text, labels)
 
 
+async def count_definitions(
+    connection: AsyncConnection, generation: int, release: str, module: str
+) -> int:
+    cursor = await connection.execute(
+        "SELECT count(*) FROM definitions WHERE generation = %s AND release = %s AND module = %s",
+        (generation, release, module),
+    )
+    row = await cursor.fetchone()
+    return 0 if row is None else row[0]
+
+
 async def read_file(
     pool: Pool, library: Library, generation: int, release: str, path: str
 ) -> SourceFile | None:
