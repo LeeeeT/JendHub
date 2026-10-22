@@ -56,19 +56,34 @@ class PackageStore:
                 "INSERT INTO base_releases (tag) VALUES (%s) ON CONFLICT DO NOTHING", (base.tag,)
             )
 
-    async def store_package(self, package: Package) -> None:
+    async def holder(self, release: Release) -> str | None:
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute(
+                "SELECT hash FROM packages WHERE name = %s AND version = %s",
+                (release.name, release.version),
+            )
+            row = await cursor.fetchone()
+        return None if row is None else row[0]
+
+    async def store_package(self, package: Package) -> Rejection | None:
+        listing = package.listing
+        release = listing.release
+        if release is not None and (held := await self.holder(release)) not in {None, listing.hash}:
+            rejection = Rejection(listing.hash, f"the release {release} is {held}")
+            await self.reject(rejection)
+            return rejection
         await asyncio.to_thread(self.library.store_package, package)
-        release = package.listing.release
         async with self.pool.connection() as connection:
             await connection.execute(
                 "INSERT INTO packages (hash, name, version) VALUES (%s, %s, %s)"
                 " ON CONFLICT DO NOTHING",
                 (
-                    package.listing.hash,
+                    listing.hash,
                     None if release is None else release.name,
                     None if release is None else release.version,
                 ),
             )
+        return None
 
     async def reject(self, rejection: Rejection) -> None:
         async with self.pool.connection() as connection:

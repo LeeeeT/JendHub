@@ -503,8 +503,9 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
 | The library, `data/library` | The files of each package in the `BEND_LIB` layout (`lib/<hash>/<path>`, and `lib/names/<name@version>` with the hash), and `base/<tag>/base.bend`. |
 
-The sync rejects a release with an invalid name or version, or a package with
-an invalid file name, and never tries it again. A hash mismatch, a network
+The sync rejects a release with an invalid name or version, a package with an
+invalid file name, or a package whose name and version another package already
+has, and never tries it again. A hash mismatch, a network
 error or a listing without a valid hash stops the sync.
 
 ## Uses

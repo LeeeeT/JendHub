@@ -70,8 +70,10 @@ async def apply_plan(client: httpx.AsyncClient, store: PackageStore, plan: Plan)
         for result in await asyncio.gather(*(resolve(client, entry) for entry in batch)):
             match result:
                 case Package():
-                    await store.store_package(result)
-                    logger.info("stored %s", result.listing.hash)
+                    if (taken := await store.store_package(result)) is None:
+                        logger.info("stored %s", result.listing.hash)
+                    else:
+                        logger.info("rejected %s: %s", taken.hash, taken.reason)
                 case Rejection():
                     await store.reject(result)
                     logger.info("rejected %s: %s", result.hash, result.reason)
