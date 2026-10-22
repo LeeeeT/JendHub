@@ -97,10 +97,9 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
 - **Original text:** `read` and `grep` give each file as BendHub has it, with
   its relative imports and hash imports, so the lines of `grep` and `read`
   agree. `definition` and the web pages write each import as an exact release.
-- **Versions:** JendHub uses the latest release of each dependency. The flake
-  packages a Python library itself when nixpkgs does not have its latest
-  release yet. Python stays on the default version of nixpkgs, because nixpkgs
-  caches binary packages only for that version.
+- **Versions:** the flake packages a Python library itself when nixpkgs does
+  not have the version that `uv.lock` pins. Python stays on the default version
+  of nixpkgs, because nixpkgs caches binary packages only for that version.
 - **Corpus:** the store keeps every version of every package, because packages
   import each other by hash. Search uses only the latest valid version of each
   named package, as if other versions do not exist.
@@ -115,7 +114,7 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   A `def` that fills a law is not a definition: the law is.
 - **Definition IDs:** a Base definition has its bare name, for example
   `List.map`. A package definition has `name@version/module:Name`, for example
-  `bend-kit-json@0.5.0.1/json:parse.bytes`. IDs do not contain `.bend`.
+  `bend-kit-json@0.6.1.1/json:parse.bytes`. IDs do not contain `.bend`.
 - **Scale:** the design must hold millions of definitions. No service keeps
   the index in memory. Postgres and the library are the source of truth.
   Qdrant holds the vectors as a projection that can be built again from
@@ -157,7 +156,7 @@ BendHub ──> syncer ──> Postgres, library <── worker ──> Qdrant
 | `GET /llms.txt` | `GET /` | How to use JendHub. The home page also shows the size of the live index. |
 | `GET /search.txt?query=<query>&package=<package>&uses=<key>&used_by=<key>&limit=10&offset=0` | `GET /search?query=<query>&package=<package>&uses=<key>&used_by=<key>&offset=0` | The best definitions with their import line, the name to call and the definition URL. Each filter can repeat, and each one narrows the search. `limit` is 1 to 50 (the pages show 20). The ranking holds at most 50 results, and `offset` pages through it. |
 | `GET /definition.txt?path=<file>&name=<name>` | `GET /definitions/<id>` | A definition of the index: its code, the import lines that its code uses as exact releases, its lines in its file, and the definitions that it uses. The page shows the 5 most used definitions that it uses and that use it, and the count of each list links to the whole `used_by=` or `uses=` search. |
-| `GET /read.txt?path=<file>&start_line=1&end_line=<line>` | `GET /files/<release>/<path>` | Lines of a file of any stored release, also an invalid or unindexed one, as `N<tab>text`. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file and each declaration to its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
+| `GET /read.txt?path=<file>&start_line=1&end_line=<line>` | `GET /files/<release>/<path>` | Lines of a file of any stored release, also an invalid or unindexed one, as `N<tab>text`. `<release>` is `name@version`, the hash of the package, or `Base`. The page writes each import as an exact release, links each import to its file, each declaration to its definition, and each other global name to the lines of its definition. `#L<n>` marks one line, and `?lines=<first>-<last>` marks a range. |
 | `GET /grep.txt?pattern=<regex>&path=<release>` | | The lines, paths or counts of one release that match a ripgrep pattern. `path` can also be a directory or a file of the release. The other parameters: `glob`, `mode` (`lines`, `files` or `counts`), `context`, `before`, `after`, `ignore_case`, `multiline`, `limit` (1 to 1000, 250) and `offset`. |
 | `GET /files.txt?path=<release>` | `GET /files/<release>` | The files of one release, or of a directory in it, 1000 for each page. `glob` keeps only the files that match it, by the same rule as the `glob` of `grep`. The page shows all files with the number of indexed definitions in each. |
 | `GET /packages/<name>.txt` | `GET /packages/<name>` | Each release of a package, newest first, with its state (`indexed`, `invalid` with its load errors, or `unindexed`), and one page of the definitions of the indexed release. The page groups the definitions by file. |
@@ -293,8 +292,8 @@ The search engine embeds the query with the instruction "Given a programming
 task, retrieve the Bend library function or type that a programmer calls to do
 it". Each document is the package name and the module path (`Base` for Base),
 then the code, cut at 32,000 characters. The cut stays far below the 40,960
-tokens of the embedding model, and it changes 15 of 146,033 definitions of all
-named releases, all of them generated proofs.
+tokens of the embedding model. It changes 22 of the 187,121 definitions of the
+484 named releases, all of them proofs or generated code.
 
 Each definition has a second vector, the name vector: the embedding of the
 package name and the module path, then the name, for example
@@ -320,10 +319,12 @@ module, which share most of their code vocabulary.
 | Signature | The share of the parameter and result types that the query and the head have in common. |
 | Uses | The users in its release; the use by another release; the doc comment; the helper flag. A helper is a definition that a definition of its module reaches, when that name followed by `.` starts its name, as `Map.put.go` under `Map.put`. |
 | Shape | Type, law, Base, the length of the name and of the code. |
-| Neighbors | The best similarity in the same module and in the same package among the 50, the similarity of the parent (`Date` for `Date.add_days`) and of the children, each minus its own. |
+| Neighbors | The best similarity in the same module and in the same package among the 50, the similarity of the parent (`Date` for `Date.add_days`) and the best similarity of its children, each minus its own; the number of the 50 in its module; the number of its children. |
 
-The embeddings, the words and the signature also give two values relative to
-the 50 candidates: the value minus the best value, and the z-score.
+The cosine of the code vector also gives its z-score among the 50
+candidates. The cosine of the name vector, the words and the signature also
+give two values relative to the 50 candidates: the value minus the best value,
+and the z-score.
 
 A use of an older release of a package counts for the same module and name in
 the latest release. `jendhub bench train` trains the model on all queries of
@@ -336,13 +337,13 @@ row after the answer, so the log adds no latency, and a failed write does not
 fail the search. The row holds the whole ranking, not only the page, and no
 IP address.
 
-The first live index holds 56,650 definitions: Base and the latest valid
-release of 106 packages. On the server, the engine answers a query in 54 to
-75 ms (median) and 133 to 187 ms (p95) when its embedding is in the cache of
-the site, measured in four passes over 30 benchmark queries. The server also
-runs other services and uses swap, so the values change from pass to pass. The
-name scores are the largest part, about 90 ms, and they run in parallel with
-the Postgres read. A
+The live index holds 68,328 definitions: Base and the latest valid release of
+136 packages. On the server, the engine answers a query in 87 to 109 ms
+(median) and 132 to 162 ms (p95) when its embedding is in the cache of the
+site, measured in four passes over 30 benchmark queries. The server also runs
+other services and uses swap, so the values change from pass to pass. The name
+scores are the largest part, about 50 ms, and they run in parallel with the
+Postgres read. A
 new query waits 0.8 to 4 s for the embedding from OpenRouter, which is the
 largest part of the latency. The site waits at most 10 s for an embedding and
 tries once more, so a slow OpenRouter gives an error and not a search that
@@ -358,6 +359,10 @@ services.
 git clone --recurse-submodules <url>
 nix develop -c process-compose up
 ```
+
+The flake gets the submodule from its GitHub repository. Thus push a commit of
+`bend2-lsp-rs` before you commit it as the new submodule commit of JendHub,
+or `nix develop` cannot find it.
 
 This starts Postgres, Qdrant, the migrations and `site`, in this order. Then
 open http://127.0.0.1:8080, and http://127.0.0.1:8080/llms.txt for the agent
@@ -397,8 +402,8 @@ example `nix run .#stack -- logs -f site`, or
 `deploy/Dockerfile` builds one image, `jendhub`, for all services. Its first
 stage compiles the Rust indexer. Its second stage installs the Python
 dependencies with `uv sync --frozen`, from `pyproject.toml` and `uv.lock`. The
-last stage is `python:3.14-slim` with the dependencies, the indexer and
-`src/jendhub`. It also installs `libgomp1`, because LightGBM needs OpenMP, and
+last stage is `python:3.14.8-slim-trixie` with the dependencies, the indexer
+and `src/jendhub`. It also installs `libgomp1`, because LightGBM needs OpenMP, and
 `ripgrep` for `grep` and `files`. The compose file gives each service its command.
 
 The dev shell does not read `uv.lock`. When you add a dependency, add it to
@@ -447,6 +452,7 @@ All settings come from the environment.
 | `JENDHUB_STATUS_SECONDS` | `site`: the time it keeps the sizes of the generations | 30 |
 | `JENDHUB_SYNC_INTERVAL_SECONDS` | `syncer` | 300 |
 | `JENDHUB_LIBRARY_PATH` | `syncer`, `worker`, `site`, the CLI: the directory of the library | `data/library` |
+| `JENDHUB_VERSION` | `site`: `serverInfo.version` of the MCP server; the image sets it to the `git describe` of its commit | `dev` |
 | `JENDHUB_WORKER_CONCURRENCY` | `worker`: the jobs that run at a time (`deploy/compose.yaml` sets 1, for a server with little memory) | 2 |
 
 ## Deployment
@@ -458,11 +464,11 @@ Prometheus and a Cloudflare Tunnel. No port is open to the internet:
 `jend.leeeet.dev` to `http://site:8000`. The JendHub services run as an
 unprivileged user. The containers have no memory limits, so a process uses swap
 instead of being killed when memory runs low. Docker keeps at most 3 log files
-of 10 MB for each container. The server has 1
-CPU and 1.6 GiB of RAM, so it needs a swap file: without one, the page cache
-cannot hold Qdrant's vectors, and the restore of the vectors fails. It has a 4
-GB `/swapfile` with `vm.swappiness=10`. When Qdrant's vectors are in swap, a
-search takes seconds; more RAM is the fix.
+of 10 MB for each container. The server has 2 CPUs and 3.3 GiB of RAM, and it
+also runs services that are not part of JendHub. It has a 4 GB `/swapfile`
+with `vm.swappiness=10`. During a full reindex, about 900 MB are in swap.
+When Qdrant's vectors are in swap, a search takes seconds; more RAM is the
+fix.
 
 `nix run .#deploy` deploys from your machine. Nix runs only on your machine:
 the server needs only Docker. The deploy needs SSH access to the server and
@@ -480,8 +486,9 @@ keeps the Postgres password of the server, or makes one on the first deploy.
 Then `docker compose up --wait` applies the migrations and starts the new
 version, and the previous image is deleted. Like `nix run .#stack -- up`, it
 refuses to start without a live index. `up --fresh` lets the server build its
-own index. Set `JENDHUB_DEPLOY_TARGET` (default `root@195.63.145.165`) and
-`JENDHUB_DEPLOY_DIRECTORY` (default `/opt/jendhub`) for another server.
+own index. Set `JENDHUB_DEPLOY_TARGET` (default `root@195.63.145.165`),
+`JENDHUB_DEPLOY_DIRECTORY` (default `/opt/jendhub`) and `JENDHUB_SITE_URL`
+(default `https://jend.leeeet.dev`) for another server.
 
 Prometheus scrapes the metrics port of each service every 30 s and keeps 30
 days. It has no alert rules. It listens only on the server's loopback address:
@@ -521,9 +528,12 @@ JendHub resolves names exactly as the Bend compiler does. Our fork of the
 [Bend 2 language server](https://github.com/IlyaGulya/bend2-lsp-rs), the
 submodule `bend2-lsp-rs`, holds a port of the compiler's front end (Bend
 v2.0.37): its loader, parser and match flattening. Its `tools/oracle` compares
-the port with the compiler itself. On every file of the mirror and of the
-compiler's repository, the parsed terms are byte-identical, and every
-identifier token has the meaning that the compiler gives it.
+the port with the compiler itself. With the compiler of Bend v2.0.38, the
+parsed terms are byte-identical in all 8,024 files: the 6,221 files of the
+mirror and the 1,803 files of the compiler's repository. Each identifier token
+has the meaning that the compiler gives it. The oracle cannot check 8 local
+names in two proof files of one release, because the compiler's term keeps no
+node for them.
 
 The `jendhub-index` program in `indexer/` loads each file of a release as the
 compiler loads the file it checks. It writes the uses, the declared names and
@@ -537,14 +547,16 @@ another release is stored by the module and name of its target, without the
 version.
 
 Python extracts the definitions from the source text, with their doc comments
-and heads. In each of the 2,026 files of the latest releases that load, the
+and heads. In each of the 1,618 files of the latest valid releases, the
 extraction and the compiler declare the same names. The worker checks this for
 each file and logs each difference.
 
-With Base v2.0.37, 46 files of 7 latest releases do not load, so these
-releases are invalid: 4 declare a constructor that Base declares too (`Ready`
-or `Wait`), 2 use a name part that starts with a digit, and 1 imports a
-package that BendHub does not have. The loader parses and resolves names, but
+With Base v2.0.38, 20 of the 152 latest releases are invalid, with 274 files
+that do not load. 8 declare a constructor `Text`, which Base v2.0.38 declares
+too. The other 12 became invalid with Base v2.0.37, and JendHub does not try
+them again: 4 declare a constructor that Base declares too (`Ready` or
+`Wait`), 2 use a name part that starts with a digit, and 6 import a package
+that BendHub does not have. The loader parses and resolves names, but
 does not check types, so a valid release can still have type errors.
 
 ## Code layout
