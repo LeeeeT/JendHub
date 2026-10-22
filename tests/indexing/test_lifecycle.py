@@ -3,6 +3,7 @@ from jendhub.hub.api import Release
 from jendhub.hub.base import Base
 from jendhub.hub.store import PackageStore
 from jendhub.indexing.schedule import schedule_live
+from jendhub.indexing.status import generation_statuses
 from jendhub.indexing.store import LIVE, IndexStore
 from jendhub.indexing.worker import Worker
 from jendhub.search.engine import SearchEngine
@@ -165,6 +166,16 @@ async def test_a_new_release_replaces_an_old_one_that_declares_nothing(
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), KIT_SOURCE)
     await Worker(index, packages, vectors, WordEmbedder()).drain(target.generation)
     assert await highlighted(pool, target.generation) == {("base", ""), (KIT_V2, "main")}
+
+
+async def test_the_status_counts_a_release_that_declares_nothing(
+    pool: Pool, packages: PackageStore, vectors: VectorIndex
+) -> None:
+    await packages.store_base(Base(TAG, BASE.encode()))
+    await store_package(packages, KIT_V1, Release("kit", "1.0.0.0"), EMPTY)
+    await index_live(packages, vectors)
+    [status] = await generation_statuses(pool, LIVE)
+    assert status.releases == 2
 
 
 BROKEN = "import Base\n\ntype Nat is Data:\n  Zero{}\n"

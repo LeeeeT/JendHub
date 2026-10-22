@@ -59,8 +59,10 @@ async def generation_statuses(pool: Pool, corpus: str | None) -> list[Generation
             " count(j.release) FILTER (WHERE j.state = 'failed')"
             " FROM generations g"
             " CROSS JOIN LATERAL ("
-            "   SELECT count(DISTINCT d.release) AS releases, count(*) AS definitions"
-            "   FROM definitions d WHERE d.generation = g.id) size"
+            "   SELECT (SELECT count(DISTINCT h.release) FROM highlights h"
+            "   WHERE h.generation = g.id) AS releases,"
+            "   (SELECT count(*) FROM definitions d WHERE d.generation = g.id) AS definitions"
+            " ) size"
             " LEFT JOIN index_jobs j ON j.generation = g.id"
             " WHERE g.state <> 'retired' AND (%(corpus)s::text IS NULL OR g.corpus = %(corpus)s)"
             " GROUP BY g.id, size.releases, size.definitions ORDER BY g.id",
