@@ -16,12 +16,14 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   that a definition uses. A filter names a definition by its key,
   `package/module:name` with no version, because the index holds one release
   of each package. A person writes the filters in the search box, for example
-  `uses=bend-kit-json/json:parse.bytes decode response`, and a small script
-  turns them into URL parameters before the request, so the URL is the same
-  as the parameters of `/search.txt` and the `search` tool. The script also
-  turns a raw `query` from the OpenSearch template into filters. Each filter
-  narrows the search, also when a kind repeats. With words, the filters become
-  a Qdrant filter, so a filter never empties a ranking that it could fill:
+  `uses=bend-kit-json/json:parse.bytes decode response`. When the `query` of
+  `/search` holds a word `package=`, `uses=` or `used_by=` with a value, the
+  site redirects to the URL that gives that word as its own parameter. Thus
+  the URL is the same as the parameters of `/search.txt` and the `search`
+  tool, also for a raw `query` from the OpenSearch template, and the site
+  needs no script. Each filter narrows the search, also when a kind repeats.
+  With words, the filters become a Qdrant filter, so a filter never empties a
+  ranking that it could fill:
   `package` matches the `release` payload, `uses` matches the `uses` payload
   (the keys that a point uses), and `used_by` is the short list of points that
   one definition uses. No filter sends Qdrant a list that grows with the
@@ -235,7 +237,7 @@ Every service has `/healthz` (the process runs) and `/readyz` (it can do its
 job) on its port, and `/metrics` for Prometheus on the internal port 9000 only.
 The services log JSON lines. Each response has `X-Content-Type-Options`,
 `Referrer-Policy`, `Strict-Transport-Security`, and a strict
-Content-Security-Policy that allows only the script of the site.
+Content-Security-Policy that allows no script.
 `/robots.txt` keeps crawlers away from the search pages, and allows the rest,
 because some LLM tools do not fetch a URL that `robots.txt` disallows.
 

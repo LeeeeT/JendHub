@@ -18,8 +18,7 @@ from jendhub.search.sources import BASE, BASE_FILE, SourceFile, id_source
 
 SITE = "jendhub.services.site"
 STYLE = files(SITE).joinpath("static/style.css").read_text(encoding="utf-8")
-SCRIPT = files(SITE).joinpath("static/search.js").read_text(encoding="utf-8")
-ASSETS = hashlib.sha256(f"{STYLE}{SCRIPT}".encode()).hexdigest()[:12]
+ASSETS = hashlib.sha256(STYLE.encode()).hexdigest()[:12]
 EXAMPLES = ("decompress gzip data", "base64 encode", "sha256 hash of bytes", "parse json")
 IMPORT = re.compile(r"^(import )([^./\s]\S*/\S+\.bend)( as .*)$")
 BASE_IMPORT = re.compile(r"^(import )(Base)(\s*)$")

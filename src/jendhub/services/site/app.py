@@ -36,7 +36,6 @@ from jendhub.services.site.pages import (
     COUNTS,
     EXAMPLES,
     HEAD_LINES,
-    SCRIPT,
     STYLE,
     Links,
     Span,
@@ -72,7 +71,7 @@ from jendhub.settings import load_settings
 
 WEB_RESULTS = 20
 RELATIVE = UrlLinks("")
-QUIET = frozenset({"/healthz", "/readyz", "/style.css", "/search.js"})
+QUIET = frozenset({"/healthz", "/readyz", "/style.css"})
 ASSET_CACHE = {"cache-control": "public, max-age=31536000, immutable"}
 SEARCHES = frozenset({"/search", "/search.txt"})
 QUERY = "query"
@@ -109,6 +108,35 @@ def box_text(request: Request) -> str:
         if name == QUERY or name in FILTERS
     ]
     return " ".join(word for word in words if word)
+
+
+def box_filter(word: str) -> tuple[str, str] | None:
+    name, equals, value = word.partition("=")
+    return (name, value) if equals and value and name in FILTERS else None
+
+
+def box_parameters(text: str) -> list[tuple[str, str]]:
+    parameters: list[tuple[str, str]] = []
+    words: list[str] = []
+    place = None
+    for word in text.split():
+        if (found := box_filter(word)) is not None:
+            parameters.append(found)
+            continue
+        if place is None:
+            place = len(parameters)
+        words.append(word)
+    if place is not None:
+        parameters.insert(place, (QUERY, " ".join(words)))
+    return parameters
+
+
+def typed_filters(request: Request) -> bool:
+    return any(
+        box_filter(word) is not None
+        for value in request.query_params.getlist(QUERY)
+        for word in value.split()
+    )
 
 
 def text(body: str, status: int = 200, headers: dict[str, str] | None = None) -> Response:
@@ -226,10 +254,6 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
     async def style() -> Response:
         return Response(STYLE, media_type="text/css", headers=ASSET_CACHE)
 
-    @router.get("/search.js")
-    async def script() -> Response:
-        return Response(SCRIPT, media_type="text/javascript", headers=ASSET_CACHE)
-
     @router.get("/search")
     async def search(
         request: Request, background: BackgroundTasks, given: Annotated[SearchArguments, Query()]
@@ -237,6 +261,8 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
         text = box_text(request)
         if not text:
             return RedirectResponse("/", status_code=303)
+        if typed_filters(request):
+            return RedirectResponse(f"/search?{readable(box_parameters(text))}", status_code=303)
         site = running.get()
         caller = Caller("web", request.headers.get("user-agent"))
         found, searched = await site.search(

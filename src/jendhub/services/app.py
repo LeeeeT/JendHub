@@ -14,7 +14,7 @@ REQUEST_SECONDS = Histogram(
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
-        "default-src 'none'; script-src 'self'; style-src 'self'; img-src data:;"
+        "default-src 'none'; style-src 'self'; img-src data:;"
         " form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     ),
     "X-Content-Type-Options": "nosniff",

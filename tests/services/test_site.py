@@ -532,6 +532,21 @@ async def test_people_filter_a_search_and_see_the_filters_in_the_box(
     assert 'value="uses=Nat package=app"' in ordered
 
 
+async def test_filters_typed_in_the_box_become_parameters(site: httpx.AsyncClient) -> None:
+    typed = await site.get("/search", params={"query": "times uses=kit/main:double four"})
+    assert typed.status_code == httpx.codes.SEE_OTHER
+    assert typed.headers["location"] == "/search?query=times%20four&uses=kit/main:double"
+    first = await site.get("/search", params={"query": "package=kit double"})
+    assert first.headers["location"] == "/search?package=kit&query=double"
+
+
+async def test_words_like_a_filter_name_stay_words(site: httpx.AsyncClient) -> None:
+    for query in ("list packages", "uses2", "used_by= x", "=kit"):
+        response = await site.get("/search", params={"query": query})
+        assert response.status_code == httpx.codes.OK
+        assert f'value="{query}"' in response.text
+
+
 async def test_an_empty_search_goes_home(site: httpx.AsyncClient) -> None:
     response = await site.get("/search", params={"query": " "})
     assert response.status_code == httpx.codes.SEE_OTHER
@@ -604,11 +619,11 @@ async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> Non
 
 
 async def test_every_answer_has_the_security_headers(site: httpx.AsyncClient) -> None:
-    for path in ("/", "/search.txt?query=double", "/style.css", "/search.js"):
+    for path in ("/", "/search.txt?query=double", "/style.css"):
         headers = (await site.get(path)).headers
         assert headers["x-content-type-options"] == "nosniff"
         assert headers["referrer-policy"] == "no-referrer"
-        assert "script-src 'self'" in headers["content-security-policy"]
+        assert "script-src" not in headers["content-security-policy"]
         assert "style-src 'self'" in headers["content-security-policy"]
 
 
