@@ -1,8 +1,11 @@
+from datetime import timedelta
+
 import pytest
 
 from jendhub.db.pool import Pool
 from jendhub.hub.base import Base
 from jendhub.hub.store import PackageStore
+from jendhub.indexing import worker as worker_module
 from jendhub.indexing.schedule import schedule_live
 from jendhub.indexing.store import LIVE
 from jendhub.indexing.worker import Worker
@@ -58,4 +61,21 @@ async def test_a_job_whose_process_stops_is_tried_again(
         )
         assert await cursor.fetchall() == [
             ("queued", "its indexing process stopped with exit code 1")
+        ]
+
+
+async def test_a_job_whose_process_runs_past_its_lease_is_tried_again(
+    pool: Pool, packages: PackageStore, vectors: VectorIndex, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker, generation = await new_generation(packages, vectors)
+    monkeypatch.setattr(worker_module, "CHILD", "tests.indexing.hang")
+    monkeypatch.setattr(worker_module, "LEASE", timedelta(seconds=0.5))
+    assert await worker.step(worker.attempt_in_child)
+    async with pool.connection() as connection:
+        cursor = await connection.execute(
+            "SELECT state, error FROM index_jobs WHERE generation = %s AND attempts = 1",
+            (generation,),
+        )
+        assert await cursor.fetchall() == [
+            ("queued", "its indexing process ran for more than 0.5 s")
         ]

@@ -2,6 +2,8 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
+import signal
 import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -148,8 +150,17 @@ class Worker:
             CHILD,
             json.dumps([job.generation, job.release, job.name, job.attempts]),
             stdout=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
-        stdout, _ = await process.communicate()
+        try:
+            async with asyncio.timeout(LEASE.total_seconds()):
+                stdout, _ = await process.communicate()
+        except TimeoutError:
+            os.killpg(process.pid, signal.SIGKILL)
+            await process.wait()
+            return await self.failed(
+                job, f"its indexing process ran for more than {LEASE.total_seconds():g} s"
+            )
         if process.returncode != 0:
             return await self.failed(
                 job, f"its indexing process stopped with exit code {process.returncode}"

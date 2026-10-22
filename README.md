@@ -277,7 +277,9 @@ the live generation from Postgres.
 - **A failed job** waits 1, 2, 4, 8 minutes and so on, at most 1 hour. After 5
   attempts it stops, and `jendhub index retry <generation>` queues it again. A
   job also fails when its worker stops, for example out of memory, during each
-  of its 5 attempts. A generation with a failed job does not go live.
+  of its 5 attempts. An attempt whose process runs longer than the 15-minute
+  lease of the job is killed and fails, because after the lease another worker
+  can take the job. A generation with a failed job does not go live.
 - **A lost Qdrant collection:** `jendhub index restore-vectors` writes it again
   from the embedding cache, with no new embeddings.
 
