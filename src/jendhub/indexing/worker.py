@@ -13,7 +13,7 @@ from prometheus_client import Counter
 from jendhub.embedding.embedder import Embedder
 from jendhub.errors import JendHubError
 from jendhub.hub.store import PackageStore
-from jendhub.indexing.artifacts import build
+from jendhub.indexing.artifacts import Artifacts, build
 from jendhub.indexing.failures import LoadError, summary
 from jendhub.indexing.store import LIVE, Generation, IndexStore, Job, Superseded
 from jendhub.search.sources import BASE_RELEASE
@@ -52,6 +52,16 @@ class IndexingError(JendHubError):
     pass
 
 
+def log_mismatches(artifacts: Artifacts) -> None:
+    for label, mismatch in sorted(artifacts.mismatches.items()):
+        logger.warning(
+            "%s: the extraction and the compiler disagree: only extracted %s, only declared %s",
+            label,
+            sorted(mismatch.only_extracted),
+            sorted(mismatch.only_declared),
+        )
+
+
 @dataclass(frozen=True)
 class Worker:
     index: IndexStore
@@ -70,16 +80,12 @@ class Worker:
         if job.release != BASE_RELEASE:
             package = (await self.packages.releases([job.release]))[job.release]
         artifacts = await build(library, base, job.release, package, self.packages.releases)
+        if artifacts.errors and package is None:
+            raise IndexingError(f"Base does not load: {summary(artifacts.errors)}")
         if artifacts.errors:
             await self.drop(job, generation, artifacts.errors)
             return Attempt("invalid")
-        for label, mismatch in sorted(artifacts.mismatches.items()):
-            logger.warning(
-                "%s: the extraction and the compiler disagree: only extracted %s, only declared %s",
-                label,
-                sorted(mismatch.only_extracted),
-                sorted(mismatch.only_declared),
-            )
+        log_mismatches(artifacts)
         mismatches = len(artifacts.mismatches)
         documents = [definition.document for definition in artifacts.definitions]
         names = [definition.name_document for definition in artifacts.definitions]
@@ -126,6 +132,8 @@ class Worker:
     async def attempt(self, job: Job) -> Attempt:
         try:
             return await self.run(job)
+        except JendHubError as error:
+            return await self.failed(job, str(error))
         except Exception as error:  # noqa: BLE001
             return await self.failed(job, repr(error))
 

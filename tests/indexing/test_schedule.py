@@ -149,3 +149,19 @@ async def test_a_worker_serves_on_after_a_step_fails(
             await asyncio.sleep(POLL_SECONDS)
     stop.set()
     await served
+
+
+async def test_a_base_that_does_not_load_fails_with_its_load_error(
+    pool: Pool, packages: PackageStore, vectors: VectorIndex
+) -> None:
+    await packages.store_base(Base(NEW_TAG, b"type Nat is Data:\n  Zero{\n"))
+    index = IndexStore(pool)
+    await schedule_live(index, packages, vectors)
+    assert await Worker(index, packages, vectors, WordEmbedder()).step()
+    async with pool.connection() as connection:
+        cursor = await connection.execute("SELECT state, error FROM index_jobs")
+        [(state, error)] = await cursor.fetchall()
+        cursor = await connection.execute("SELECT count(*) FROM invalid_releases")
+        assert await cursor.fetchone() == (0,)
+    assert state == "queued"
+    assert error.startswith("Base does not load: expected")
