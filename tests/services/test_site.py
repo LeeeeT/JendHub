@@ -680,6 +680,24 @@ async def test_searches_from_one_client_are_limited(
 
 
 @pytest.mark.usefixtures("indexed")
+async def test_a_redirect_of_the_search_box_is_not_a_search(
+    database: DatabaseSettings,
+    qdrant_settings: QdrantSettings,
+    library: Library,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JENDHUB_SEARCH_BURST", "1")
+    monkeypatch.setenv("JENDHUB_SEARCHES_PER_MINUTE", "1")
+    async with running(create_app(opener(database, qdrant_settings, library))) as client:
+        typed = await client.get("/search", params={"query": "package=kit double"})
+        empty = await client.get("/search", params={"query": " "})
+        searched = await client.get(typed.headers["location"])
+    assert typed.status_code == httpx.codes.SEE_OTHER
+    assert empty.status_code == httpx.codes.SEE_OTHER
+    assert searched.status_code == httpx.codes.OK
+
+
+@pytest.mark.usefixtures("indexed")
 async def test_a_search_without_an_embedding_says_so(
     database: DatabaseSettings, qdrant_settings: QdrantSettings, library: Library
 ) -> None:

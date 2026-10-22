@@ -73,7 +73,6 @@ WEB_RESULTS = 20
 RELATIVE = UrlLinks("")
 QUIET = frozenset({"/healthz", "/readyz", "/style.css"})
 ASSET_CACHE = {"cache-control": "public, max-age=31536000, immutable"}
-SEARCHES = frozenset({"/search", "/search.txt"})
 QUERY = "query"
 FILTERS = frozenset({"package", "uses", "used_by"})
 
@@ -137,6 +136,16 @@ def typed_filters(request: Request) -> bool:
         for value in request.query_params.getlist(QUERY)
         for word in value.split()
     )
+
+
+def searches(request: Request) -> bool:
+    match request.url.path:
+        case "/search.txt":
+            return True
+        case "/search":
+            return bool(box_text(request)) and not typed_filters(request)
+        case _:
+            return False
 
 
 def text(body: str, status: int = 200, headers: dict[str, str] | None = None) -> Response:
@@ -417,7 +426,7 @@ def create_app(resources: OpenResources | None = None) -> FastAPI:
         if path in QUIET:
             return
         await requested(request)
-        if path in SEARCHES:
+        if searches(request):
             await searching(request)
 
     app.include_router(guide_routes(running, limited))
