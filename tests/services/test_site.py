@@ -1,4 +1,6 @@
 import asyncio
+import re
+import sys
 from asyncio import FIRST_COMPLETED
 from collections.abc import AsyncGenerator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
@@ -17,6 +19,8 @@ from jendhub.remote.openrouter import OpenRouterError
 from jendhub.search import filters
 from jendhub.search.ranking import load_model
 from jendhub.services.site.app import create_app
+from jendhub.services.site.box import FILTERS
+from jendhub.services.site.pages import ASSETS, SCRIPT
 from jendhub.services.site.views import Resources
 from jendhub.settings import DatabaseSettings, QdrantSettings
 from jendhub.uses.highlights import HighlightError
@@ -548,6 +552,30 @@ async def test_words_like_a_filter_name_stay_words(site: httpx.AsyncClient) -> N
         assert f'value="{query}"' in response.text
 
 
+async def test_both_search_boxes_name_the_filters_for_the_script(
+    site: httpx.AsyncClient,
+) -> None:
+    named = f'data-filters="{" ".join(sorted(FILTERS))}"'
+    for path in ("/", "/status"):
+        page = (await site.get(path)).text
+        assert named in page
+        assert f'<script src="/search.js?v={ASSETS}" defer></script>' in page
+    script = await site.get("/search.js")
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert "immutable" in script.headers["cache-control"]
+    assert script.text == SCRIPT
+
+
+def test_the_script_splits_the_box_where_the_server_splits_it() -> None:
+    found = re.search(r"^const SPACE = /\((\[.+\])\+\)/;$", SCRIPT, re.MULTILINE)
+    assert found is not None
+    space = re.compile(found[1])
+    characters = map(chr, range(sys.maxunicode + 1))
+    assert {c for c in characters if space.fullmatch(c)} == {
+        chr(c) for c in range(sys.maxunicode + 1) if chr(c).isspace()
+    }
+
+
 async def test_an_empty_search_goes_home(site: httpx.AsyncClient) -> None:
     response = await site.get("/search", params={"query": " "})
     assert response.status_code == httpx.codes.SEE_OTHER
@@ -631,11 +659,11 @@ async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> Non
 
 
 async def test_every_answer_has_the_security_headers(site: httpx.AsyncClient) -> None:
-    for path in ("/", "/search.txt?query=double", "/style.css"):
+    for path in ("/", "/search.txt?query=double", "/style.css", "/search.js"):
         headers = (await site.get(path)).headers
         assert headers["x-content-type-options"] == "nosniff"
         assert headers["referrer-policy"] == "no-referrer"
-        assert "script-src" not in headers["content-security-policy"]
+        assert "script-src 'self'" in headers["content-security-policy"]
         assert "style-src 'self'" in headers["content-security-policy"]
 
 

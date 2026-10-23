@@ -20,10 +20,14 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   `/search` holds a word `package=`, `uses=` or `used_by=` with a value, the
   site redirects to the URL that gives that word as its own parameter. Thus
   the URL is the same as the parameters of `/search.txt` and the `search`
-  tool, also for a raw `query` from the OpenSearch template, and the site
-  needs no script. Each filter narrows the search, also when a kind repeats.
-  With words, the filters become a Qdrant filter, so a filter never empties a
-  ranking that it could fill:
+  tool, also for a raw `query` from the OpenSearch template, and the search
+  works without a script. A small script, `search.js`, only colors the
+  filters while a person types: the name and the equals sign get the keyword
+  color, and the value gets the string color. It marks a word only when the
+  server reads the word as a filter, so `pkg=x` and `uses=` stay plain. Each
+  filter narrows the search, also when a kind repeats. With words, the
+  filters become a Qdrant filter, so a filter never empties a ranking that it
+  could fill:
   `package` matches the `release` payload, `uses` matches the `uses` payload
   (the keys that a point uses), and `used_by` is the short list of points that
   one definition uses. No filter sends Qdrant a list that grows with the
@@ -236,7 +240,7 @@ Every service has `/healthz` (the process runs) and `/readyz` (it can do its
 job) on its port, and `/metrics` for Prometheus on the internal port 9000 only.
 The services log JSON lines. Each response has `X-Content-Type-Options`,
 `Referrer-Policy`, `Strict-Transport-Security`, and a strict
-Content-Security-Policy that allows no script.
+Content-Security-Policy that allows only the script of the site.
 `/robots.txt` keeps crawlers away from the search pages, and allows the rest,
 because some LLM tools do not fetch a URL that `robots.txt` disallows.
 

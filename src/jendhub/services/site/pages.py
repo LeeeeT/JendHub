@@ -15,11 +15,13 @@ from jendhub.indexing.status import GenerationStatus
 from jendhub.search.definitions import DefinitionDetail
 from jendhub.search.highlights import Extent, LineHighlights
 from jendhub.search.sources import BASE, BASE_FILE, SourceFile, id_source
+from jendhub.services.site.box import FILTERS
 from jendhub.uses.highlights import Highlight
 
 SITE = "jendhub.services.site"
 STYLE = files(SITE).joinpath("static/style.css").read_text(encoding="utf-8")
-ASSETS = hashlib.sha256(STYLE.encode()).hexdigest()[:12]
+SCRIPT = files(SITE).joinpath("static/search.js").read_text(encoding="utf-8")
+ASSETS = hashlib.sha256(f"{STYLE}{SCRIPT}".encode()).hexdigest()[:12]
 EXAMPLES = ("decompress gzip data", "base64 encode", "sha256 hash of bytes", "parse json")
 IMPORT = re.compile(r"^(import )([^./\s]\S*/\S+\.bend)( as .*)$")
 BASE_IMPORT = re.compile(r"^(import )(Base)(\s*)$")
@@ -328,6 +330,7 @@ def environment() -> Environment:
         reference=reference,
         counted=counted,
         assets=ASSETS,
+        filters=" ".join(sorted(FILTERS)),
     )
     shared["macros"] = templates.get_template("macros.html").module
     return templates

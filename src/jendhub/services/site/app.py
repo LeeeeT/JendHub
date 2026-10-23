@@ -30,12 +30,14 @@ from jendhub.services.site.arguments import (
     ReadArguments,
     SearchArguments,
 )
+from jendhub.services.site.box import box_parameters, box_text, typed_filters
 from jendhub.services.site.guide import OPENSEARCH_TYPE, ROBOTS, llms_text, opensearch
 from jendhub.services.site.limits import RateLimit, client_address
 from jendhub.services.site.pages import (
     COUNTS,
     EXAMPLES,
     HEAD_LINES,
+    SCRIPT,
     STYLE,
     Links,
     Span,
@@ -71,10 +73,8 @@ from jendhub.settings import load_settings
 
 WEB_RESULTS = 20
 RELATIVE = UrlLinks("")
-QUIET = frozenset({"/healthz", "/readyz", "/style.css"})
+QUIET = frozenset({"/healthz", "/readyz", "/style.css", "/search.js"})
 ASSET_CACHE = {"cache-control": "public, max-age=31536000, immutable"}
-QUERY = "query"
-FILTERS = frozenset({"package", "uses", "used_by"})
 
 
 class SiteSettings(BaseSettings):
@@ -98,44 +98,6 @@ def for_agents(path: str) -> bool:
 
 def links(site: Site, request: Request) -> UrlLinks:
     return UrlLinks(site.origin, request.url.path, tuple(request.query_params.multi_items()))
-
-
-def box_text(request: Request) -> str:
-    words = [
-        value.strip() if name == QUERY else f"{name}={value}"
-        for name, value in request.query_params.multi_items()
-        if name == QUERY or name in FILTERS
-    ]
-    return " ".join(word for word in words if word)
-
-
-def box_filter(word: str) -> tuple[str, str] | None:
-    name, equals, value = word.partition("=")
-    return (name, value) if equals and value and name in FILTERS else None
-
-
-def box_parameters(text: str) -> list[tuple[str, str]]:
-    parameters: list[tuple[str, str]] = []
-    words: list[str] = []
-    place = None
-    for word in text.split():
-        if (found := box_filter(word)) is not None:
-            parameters.append(found)
-            continue
-        if place is None:
-            place = len(parameters)
-        words.append(word)
-    if place is not None:
-        parameters.insert(place, (QUERY, " ".join(words)))
-    return parameters
-
-
-def typed_filters(request: Request) -> bool:
-    return any(
-        box_filter(word) is not None
-        for value in request.query_params.getlist(QUERY)
-        for word in value.split()
-    )
 
 
 def searches(request: Request) -> bool:
@@ -262,6 +224,10 @@ def page_routes(running: Running[Site], limited: Guard) -> APIRouter:
     @router.get("/style.css")
     async def style() -> Response:
         return Response(STYLE, media_type="text/css", headers=ASSET_CACHE)
+
+    @router.get("/search.js")
+    async def script() -> Response:
+        return Response(SCRIPT, media_type="text/javascript", headers=ASSET_CACHE)
 
     @router.get("/search")
     async def search(

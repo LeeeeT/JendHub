@@ -245,7 +245,18 @@ button:hover {
 	border-radius: 3px;
 }
 
+.search-field {
+	position: relative;
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	background: var(--background);
+	border-radius: 3px 0 0 3px;
+}
+
 .search-form input {
+	position: relative;
 	flex: 1;
 	min-width: 0;
 	padding: 0.4em 1ch;
@@ -253,6 +264,37 @@ button:hover {
 	background: var(--background);
 	border: 0;
 	border-radius: 3px 0 0 3px;
+}
+
+.search-marks {
+	position: absolute;
+	inset: 0;
+	padding: 0.4em 1ch;
+	overflow: hidden;
+	white-space: pre;
+	pointer-events: none;
+}
+
+.search-line {
+	display: inline-block;
+}
+
+.search-marks .filter {
+	color: var(--keyword);
+}
+
+.search-marks .filter-value {
+	color: var(--string);
+}
+
+.search-form.highlighted input {
+	color: transparent;
+	caret-color: var(--text);
+	background: transparent;
+}
+
+.search-form.highlighted input::-webkit-search-cancel-button {
+	display: none;
 }
 
 .search-form input::placeholder {
@@ -278,6 +320,7 @@ button:hover {
 }
 
 .search-form.large input,
+.search-form.large .search-marks,
 .search-form.large button {
 	padding: 0.6em 1.6ch;
 	font-size: 1.1em;
