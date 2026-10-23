@@ -651,6 +651,40 @@ async def test_people_get_the_status_and_the_home_page(site: httpx.AsyncClient) 
     assert "<b>2</b> packages" in (await site.get("/")).text
 
 
+@pytest.mark.parametrize(
+    ("params", "box", "message"),
+    [
+        (
+            [("uses", "a"), ("uses", "b")],
+            "uses=a uses=b",
+            "The filter “uses=a” names no definition in the index.",
+        ),
+        (
+            [("query", "double"), ("used_by", "kit/main:nothing")],
+            "double used_by=kit/main:nothing",
+            "The filter “used_by=kit/main:nothing” names no definition in the index.",
+        ),
+        (
+            [("package", "nothing")],
+            "package=nothing",
+            "The filter “package=nothing” names no package in the index.",
+        ),
+    ],
+)
+async def test_a_wrong_filter_keeps_the_search_in_the_box(
+    site: httpx.AsyncClient, params: list[tuple[str, str]], box: str, message: str
+) -> None:
+    response = await site.get("/search", params=tuple(params))
+    assert response.status_code == httpx.codes.NOT_FOUND
+    assert f'name="query" value="{box}"' in response.text
+    assert message in response.text
+
+
+async def test_a_missing_page_leaves_the_box_empty(site: httpx.AsyncClient) -> None:
+    response = await site.get("/definitions/nothing", params={"query": "double"})
+    assert 'name="query" value=""' in response.text
+
+
 async def test_people_get_a_missing_page_as_html(site: httpx.AsyncClient) -> None:
     response = await site.get("/definitions/nothing")
     assert response.status_code == httpx.codes.NOT_FOUND

@@ -52,9 +52,10 @@ class UnknownFilterError(Exception):
     pass
 
 
-def unknown_definition(key: str) -> UnknownFilterError:
+def unknown_definition(name: str, key: str) -> UnknownFilterError:
     return UnknownFilterError(
-        f"The index has no definition {key}. Name a definition as package/module:name,"
+        f"The filter “{name}={key}” names no definition in the index."
+        " Name a definition as package/module:name,"
         " for example bend-kit-json/json:parse.bytes, or by its name in Base, for example"
         " List.map."
     )
@@ -70,7 +71,7 @@ async def package_release(connection: AsyncConnection, generation: int, package:
     )
     row = await cursor.fetchone()
     if row is None:
-        raise UnknownFilterError(f"The index has no package {package}.")
+        raise UnknownFilterError(f"The filter “package={package}” names no package in the index.")
     return row[0]
 
 
@@ -83,7 +84,7 @@ async def used_definition(connection: AsyncConnection, generation: int, key: str
     )
     row = await cursor.fetchone()
     if row is None:
-        raise unknown_definition(key)
+        raise unknown_definition("uses", key)
     return Used(key, *row)
 
 
@@ -93,7 +94,7 @@ async def used_points(connection: AsyncConnection, generation: int, key: str) ->
     )
     row = await cursor.fetchone()
     if row is None:
-        raise unknown_definition(key)
+        raise unknown_definition("used_by", key)
     cursor = await connection.execute(
         "SELECT target_point FROM uses WHERE user_point = %(user)s"
         " UNION SELECT t.point FROM external_uses e JOIN definitions t"

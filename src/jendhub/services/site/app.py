@@ -120,7 +120,12 @@ def failure(
     if for_agents(request.url.path):
         return text(f"{message}\n", status, headers)
     response = page(
-        "error.html", code=status, status=status, phrase=HTTPStatus(status).phrase, message=message
+        "error.html",
+        code=status,
+        status=status,
+        phrase=HTTPStatus(status).phrase,
+        message=message,
+        query=box_text(request) if request.url.path == "/search" else "",
     )
     response.headers.update(headers or {})
     return response
