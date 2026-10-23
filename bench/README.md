@@ -24,7 +24,6 @@ jendhub bench check
 | `jendhub bench compare <A> <B> [--k N]` | Compares two pipelines query by query. |
 | `jendhub bench pool --pipelines <name> ... [--depth N] [--dry-run]` | Judges the top results of the named pipelines. `--dry-run` prints the number of new pairs and the size of the messages, and sends nothing. |
 | `jendhub bench train` | Trains the ranking model of the search engine on all queries, and writes `src/jendhub/search/ranker.txt`. |
-| `jendhub bench agreement` | Judges the original answers and random definitions, and prints the agreement. It keeps none of these grades. |
 | `jendhub bench judge [--dry-run]` | Judges each pair with a stale grade again. `--dry-run` prints the number of pairs and the size of the messages, and sends nothing. |
 
 ## Files
@@ -202,23 +201,6 @@ These pipelines are pooled at depth 10:
 - `dense-origin+name+lambdamart`
 
 Pooling costs about $0.15 for 1,000 pairs.
-
-### Judge validation
-
-`bench agreement` judges the original answers blind, and one random
-definition for each query. The random definitions come from a fixed seed. It
-keeps none of these grades, so each run judges all its pairs again. The
-shares of each judged grade on all 300 queries:
-
-| Original grade | Pairs | Judged 0 | Judged 1 | Judged 2 | Judged 3 |
-|---|---|---|---|---|---|
-| 3 | 478 | 0.00 | 0.14 | 0.10 | 0.77 |
-| 2 | 525 | 0.01 | 0.64 | 0.21 | 0.14 |
-| 1 | 424 | 0.03 | 0.81 | 0.11 | 0.04 |
-| random | 300 | 0.96 | 0.04 | 0.00 | 0.00 |
-
-The judge gives the same grade in 57% of the original answers, and calls 99%
-of them relevant. It is stricter than the query writer on grades 2 and 3.
 
 ## Comparisons
 

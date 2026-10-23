@@ -5,13 +5,7 @@ from collections import Counter
 from jendhub.bench.benchmark import Benchmark
 from jendhub.bench.evaluate import compare, evaluate, format_comparisons, format_scores
 from jendhub.bench.judge import Judge, Pair
-from jendhub.bench.pooling import (
-    agreement_rows,
-    answer_pairs,
-    format_agreement,
-    pool,
-    random_negatives,
-)
+from jendhub.bench.pooling import answer_pairs, pool
 from jendhub.bench.queries import JUDGED_GRADES, summary
 from jendhub.lab.learned import train_all
 from jendhub.lab.pipelines import DEPLOYED
@@ -83,14 +77,6 @@ async def train_model(benchmark: Benchmark) -> None:
     sys.stdout.write(f"wrote {MODEL} from {len(resources.graded)} queries\n")
 
 
-async def check_agreement(benchmark: Benchmark) -> None:
-    ids = [definition.id for definition in benchmark.definitions]
-    negatives = random_negatives(benchmark.queries, ids)
-    grades = await benchmark.grades(answer_pairs(benchmark.queries) + negatives)
-    rows = agreement_rows(benchmark.queries, negatives, grades)
-    sys.stdout.write(format_agreement(rows) + "\n")
-
-
 async def run_bench(benchmark: Benchmark, subcommand: str, arguments: argparse.Namespace) -> None:
     match subcommand:
         case "check":
@@ -108,8 +94,6 @@ async def run_bench(benchmark: Benchmark, subcommand: str, arguments: argparse.N
         case "train":
             benchmark.require_current()
             await train_model(benchmark)
-        case "agreement":
-            await check_agreement(benchmark)
         case "judge" if arguments.dry_run:
             sys.stdout.write(describe_messages(benchmark.judge, list(benchmark.stale.values())))
         case "judge":

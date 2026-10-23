@@ -119,10 +119,6 @@ def parse_arguments() -> argparse.Namespace:
         "train",
         help="train the ranking model of the search engine on all queries and write it",
     )
-    bench_commands.add_parser(
-        "agreement",
-        help="judge the original answers and random definitions, and compare the grades",
-    )
     judge_parser = bench_commands.add_parser(
         "judge", help="judge again each pair with a stale grade"
     )

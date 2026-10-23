@@ -133,15 +133,6 @@ class Benchmark:
             pair(query, definitions[id_], self.graph, definitions) for query, id_ in unique.values()
         ]
 
-    async def grades(self, pairs: list[tuple[Query, str]]) -> dict[Key, int]:
-        grades: dict[Key, int] = {}
-
-        async def record(judged: Pair, grade: int) -> None:
-            grades[judged.query.text, judged.definition.id] = grade
-
-        await self.judge.judge(self.services.openrouter, self.pairs(pairs), record)
-        return grades
-
     def unjudged(self, pairs: list[tuple[Query, str]]) -> list[Pair]:
         known = {
             (query.text, id_)
