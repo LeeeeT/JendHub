@@ -76,3 +76,14 @@ def test_the_head_of_a_def_ends_at_the_colon_after_balanced_parentheses() -> Non
     source = "def f(g: (Nat) -> Nat,\n  x: Nat) -> {f(x) == x : Nat}:\n  {==}\n"
     [definition] = extract(SourceFile(BASE, source))
     assert definition.head == "def f(g: (Nat) -> Nat,\n  x: Nat) -> {f(x) == x : Nat}:"
+
+
+def test_only_a_newline_ends_a_line() -> None:
+    source = 'def a() -> String:\n  "x\u2028y\x0cz"\n\ndef b() -> Nat:\n  1\n'
+    _, b = extract(SourceFile(BASE, source))
+    assert (b.start, b.end) == (3, 5)
+
+
+def test_a_carriage_return_before_a_newline_is_not_code() -> None:
+    [definition] = extract(SourceFile(BASE, "def a() -> Nat:\r\n  1\r\n"))
+    assert definition.text == "def a() -> Nat:\n  1"

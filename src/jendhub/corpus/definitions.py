@@ -89,8 +89,14 @@ def doc_comment(lines: list[str], start: int) -> list[str]:
     return lines[end:start]
 
 
+def source_lines(source: str) -> list[str]:
+    if not source:
+        return []
+    return [line.removesuffix("\r") for line in source.removesuffix("\n").split("\n")]
+
+
 def blocks(source: str) -> list[Block]:
-    lines = source.splitlines()
+    lines = source_lines(source)
     found: list[Block] = []
     for start, line in enumerate(lines):
         match = DECLARATION.match(line)

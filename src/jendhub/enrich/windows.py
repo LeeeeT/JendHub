@@ -2,7 +2,7 @@ import itertools
 from dataclasses import dataclass
 
 from jendhub.corpus.corpus import Corpus, source_files
-from jendhub.corpus.definitions import Definition, Origin, SourceFile, extract
+from jendhub.corpus.definitions import Definition, Origin, SourceFile, extract, source_lines
 
 BEFORE = 40
 TARGETS = 40
@@ -20,7 +20,7 @@ class Window:
 
 def windows(file: SourceFile) -> list[Window]:
     definitions = extract(file)
-    lines = file.source.splitlines()
+    lines = source_lines(file.source)
     offsets = [0, *itertools.accumulate(len(line) + 1 for line in lines)]
     found: list[Window] = []
     for index in range(0, len(definitions), TARGETS):
