@@ -110,8 +110,9 @@ three packages left the dev corpus, and the corpus went from 12,208 to 11,231
 definitions. The answers in these packages left the queries. 12 queries then
 had no grade-3 answer, so they left too, and 9 queries lost some answers. 488
 queries remain.
-The sections from "Results" to "In production" give the measurements on the
-500 queries, the 44 packages and Base v2.0.37, and were not run again.
+The sections from "Results" to "The lean and trim variants" give the
+measurements on the 500 queries, the 44 packages and Base v2.0.37, and were not
+run again. "In production" gives the measurements on the 488 queries.
 
 | Kind | Queries |
 |---|---|
@@ -606,11 +607,31 @@ reads them from Postgres and Qdrant. `jendhub bench train` trains one model on
 all queries, with the same parameters, and writes `search/ranker.txt`. The
 current model learned from the 500 queries.
 
-The benchmark runs the engine as `production`. Its scores are too high,
-because its model learned from the same queries: 0.899 at 10, 0.889 at 5 and
-0.893 at 3, with judged@10 0.978. The cross-validated scores of the lab
-pipeline, 0.841, 0.814 and 0.802, are the estimate for new queries. The 37
-features scored 0.907, 0.897 and 0.900 in the same way.
+The benchmark runs the engine as `production`. On the 500 queries and Base
+v2.0.37, the engine scored 0.899 at 10, 0.889 at 5 and 0.893 at 3. The
+cross-validated lab pipeline scored 0.841, 0.814 and 0.802. The 37 features
+scored 0.907, 0.897 and 0.900 in the same way.
+
+After the move to Base v2.0.38, pooling judged the 1,945 new pairs in the top
+10 of `production` for $0.34. With all current grades, on the 488 queries:
+
+| Queries | `production` @10 | @5 | @3 | Cross-validated @10 | @5 | @3 |
+|---|---|---|---|---|---|---|
+| all 488 | 0.905 | 0.882 | 0.885 | 0.849 | 0.816 | 0.801 |
+| keywords (144) | 0.939 | 0.917 | 0.916 | 0.886 | 0.860 | 0.838 |
+| phrase (127) | 0.922 | 0.899 | 0.903 | 0.874 | 0.845 | 0.830 |
+| description (103) | 0.866 | 0.829 | 0.828 | 0.786 | 0.735 | 0.704 |
+| question (34) | 0.821 | 0.808 | 0.828 | 0.760 | 0.711 | 0.744 |
+| signature (29) | 0.885 | 0.872 | 0.877 | 0.846 | 0.831 | 0.819 |
+| name (23) | 0.907 | 0.889 | 0.921 | 0.841 | 0.812 | 0.813 |
+| exact-name (14) | 0.913 | 0.916 | 0.900 | 0.875 | 0.853 | 0.860 |
+| exact-signature (14) | 0.927 | 0.920 | 0.908 | 0.904 | 0.885 | 0.881 |
+
+The `production` scores are too high, because its model learned from the 500
+queries, and 488 of them are in this set. judged@10 is 1.000. The
+cross-validated scores of `dense-origin+name+lambdamart` are the estimate for
+new queries. Its judged@10 is 0.949, and its judged@5 is 0.998, so its value at
+10 can be a little too low.
 
 The engine scores with int8 vectors, and the lab with full vectors. With the
 same model, they give the same first result for 98.2% of the queries, and
@@ -659,6 +680,6 @@ scores take the most time, and the server also runs other services.
   every query that the corpus answers, but it graded the definitions that it
   found, and the search found many of them.
 - The dev corpus has 11,231 definitions. The search corpus is much larger, with
-  more distractors: the live index holds 57,169 definitions of 113 releases.
+  more distractors: the live index holds 68,328 definitions of Base and 136 packages.
   The dev corpus cannot show the recall of the HNSW index or of binary
   quantization at that size.
