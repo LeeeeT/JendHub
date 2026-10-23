@@ -277,7 +277,7 @@ class Site:
     async def definition(self, id_: str) -> DefinitionView:
         found = await self.found_definition(id_)
         if found is None:
-            raise HTTPException(404, f"The index has no definition {id_}.")
+            raise HTTPException(404, f"The index has no definition “{id_}”.")
         return found
 
     async def named(self, given: DefinitionArguments) -> DefinitionView:
@@ -291,7 +291,7 @@ class Site:
         if await indexed_file(self.pool, self.target().generation, given.path):
             raise HTTPException(
                 404,
-                f"{place.path} has no definition {given.name}. Give the name as the file"
+                f"{place.path} has no definition “{given.name}”. Give the name as the file"
                 " declares it, with no alias of an import line: `parse`, not `Json.parse`.",
             )
         raise HTTPException(
