@@ -447,13 +447,13 @@ async def test_mcp_tools_open_read_and_find_code(site: httpx.AsyncClient) -> Non
         (
             "read",
             {"path": "kit@1.0.0.0/nothing.bend"},
-            "The store has no file kit@1.0.0.0/nothing.bend.",
+            "The store has no file “kit@1.0.0.0/nothing.bend”.",
         ),
         (
             "read",
             {"path": "kit/main.bend"},
             (
-                "The store has no release kit. The latest releases of kit are kit@2.0.0.0,"
+                "The store has no release “kit”. The latest releases of kit are kit@2.0.0.0,"
                 " kit@1.0.0.0."
             ),
         ),
@@ -465,7 +465,7 @@ async def test_mcp_tools_open_read_and_find_code(site: httpx.AsyncClient) -> Non
         (
             "definition",
             {"path": "kit@2.0.0.0/main.bend", "name": "double"},
-            "The index has no definitions of kit@2.0.0.0/main.bend.",
+            "The index has no definitions of “kit@2.0.0.0/main.bend”.",
         ),
         (
             "grep",
@@ -489,7 +489,7 @@ async def test_mcp_tools_explain_a_failure(
 
 async def test_mcp_clients_get_an_error_for_an_unknown_tool(site: httpx.AsyncClient) -> None:
     response = await rpc(site, "tools/call", {"name": "nothing", "arguments": {}})
-    assert response.json()["error"]["message"] == "JendHub has no tool nothing."
+    assert response.json()["error"]["message"] == "JendHub has no tool “nothing”."
 
 
 async def test_browsers_get_a_search_description(site: httpx.AsyncClient) -> None:

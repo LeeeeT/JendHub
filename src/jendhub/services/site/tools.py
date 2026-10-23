@@ -157,7 +157,7 @@ def tool_server(running: Running[Site], searching: Guard, version: str) -> Serve
     async def call_tool(ctx: Context, params: CallToolRequestParams) -> CallToolResult:
         found = answers.get(params.name)
         if found is None:
-            raise MCPError(INVALID_PARAMS, f"JendHub has no tool {params.name}.")
+            raise MCPError(INVALID_PARAMS, f"JendHub has no tool “{params.name}”.")
         try:
             with answering():
                 return answer(await found(ctx, params.arguments or {}))

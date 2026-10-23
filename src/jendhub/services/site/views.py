@@ -287,7 +287,7 @@ class Site:
             return found
         place = await self.locate(given.path)
         if not place.target.is_file():
-            raise HTTPException(404, f"The store has no file {place.path}.")
+            raise HTTPException(404, f"The store has no file “{place.path}”.")
         if await indexed_file(self.pool, self.target().generation, given.path):
             raise HTTPException(
                 404,
@@ -296,7 +296,7 @@ class Site:
             )
         raise HTTPException(
             404,
-            f"The index has no definitions of {place.path}. The index holds only Base and the"
+            f"The index has no definitions of “{place.path}”. The index holds only Base and the"
             " latest valid release of each package. `read`, `grep` and `files` work on every"
             " release.",
         )
@@ -329,7 +329,7 @@ class Site:
     async def package(self, name: str, offset: int, limit: int) -> PackageView:
         found = await read_package(self.pool, self.target().generation, name, offset, limit)
         if found is None:
-            raise HTTPException(404, f"BendHub has no package {name}.")
+            raise HTTPException(404, f"BendHub has no package “{name}”.")
         return PackageView(found, offset)
 
     async def status(self, offset: int, limit: int) -> StatusView:
@@ -343,13 +343,13 @@ class Site:
     async def files(self, release: str) -> ReleaseFiles:
         found = await read_release_files(self.pool, self.library, self.target().generation, release)
         if found is None:
-            raise HTTPException(404, f"The store has no release {release}.")
+            raise HTTPException(404, f"The store has no release “{release}”.")
         return found
 
     async def source(self, release: str, path: str) -> SourceFile:
         found = await read_file(self.pool, self.library, self.target().generation, release, path)
         if found is None:
-            raise HTTPException(404, f"The store has no file {release}/{path}.")
+            raise HTTPException(404, f"The store has no file “{release}/{path}”.")
         return found
 
     async def file(self, release: str, path: str) -> FileView:

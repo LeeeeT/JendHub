@@ -69,19 +69,19 @@ class Page:
 
 async def unknown_release(connection: AsyncConnection, release: str) -> HTTPException:
     if HASH.fullmatch(release):
-        return HTTPException(404, f"The store has no release with the hash {release}.")
+        return HTTPException(404, f"The store has no release with the hash “{release}”.")
     name = release.partition("@")[0]
     found, total = await latest_releases(connection, name, NAMED_RELEASES)
     if not found:
         return HTTPException(
             404,
-            f"The store has no package {name}. Start a path with a release as name@version,"
+            f"The store has no package “{name}”. Start a path with a release as name@version,"
             " for example kit@1.0.0.0, or with the hash of a release.",
         )
     more = f" and {total - len(found)} more" if total > len(found) else ""
     return HTTPException(
         404,
-        f"The store has no release {release}. The latest releases of {name} are"
+        f"The store has no release “{release}”. The latest releases of {name} are"
         f" {', '.join(found)}{more}.",
     )
 
@@ -111,7 +111,7 @@ async def read_lines(place: Place, start_line: int, end_line: int | None) -> Lin
         raise HTTPException(400, f"{place.path} is a directory. Use `files` to list its files.")
     text = await asyncio.to_thread(read_text, place.target)
     if text is None:
-        raise HTTPException(404, f"The store has no file {place.path}.")
+        raise HTTPException(404, f"The store has no file “{place.path}”.")
     lines = split_lines(text)
     if lines and start_line > len(lines):
         raise HTTPException(400, f"{place.path} has {len(lines)} lines.")
@@ -207,7 +207,7 @@ async def ripgrep(place: Place, command: list[str], limit: int, offset: int) -> 
 
 async def grep_files(place: Place, given: GrepArguments) -> Page:
     if not place.target.exists():
-        raise HTTPException(404, f"The store has no file or directory {place.path}.")
+        raise HTTPException(404, f"The store has no file or directory “{place.path}”.")
     return await ripgrep(
         place, grep_command(given, ripgrep_target(place)), given.limit, given.offset
     )
@@ -217,7 +217,7 @@ async def list_files(place: Place, given: FilesArguments) -> Page:
     if not place.target.is_dir():
         if place.target.exists():
             raise HTTPException(400, f"{place.path} is a file. Use `read` to read it.")
-        raise HTTPException(404, f"The store has no directory {place.path}.")
+        raise HTTPException(404, f"The store has no directory “{place.path}”.")
     return await ripgrep(
         place, files_command(given, ripgrep_target(place)), given.limit, given.offset
     )
