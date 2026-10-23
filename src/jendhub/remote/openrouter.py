@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -66,7 +65,7 @@ class OpenRouter:
         response = await self.send(path, request)
         try:
             body: Json = response.json()
-        except json.JSONDecodeError as error:
+        except ValueError as error:
             raise OpenRouterError(f"OpenRouter returned status {response.status_code}") from error
         match body:
             case {"error": {"message": str() as message, "metadata": {"raw": str() as raw}}}:

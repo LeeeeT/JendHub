@@ -164,6 +164,14 @@ async def test_embed_rejects_a_response_that_is_not_json(
         await embedder.embed(["List.map"])
 
 
+async def test_embed_rejects_a_response_that_is_not_utf8(
+    router: respx.MockRouter, embedder: RemoteEmbedder
+) -> None:
+    router.post(ENDPOINT).respond(200, content=b"\xff\xfe{")
+    with pytest.raises(OpenRouterError, match="200"):
+        await embedder.embed(["List.map"])
+
+
 def tokens() -> float:
     return REGISTRY.get_sample_value("jendhub_embedding_tokens_total") or 0.0
 
