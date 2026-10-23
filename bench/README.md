@@ -680,6 +680,5 @@ scores take the most time, and the server also runs other services.
   every query that the corpus answers, but it graded the definitions that it
   found, and the search found many of them.
 - The dev corpus has 11,231 definitions. The search corpus is much larger, with
-  more distractors: the live index holds 68,328 definitions of Base and 136
-  packages. The dev corpus cannot show the recall of the HNSW index or of
+  more distractors: the live index holds about six times as many definitions. The dev corpus cannot show the recall of the HNSW index or of
   binary quantization at that size.

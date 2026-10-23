@@ -296,8 +296,8 @@ The search engine embeds the query with the instruction "Given a programming
 task, retrieve the Bend library function or type that a programmer calls to do
 it". Each document is the package name and the module path (`Base` for Base),
 then the code, cut at 32,000 characters. The cut stays far below the 40,960
-tokens of the embedding model. It changes 22 of the 187,121 definitions of the
-484 named releases, all of them proofs or generated code.
+tokens of the embedding model. It changes only a few definitions, all of them
+proofs or generated code.
 
 Each definition has a second vector, the name vector: the embedding of the
 package name and the module path, then the name, for example
@@ -341,17 +341,17 @@ row after the answer, so the log adds no latency, and a failed write does not
 fail the search. The row holds the whole ranking, not only the page, and no
 IP address.
 
-The live index holds 68,328 definitions: Base and the latest valid release of
-136 packages. On the server, the engine answers a query in 87 to 109 ms
-(median) and 132 to 162 ms (p95) when its embedding is in the cache of the
+The live index holds Base and the latest valid release of each package. The
+status page, `/status`, gives the number of releases and definitions. With
+about 68,000 definitions, the engine answered a query in 87 to 109 ms
+(median) and 132 to 162 ms (p95) when its embedding was in the cache of the
 site, measured in four passes over 30 benchmark queries. The server also runs
 other services and uses swap, so the values change from pass to pass. The name
 scores are the largest part, about 50 ms, and they run in parallel with the
-Postgres read. A
-new query waits 0.8 to 4 s for the embedding from OpenRouter, which is the
-largest part of the latency. The site waits at most 10 s for an embedding and
-tries once more, so a slow OpenRouter gives an error and not a search that
-hangs. The worker waits up to 120 s and tries 6 more times.
+Postgres read. A new query waits 0.8 to 4 s for the embedding from
+OpenRouter, which is the largest part of the latency. The site waits at most
+10 s for an embedding and tries once more, so a slow OpenRouter gives an error
+and not a search that hangs. The worker waits up to 120 s and tries 6 more times.
 
 ## Development
 
@@ -551,16 +551,15 @@ another release is stored by the module and name of its target, without the
 version.
 
 Python extracts the definitions from the source text, with their doc comments
-and heads. In each of the 1,618 files of the latest valid releases, the
-extraction and the compiler declare the same names. The worker checks this for
+and heads. In each file of the latest valid releases, the extraction and the
+compiler declare the same names. The worker checks this for
 each file and logs each difference.
 
-With Base v2.0.38, 20 of the 152 latest releases are invalid, with 274 files
-that do not load. 8 declare a constructor `Text`, which Base v2.0.38 declares
-too. The other 12 became invalid with Base v2.0.37, and JendHub does not try
-them again: 4 declare a constructor that Base declares too (`Ready` or
-`Wait`), 2 use a name part that starts with a digit, and 6 import a package
-that BendHub does not have. The loader parses and resolves names, but
+The status page lists the invalid releases and the errors of their files.
+JendHub does not try an invalid release again. The usual causes are a
+constructor that Base declares too, such as `Text` since Base v2.0.38, a name
+part that starts with a digit, and an import of a package that BendHub does
+not have. The loader parses and resolves names, but
 does not check types, so a valid release can still have type errors.
 
 ## Code layout
