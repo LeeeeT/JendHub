@@ -4,8 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from jendhub.bench.judgments import Assessment
-from jendhub.bench.queries import BenchError
+from jendhub.bench.queries import Assessment, BenchError
 from jendhub.bench.searchers import Searcher
 
 ALL_KINDS = "all"

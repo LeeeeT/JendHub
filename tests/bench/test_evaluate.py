@@ -9,8 +9,7 @@ from jendhub.bench.evaluate import (
     evaluate,
     ndcg,
 )
-from jendhub.bench.judgments import Assessment
-from jendhub.bench.queries import BenchError
+from jendhub.bench.queries import Assessment, BenchError
 
 MAP = Assessment("map a list", "phrase", {"List.map": 3, "List.foldr": 1, "List.zip": 0})
 ZIP = Assessment("zip", "name", {"List.zip": 3})

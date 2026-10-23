@@ -110,6 +110,11 @@ def parse_arguments() -> argparse.Namespace:
         default=DEFAULT_DEPTH,
         help="the number of top results of each pipeline (default: %(default)s)",
     )
+    pool_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the number of pairs to judge and the size of their messages, and send nothing",
+    )
     bench_commands.add_parser(
         "train",
         help="train the ranking model of the search engine on all queries and write it",

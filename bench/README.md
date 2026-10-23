@@ -22,9 +22,9 @@ jendhub bench check
 | `jendhub bench check` | Checks `queries.jsonl`, and prints a summary with the number of current and stale judgments. |
 | `jendhub bench run <pipeline> [--k N ...]` | Prints nDCG@k and judged@k for all queries and for each kind. |
 | `jendhub bench compare <A> <B> [--k N]` | Compares two pipelines query by query. |
-| `jendhub bench pool --pipelines <name> ... [--depth N]` | Judges the top results of the named pipelines. |
+| `jendhub bench pool --pipelines <name> ... [--depth N] [--dry-run]` | Judges the top results of the named pipelines. `--dry-run` prints the number of new pairs and the size of the messages, and sends nothing. |
 | `jendhub bench train` | Trains the ranking model of the search engine on all queries, and writes `src/jendhub/search/ranker.txt`. |
-| `jendhub bench agreement` | Judges the original answers and random definitions, and prints the agreement. |
+| `jendhub bench agreement` | Judges the original answers and random definitions, and prints the agreement. It keeps none of these grades. |
 | `jendhub bench judge [--dry-run]` | Judges each pair with a stale grade again. `--dry-run` prints the number of pairs and the size of the messages, and sends nothing. |
 
 ## Files
@@ -33,12 +33,16 @@ jendhub bench check
 |---|---|
 | `dev.json` | The frozen dev corpus: the Base tag and 41 packages. |
 | `PROMPT.md` | The prompt of the second run of queries. |
-| `queries.jsonl` | 488 queries with graded answers. |
+| `queries.jsonl` | 488 queries with the graded answers of the query writer and the grades of the judge. |
 | `JUDGE.md` | The prompt of the LLM judge. |
 
 ## Queries
 
-Each line is `{"query", "kind", "answers": [{"id", "grade"}]}`. The queries
+Each line is `{"query", "kind", "answers": [{"id", "grade"}], "judgments":
+[{"id", "grade", "request"}]}`. The query writer gave the answers, with grades 1
+to 3. The judge gave the judgments, with grades 0 to 3 (see
+[Judgments and pooling](#judgments-and-pooling)). A definition has at most one
+grade for each query. The queries
 imitate an AI agent that searches before it knows the name of the definition.
 Thus most queries are short and vague. The targets are API definitions, not
 helpers, tests or examples.
@@ -153,16 +157,17 @@ top results of chosen pipelines.
   its package uses, at most 5 heads. The uses help the judge to see what the
   definition does. The users and the roots help it to see if the definition is
   a helper.
-- The `judgments` table in Postgres stores each grade with its query, its definition ID
-  and the SHA-256 of the full request. Grade 0 rows are kept. No row is ever
-  deleted.
+- `queries.jsonl` is the only store of grades. Each judgment keeps its grade
+  and the SHA-256 of the full request in hexadecimal. Grade 0 judgments are
+  kept. `bench pool` and `bench judge` write the file again when they stop,
+  also after an error, so no paid grade is lost.
 - A grade is current if its request is the request that the judge gets today
   for the same pair. A change of `JUDGE.md`, of the message format, of the
   definition text or of its uses makes the grade stale. `bench run` and
   `bench compare` refuse to run while a grade is stale. `bench judge` judges
-  the stale pairs again. If a request goes back to an earlier form, its old
-  grade is current again.
-- In the evaluation, an original answer always wins over a judgment.
+  the stale pairs again, and the new grade replaces the old one.
+- No judgment is kept for a pair that has an original answer. The original
+  answer is the only grade of that pair.
 - `bench pool` skips pairs that already have a current grade. Thus a later run
   judges only the new results.
 - Pool only good pipelines. A weak experimental pipeline adds noise and cost.
@@ -201,7 +206,8 @@ Pooling costs about $0.15 for 1,000 pairs.
 ### Judge validation
 
 `bench agreement` judges the original answers blind, and one random
-definition for each query. The random definitions come from a fixed seed. The
+definition for each query. The random definitions come from a fixed seed. It
+keeps none of these grades, so each run judges all its pairs again. The
 shares of each judged grade on all 300 queries:
 
 | Original grade | Pairs | Judged 0 | Judged 1 | Judged 2 | Judged 3 |

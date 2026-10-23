@@ -4,8 +4,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from jendhub.bench.judgments import JUDGED_GRADES, Judgment
-from jendhub.bench.queries import Query
+from jendhub.bench.queries import JUDGED_GRADES, Key, Query
 from jendhub.corpus.definitions import Definition
 from jendhub.errors import JendHubError
 from jendhub.json import Json
@@ -127,8 +126,8 @@ class Judge:
             "provider": {"only": [PROVIDER], "allow_fallbacks": False},
         }
 
-    def key(self, pair: Pair) -> bytes:
-        return hashlib.sha256(json.dumps(self.request(pair), sort_keys=True).encode()).digest()
+    def key(self, pair: Pair) -> str:
+        return hashlib.sha256(json.dumps(self.request(pair), sort_keys=True).encode()).hexdigest()
 
     async def judge(
         self,
@@ -153,23 +152,14 @@ class Judge:
         return usage
 
 
-def current_judgments(
-    stored: dict[bytes, Judgment],
-    queries: list[Query],
-    definitions: list[Definition],
-    judge: Judge,
-    graph: UseGraph,
-) -> tuple[list[Judgment], dict[tuple[str, str], Pair]]:
-    by_query = {query.text: query for query in queries}
+def stale_pairs(
+    queries: list[Query], definitions: list[Definition], judge: Judge, graph: UseGraph
+) -> dict[Key, Pair]:
     by_id = {definition.id: definition for definition in definitions}
-    judged = {(j.query, j.id) for j in stored.values() if j.query in by_query and j.id in by_id}
-    current: list[Judgment] = []
-    stale: dict[tuple[str, str], Pair] = {}
-    for query, id_ in sorted(judged):
-        request = pair(by_query[query], by_id[id_], graph, by_id)
-        found = stored.get(judge.key(request))
-        if found is None:
-            stale[query, id_] = request
-        else:
-            current.append(found)
-    return current, stale
+    stale: dict[Key, Pair] = {}
+    for query in queries:
+        for judgment in query.judgments:
+            request = pair(query, by_id[judgment.id], graph, by_id)
+            if judge.key(request) != judgment.request:
+                stale[query.text, judgment.id] = request
+    return stale

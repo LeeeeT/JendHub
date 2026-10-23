@@ -1,6 +1,5 @@
 from collections import Counter
 
-from jendhub.bench.judgments import Judgment
 from jendhub.bench.pooling import (
     agreement_rows,
     answer_pairs,
@@ -58,14 +57,14 @@ def test_answer_pairs_list_each_original_answer() -> None:
 
 
 def test_agreement_rows_count_the_judged_grade_of_each_expected_grade() -> None:
-    judgments = [
-        Judgment("map", "List.map", 3),
-        Judgment("map", "List.fold", 0),
-        Judgment("add", "Nat.add", 2),
-        Judgment("add", "Nat.sub", 0),
-    ]
+    grades = {
+        ("map", "List.map"): 3,
+        ("map", "List.fold"): 0,
+        ("add", "Nat.add"): 2,
+        ("add", "Nat.sub"): 0,
+    }
     negatives = [(ADD, "Nat.sub")]
-    assert agreement_rows([MAP, ADD], negatives, judgments) == {
+    assert agreement_rows([MAP, ADD], negatives, grades) == {
         "3": Counter({3: 1, 2: 1}),
         "2": Counter(),
         "1": Counter({0: 1}),

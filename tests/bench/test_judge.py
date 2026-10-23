@@ -11,14 +11,13 @@ from jendhub.bench.judge import (
     InvalidGradeError,
     Judge,
     Pair,
-    current_judgments,
     pair,
     parse_grade,
     roots,
+    stale_pairs,
     user_message,
 )
-from jendhub.bench.judgments import Judgment
-from jendhub.bench.queries import Answer, Query
+from jendhub.bench.queries import Answer, Judgment, Query
 from jendhub.corpus.definitions import BASE, Definition
 from jendhub.json import Json
 from jendhub.remote.openrouter import API
@@ -105,27 +104,29 @@ def test_the_key_changes_with_the_prompt_and_the_message() -> None:
     assert judge.key(PAIR) != judge.key(Pair(MAP, LIST_MAP, (definition("List.double"),), (), ()))
 
 
-def test_current_judgments_split_the_stored_pairs_into_current_and_stale() -> None:
+def test_the_key_is_the_sha256_of_the_request_in_hexadecimal() -> None:
+    assert len(Judge("prompt").key(PAIR)) == 64
+    assert int(Judge("prompt").key(PAIR), 16) >= 0
+
+
+def test_stale_pairs_are_the_judgments_of_an_earlier_request() -> None:
     definitions = [LIST_MAP, definition("Nat.add"), definition("List.double")]
     by_id = {d.id: d for d in definitions}
     graph = UseGraph({"List.map": frozenset({"List.double"})}, {})
     judge = Judge("prompt")
-    current = pair(MAP, LIST_MAP, graph, by_id)
-    stored = {
-        judge.key(current): Judgment("map a list", "List.map", 3),
-        judge.key(Pair(MAP, by_id["Nat.add"], (), (), ())): Judgment("map a list", "Nat.add", 1),
-        Judge("old").key(Pair(MAP, by_id["List.double"], (), (), ())): Judgment(
-            "map a list", "List.double", 2
-        ),
-        b"unknown query": Judgment("sort a list", "List.map", 2),
-        b"unknown definition": Judgment("map a list", "List.sort", 2),
+    double = pair(MAP, by_id["List.double"], graph, by_id)
+    judged = Query(
+        MAP.text,
+        MAP.kind,
+        MAP.answers,
+        [
+            Judgment("Nat.add", 1, judge.key(pair(MAP, by_id["Nat.add"], graph, by_id))),
+            Judgment("List.double", 2, Judge("old").key(double)),
+        ],
+    )
+    assert stale_pairs([judged], definitions, judge, graph) == {
+        ("map a list", "List.double"): pair(judged, by_id["List.double"], graph, by_id)
     }
-    judgments, stale = current_judgments(stored, [MAP], definitions, judge, graph)
-    assert judgments == [
-        Judgment("map a list", "List.map", 3),
-        Judgment("map a list", "Nat.add", 1),
-    ]
-    assert stale == {("map a list", "List.double"): pair(MAP, by_id["List.double"], graph, by_id)}
 
 
 def test_parse_grade_reads_the_grade() -> None:

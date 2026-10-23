@@ -2,14 +2,11 @@ from collections import Counter
 
 import numpy as np
 
-from jendhub.bench.judgments import JUDGED_GRADES, Judgment
-from jendhub.bench.queries import GRADES, Query
+from jendhub.bench.queries import GRADES, JUDGED_GRADES, Key, Query
 from jendhub.bench.searchers import Searcher
 
 SEED = 0
 RANDOM = "random"
-
-type Key = tuple[str, str]
 
 
 async def pool(
@@ -41,9 +38,8 @@ def answer_pairs(queries: list[Query]) -> list[tuple[Query, str]]:
 
 
 def agreement_rows(
-    queries: list[Query], negatives: list[tuple[Query, str]], judgments: list[Judgment]
+    queries: list[Query], negatives: list[tuple[Query, str]], grades: dict[Key, int]
 ) -> dict[str, Counter[int]]:
-    grades: dict[Key, int] = {(j.query, j.id): j.grade for j in judgments}
     rows: dict[str, Counter[int]] = {str(grade): Counter() for grade in reversed(GRADES)}
     rows[RANDOM] = Counter()
     for query in queries:

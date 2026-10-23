@@ -507,7 +507,7 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | Postgres `definitions`, `uses`, `external_uses`, `user_counts` | The definitions of each generation, with their features, their uses and the number of definitions that use each key. |
 | Postgres `highlights` | The highlights of each line of each indexed file, for each generation: the column range, the class, whether the token declares its name, and the key of the definition that the name refers to. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
-| Postgres `judgments`, `enrichments`, `enrichment_rejections` | The benchmark grades and the enrichments. |
+| Postgres `enrichments`, `enrichment_rejections` | The enrichments. |
 | Postgres `searches` | Every real search: time, client (`agents` for the text form, `web` for the pages, `mcp` for the search tool), the caller's User-Agent, the MCP client name and version when the client sends them, query, filters, page, generation, the whole ranking and the search time. JendHub never deletes a row. |
 | Qdrant `jendhub-g<generation>-<setting>` | The vectors of one generation. |
 | The library, `data/library` | The files of each package in the `BEND_LIB` layout (`lib/<hash>/<path>`, and `lib/names/<name@version>` with the hash), and `base/<tag>/base.bend`. |

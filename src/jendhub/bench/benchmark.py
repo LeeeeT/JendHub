@@ -4,9 +4,19 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from jendhub.bench.judge import Judge, Pair, current_judgments, pair
-from jendhub.bench.judgments import Assessment, Judgment, JudgmentStore, assessments
-from jendhub.bench.queries import BenchError, Query, check, queries_within
+from jendhub.bench.judge import Judge, Pair, pair, stale_pairs
+from jendhub.bench.queries import (
+    Assessment,
+    BenchError,
+    Judgment,
+    Key,
+    Query,
+    assessments,
+    check,
+    format_queries,
+    queries_within,
+    with_judgments,
+)
 from jendhub.bench.searchers import EngineSearcher, LabSearcher, Searcher
 from jendhub.corpus.corpus import Corpus, corpus_definitions
 from jendhub.corpus.definitions import Definition
@@ -87,14 +97,21 @@ class Benchmark:
     definitions: list[Definition]
     graph: UseGraph
     resources: Resources
+    every_query: list[Query]
     queries: list[Query]
     judge: Judge
-    store: JudgmentStore
-    judgments: list[Judgment]
-    stale: dict[tuple[str, str], Pair]
+    stale: dict[Key, Pair]
 
     def assessments(self) -> list[Assessment]:
-        return assessments(self.queries, self.judgments)
+        return assessments(self.queries, self.stale)
+
+    def judgments(self) -> list[Judgment]:
+        return [
+            judgment
+            for query in self.queries
+            for judgment in query.judgments
+            if (query.text, judgment.id) not in self.stale
+        ]
 
     async def engine(self) -> SearchEngine:
         services = self.services
@@ -109,23 +126,57 @@ class Benchmark:
             return EngineSearcher(await self.engine())
         return LabSearcher(await PIPELINES[name](self.resources), self.services.embedder)
 
-    async def judge_pairs(self, pairs: list[tuple[Query, str]]) -> None:
-        known = {(judgment.query, judgment.id) for judgment in self.judgments}
+    def pairs(self, pairs: list[tuple[Query, str]]) -> list[Pair]:
         definitions = {definition.id: definition for definition in self.definitions}
         unique = {(query.text, id_): (query, id_) for query, id_ in pairs}
-        new = [
-            pair(query, definitions[id_], self.graph, definitions)
-            for key, (query, id_) in unique.items()
-            if key not in known
+        return [
+            pair(query, definitions[id_], self.graph, definitions) for query, id_ in unique.values()
         ]
 
-        async def record(judged: Pair, grade: int) -> None:
-            judgment = Judgment(judged.query.text, judged.definition.id, grade)
-            await self.store.store(self.judge.key(judged), judgment)
-            self.judgments.append(judgment)
-            self.stale.pop((judgment.query, judgment.id), None)
+    async def grades(self, pairs: list[tuple[Query, str]]) -> dict[Key, int]:
+        grades: dict[Key, int] = {}
 
-        await self.judge.judge(self.services.openrouter, new, record)
+        async def record(judged: Pair, grade: int) -> None:
+            grades[judged.query.text, judged.definition.id] = grade
+
+        await self.judge.judge(self.services.openrouter, self.pairs(pairs), record)
+        return grades
+
+    def unjudged(self, pairs: list[tuple[Query, str]]) -> list[Pair]:
+        known = {
+            (query.text, id_)
+            for query in self.queries
+            for id_ in [answer.id for answer in query.answers]
+            + [judgment.id for judgment in query.judgments]
+            if (query.text, id_) not in self.stale
+        }
+        return self.pairs([(query, id_) for query, id_ in pairs if (query.text, id_) not in known])
+
+    async def judge_pairs(self, pairs: list[tuple[Query, str]]) -> None:
+        found: dict[str, list[Judgment]] = {}
+
+        async def record(judged: Pair, grade: int) -> None:
+            query = judged.query.text
+            found.setdefault(query, []).append(
+                Judgment(judged.definition.id, grade, self.judge.key(judged))
+            )
+            self.stale.pop((query, judged.definition.id), None)
+
+        try:
+            await self.judge.judge(self.services.openrouter, self.unjudged(pairs), record)
+        finally:
+            await self.save(found)
+
+    async def save(self, found: dict[str, list[Judgment]]) -> None:
+        if not found:
+            return
+
+        def judged(queries: list[Query]) -> list[Query]:
+            return [with_judgments(query, found.get(query.text, [])) for query in queries]
+
+        self.queries = judged(self.queries)
+        self.every_query = judged(self.every_query)
+        await asyncio.to_thread(write_queries, self.every_query)
 
     def require_current(self) -> None:
         if self.stale:
@@ -138,9 +189,15 @@ def pipeline_names() -> list[str]:
     return sorted([*PIPELINES, ENGINE])
 
 
+def write_queries(queries: list[Query]) -> None:
+    written = QUERIES.with_name(QUERIES.name + ".new")
+    written.write_text(format_queries(queries), encoding="utf-8")
+    written.replace(QUERIES)
+
+
 async def read_queries(
     services: Services, listed: DevCorpus, ids: set[str], top: int | None
-) -> list[Query]:
+) -> tuple[list[Query], list[Query]]:
     try:
         text = await asyncio.to_thread(QUERIES.read_text, encoding="utf-8")
     except FileNotFoundError as error:
@@ -153,7 +210,7 @@ async def read_queries(
     if problems:
         lines = "".join(f"\n{QUERIES}: {problem}" for problem in problems)
         raise BenchError(f"{len(problems)} problems in {QUERIES}:{lines}")
-    return queries_within(queries, ids)
+    return queries, queries_within(queries, ids)
 
 
 @asynccontextmanager
@@ -168,16 +225,15 @@ async def open_benchmark(top: int | None) -> AsyncGenerator[Benchmark]:
         windows = corpus_windows(corpus)
         enrichments = (await EnrichmentStore(services.pool).load(windows)).enrichments
         ids = {definition.id for definition in definitions}
-        queries = await read_queries(services, listed, ids, top)
+        every_query, queries = await read_queries(services, listed, ids, top)
         judge = Judge(await asyncio.to_thread(JUDGE_PROMPT.read_text, encoding="utf-8"))
-        store = JudgmentStore(services.pool)
-        judgments, stale = current_judgments(await store.load(), queries, definitions, judge, graph)
+        stale = stale_pairs(queries, definitions, judge, graph)
         resources = Resources(
             definitions,
             services.embedder,
             enrichments,
             await load_facts(services.pool, generation),
-            assessments(queries, judgments),
+            assessments(queries, stale),
         )
 
         yield Benchmark(
@@ -187,9 +243,8 @@ async def open_benchmark(top: int | None) -> AsyncGenerator[Benchmark]:
             definitions,
             graph,
             resources,
+            every_query,
             queries,
             judge,
-            store,
-            judgments,
             stale,
         )

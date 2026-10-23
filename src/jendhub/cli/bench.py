@@ -5,7 +5,6 @@ from collections import Counter
 from jendhub.bench.benchmark import Benchmark
 from jendhub.bench.evaluate import compare, evaluate, format_comparisons, format_scores
 from jendhub.bench.judge import Judge, Pair
-from jendhub.bench.judgments import JUDGED_GRADES
 from jendhub.bench.pooling import (
     agreement_rows,
     answer_pairs,
@@ -13,7 +12,7 @@ from jendhub.bench.pooling import (
     pool,
     random_negatives,
 )
-from jendhub.bench.queries import summary
+from jendhub.bench.queries import JUDGED_GRADES, summary
 from jendhub.lab.learned import train_all
 from jendhub.lab.pipelines import DEPLOYED
 from jendhub.search.ranking import MODEL
@@ -32,11 +31,12 @@ def describe_messages(judge: Judge, pairs: list[Pair]) -> str:
 
 
 def check_benchmark(benchmark: Benchmark) -> None:
-    grades = Counter(judgment.grade for judgment in benchmark.judgments)
+    judgments = benchmark.judgments()
+    grades = Counter(judgment.grade for judgment in judgments)
     sys.stdout.write(
         f"definitions: {len(benchmark.definitions)}\n"
         f"{summary(benchmark.queries)}\n"
-        f"judgments: {len(benchmark.judgments)} current, {len(benchmark.stale)} stale\n"
+        f"judgments: {len(judgments)} current, {len(benchmark.stale)} stale\n"
         "judgments by grade: "
         + ", ".join(f"{grade}: {grades[grade]}" for grade in reversed(JUDGED_GRADES))
         + "\n"
@@ -58,7 +58,9 @@ async def compare_pipelines(benchmark: Benchmark, baseline: str, candidate: str,
     sys.stdout.write(f"A: {baseline}\nB: {candidate}\n{format_comparisons(comparisons, k)}\n")
 
 
-async def pool_pipelines(benchmark: Benchmark, names: list[str], depth: int) -> None:
+async def pool_pipelines(
+    benchmark: Benchmark, names: list[str], depth: int, *, dry_run: bool
+) -> None:
     searchers = [await benchmark.searcher(name) for name in dict.fromkeys(names)]
     answered = {(query.text, id_) for query, id_ in answer_pairs(benchmark.queries)}
     pairs = [
@@ -66,6 +68,9 @@ async def pool_pipelines(benchmark: Benchmark, names: list[str], depth: int) -> 
         for query, id_ in await pool(searchers, benchmark.queries, depth)
         if (query.text, id_) not in answered
     ]
+    if dry_run:
+        sys.stdout.write(describe_messages(benchmark.judge, benchmark.unjudged(pairs)))
+        return
     await benchmark.judge_pairs(pairs)
     sys.stdout.write(f"the pool holds {len(pairs)} pairs without an original answer\n")
 
@@ -81,8 +86,8 @@ async def train_model(benchmark: Benchmark) -> None:
 async def check_agreement(benchmark: Benchmark) -> None:
     ids = [definition.id for definition in benchmark.definitions]
     negatives = random_negatives(benchmark.queries, ids)
-    await benchmark.judge_pairs(answer_pairs(benchmark.queries) + negatives)
-    rows = agreement_rows(benchmark.queries, negatives, benchmark.judgments)
+    grades = await benchmark.grades(answer_pairs(benchmark.queries) + negatives)
+    rows = agreement_rows(benchmark.queries, negatives, grades)
     sys.stdout.write(format_agreement(rows) + "\n")
 
 
@@ -97,7 +102,9 @@ async def run_bench(benchmark: Benchmark, subcommand: str, arguments: argparse.N
             benchmark.require_current()
             await compare_pipelines(benchmark, arguments.baseline, arguments.candidate, arguments.k)
         case "pool":
-            await pool_pipelines(benchmark, arguments.pipelines, arguments.depth)
+            await pool_pipelines(
+                benchmark, arguments.pipelines, arguments.depth, dry_run=arguments.dry_run
+            )
         case "train":
             benchmark.require_current()
             await train_model(benchmark)
