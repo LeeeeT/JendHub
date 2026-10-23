@@ -4,7 +4,7 @@ from jendhub.hub.api import Listing, Package, Release
 from jendhub.hub.base import Base
 from jendhub.hub.library import Library
 
-TAG = "v2.0.37"
+TAG = "v2.0.38"
 LIB = Release("lib", "1.0.0.0")
 OTHER = Release("other", "1.0.0.0")
 LIB_HASH = "0x" + "a" * 32

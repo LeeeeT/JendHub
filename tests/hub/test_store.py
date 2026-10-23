@@ -33,7 +33,7 @@ async def test_a_package_with_the_release_of_another_is_rejected(
 
 async def test_latest_base_tag_is_the_last_stored(packages: PackageStore) -> None:
     assert await packages.latest_base_tag() is None
-    await packages.store_base(Base("v2.0.36", b"old"))
-    await packages.store_base(Base("v2.0.37", b"new"))
-    assert await packages.latest_base_tag() == "v2.0.37"
-    assert packages.library.base_source("v2.0.36").read_bytes() == b"old"
+    await packages.store_base(Base("v2.0.37", b"old"))
+    await packages.store_base(Base("v2.0.38", b"new"))
+    assert await packages.latest_base_tag() == "v2.0.38"
+    assert packages.library.base_source("v2.0.37").read_bytes() == b"old"

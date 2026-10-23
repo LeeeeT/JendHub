@@ -203,7 +203,7 @@ async def test_an_invalid_release_is_never_tried_again(
     await packages.store_base(Base(TAG, BASE.encode()))
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), BROKEN)
     index, _ = await index_live(packages, vectors)
-    await packages.store_base(Base("v2.0.38", BASE.encode()))
+    await packages.store_base(Base("v2.0.39", BASE.encode()))
     await schedule_live(index, packages, vectors)
     [_, new] = await index.generations(LIVE)
     assert await index.job_states(new.id) == {"queued": 1}

@@ -35,7 +35,7 @@ HOT = [
 
 
 async def full_store(full: PackageStore) -> PackageStore:
-    await full.store_base(Base("v2.0.36", b"base"))
+    await full.store_base(Base("v2.0.38", b"base"))
     sources = {
         HTTP_OLD: b"def get() -> Nat:\n  0n\n",
         HTTP_NEW: b"def get() -> Nat:\n  1n\n",
@@ -52,7 +52,7 @@ async def full_store(full: PackageStore) -> PackageStore:
 async def select_hot(router: respx.MockRouter, packages: PackageStore, budget: Budget) -> Selection:
     serve_pages(router, [HOT])
     selection = await select(await full_store(packages), budget, set())
-    assert selection.corpus.base_tag == "v2.0.36"
+    assert selection.corpus.base_tag == "v2.0.38"
     return selection
 
 
@@ -109,20 +109,20 @@ async def test_select_requires_the_packages_in_the_full_corpus(
 
 
 def test_dev_corpus_round_trips_through_json() -> None:
-    corpus = DevCorpus("v2.0.36", [PackageRelease(TIME, Release("time", "0.1.0.0"))])
+    corpus = DevCorpus("v2.0.38", [PackageRelease(TIME, Release("time", "0.1.0.0"))])
     assert DevCorpus.from_json(corpus.to_json()) == corpus
 
 
 def test_dev_corpus_refuses_an_unnamed_package() -> None:
     with pytest.raises(DevError):
         DevCorpus.from_json(
-            f'{{"base": "v2.0.36", "packages": [{{"hash": "{TIME}", "name": null}}]}}'
+            f'{{"base": "v2.0.38", "packages": [{{"hash": "{TIME}", "name": null}}]}}'
         )
 
 
 async def test_open_corpus_reads_the_packages_from_the_store(packages: PackageStore) -> None:
     store = await full_store(packages)
-    listed = DevCorpus("v2.0.36", [PackageRelease(TIME, Release("time", "0.1.0.0"))])
+    listed = DevCorpus("v2.0.38", [PackageRelease(TIME, Release("time", "0.1.0.0"))])
     corpus = await open_corpus(store, listed)
     assert corpus.packages == listed.packages
     assert corpus.library == store.library
@@ -131,8 +131,8 @@ async def test_open_corpus_reads_the_packages_from_the_store(packages: PackageSt
 @pytest.mark.parametrize(
     "listed",
     [
-        DevCorpus("v2.0.36", [PackageRelease("0x" + "9" * 32, Release("x", "0.1.0.0"))]),
-        DevCorpus("v2.0.35", []),
+        DevCorpus("v2.0.38", [PackageRelease("0x" + "9" * 32, Release("x", "0.1.0.0"))]),
+        DevCorpus("v2.0.37", []),
     ],
 )
 async def test_open_corpus_requires_the_packages_and_the_base_in_the_store(
@@ -147,15 +147,15 @@ def test_top_keeps_the_hottest_packages() -> None:
         PackageRelease(TIME, Release("time", "0.1.0.0")),
         PackageRelease(JSON, Release("json", "0.1.0.0")),
     ]
-    corpus = DevCorpus("v2.0.36", packages)
-    assert corpus.top(1) == DevCorpus("v2.0.36", packages[:1])
-    assert corpus.top(0) == DevCorpus("v2.0.36", [])
+    corpus = DevCorpus("v2.0.38", packages)
+    assert corpus.top(1) == DevCorpus("v2.0.38", packages[:1])
+    assert corpus.top(0) == DevCorpus("v2.0.38", [])
 
 
 @pytest.mark.parametrize("count", [-1, 2])
 def test_top_refuses_a_count_outside_the_corpus(count: int) -> None:
     with pytest.raises(DevError):
-        DevCorpus("v2.0.36", [PackageRelease(TIME, Release("time", "0.1.0.0"))]).top(count)
+        DevCorpus("v2.0.38", [PackageRelease(TIME, Release("time", "0.1.0.0"))]).top(count)
 
 
 async def test_select_skips_an_invalid_release(

@@ -18,7 +18,7 @@ from jendhub.vectors.index import INDEXING_THRESHOLD, VectorConfig, VectorIndex
 from tests.indexing.library_fixture import BASE
 from tests.indexing.live import POLL_SECONDS, WordEmbedder, index_live, seed
 
-NEW_TAG = "v2.0.38"
+NEW_TAG = "v2.0.39"
 
 
 class FailingEmbedder:

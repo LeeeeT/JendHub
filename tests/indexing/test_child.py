@@ -31,7 +31,7 @@ def child_environment(
 async def new_generation(packages: PackageStore, vectors: VectorIndex) -> tuple[Worker, int]:
     await seed(packages)
     index, _ = await index_live(packages, vectors)
-    await packages.store_base(Base("v2.0.38", BASE.encode()))
+    await packages.store_base(Base("v2.0.39", BASE.encode()))
     await schedule_live(index, packages, vectors)
     [_, new] = await index.generations(LIVE)
     return Worker(index, packages, vectors, WordEmbedder()), new.id
