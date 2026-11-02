@@ -1,6 +1,8 @@
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 
+from jendhub.hub.api import HASH, HUB, NAME, VERSION
 from jendhub.json import Json
 
 
@@ -83,3 +85,24 @@ def parse_errors(found: Json) -> dict[str, LoadError]:
             return {file: load_error(error) for file, error in found.items()}
         case _:
             raise ValueError(f"not a map of load errors: {found!r}")
+
+
+MISSING_NAME = re.compile(
+    rf"^a package named ({NAME.pattern}@{VERSION.pattern}) on {re.escape(HUB)}$"
+)
+MISSING_HASH = re.compile(rf"^a file at {re.escape(HUB)}/({HASH.pattern})/manifest hashing to ")
+
+
+def missing_inputs(errors: dict[str, LoadError], stored: set[str]) -> tuple[list[str], list[str]]:
+    names = {
+        match.group(1)
+        for error in errors.values()
+        if (match := MISSING_NAME.match(error.expected)) is not None
+    }
+    hashes = {
+        match.group(1)
+        for error in errors.values()
+        if (match := MISSING_HASH.match(error.expected)) is not None
+        and match.group(1) not in stored
+    }
+    return sorted(names), sorted(hashes)

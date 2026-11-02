@@ -4,6 +4,7 @@ import re
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Literal
 
 import httpx
@@ -132,13 +133,8 @@ async def listings(
 
 
 async def new_listings(client: httpx.AsyncClient, known: set[str]) -> list[Listing | Rejection]:
-    found: list[Listing | Rejection] = []
     async with aclosing(listings(client, "new")) as entries:
-        async for entry in entries:
-            if entry.hash in known:
-                break
-            found.append(entry)
-    return found
+        return [entry async for entry in entries if entry.hash not in known]
 
 
 async def fetch_package(client: httpx.AsyncClient, listing: Listing) -> Package | Rejection:
@@ -158,3 +154,28 @@ async def fetch_package(client: httpx.AsyncClient, listing: Listing) -> Package 
         if sha256(content) != digests[path]:
             raise HubError(f"{listing.hash}/{path} does not match its manifest")
     return Package(listing, files)
+
+
+async def name_releases(client: httpx.AsyncClient, name: str) -> list[PackageRelease]:
+    if not NAME.fullmatch(name):
+        raise HubError(f"invalid package name: {name!r}")
+    response = await client.get(f"{HUB}/name/{name}")
+    if response.status_code == HTTPStatus.NOT_FOUND:
+        return []
+    response.raise_for_status()
+    body: Json = response.json()
+    match body:
+        case {"name": str() as found, "versions": list() as versions} if found == name:
+            pass
+        case _:
+            raise HubError(f"invalid name record for {name}")
+    releases: list[PackageRelease] = []
+    for version in versions:
+        match version:
+            case {"hash": str() as hash_, "version": str() as number} if HASH.fullmatch(
+                hash_
+            ) and valid_release(name, number):
+                releases.append(PackageRelease(hash_, Release(name, number)))
+            case _:
+                raise HubError(f"invalid version of {name}: {version!r}")
+    return releases

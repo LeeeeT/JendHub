@@ -92,8 +92,8 @@ async def test_a_new_release_replaces_the_old_one(
     assert "app/main:quadruple" not in users
     assert await highlighted(pool, target.generation) == {
         ("base", ""),
-        (KIT_V1, "main"),
-        (APP, "main"),
+        ("kit@1.0.0.0", "main"),
+        ("app@1.0.0.0", "main"),
     }
 
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), f"{BOX}\n{KIT_SOURCE[13:]}")
@@ -105,10 +105,10 @@ async def test_a_new_release_replaces_the_old_one(
     assert {"kit@2.0.0.0/main:double", "kit@2.0.0.0/main:open"} <= found
     assert await highlighted(pool, target.generation) == {
         ("base", ""),
-        (KIT_V2, "main"),
-        (APP, "main"),
+        ("kit@2.0.0.0", "main"),
+        ("app@1.0.0.0", "main"),
     }
-    assert (await linked(pool, target.generation, APP))["kit/main:double"] == Extent(
+    assert (await linked(pool, target.generation, "app@1.0.0.0"))["kit/main:double"] == Extent(
         "kit@2.0.0.0/main:double", 11, 14
     )
     users = await stored_users(pool, target.generation)
@@ -129,7 +129,7 @@ async def test_an_older_release_never_replaces_a_newer_one(
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), KIT_SOURCE)
     _, target = await index_live(packages, vectors)
     index = IndexStore(pool)
-    await index.enqueue(target.generation, [(KIT_V1, "kit")])
+    await index.enqueue(target.generation, [("kit@1.0.0.0", "kit")])
     await store_package(packages, KIT_V1, Release("kit", "1.0.0.0"), KIT_SOURCE)
     worker = Worker(index, packages, vectors, WordEmbedder())
     await worker.drain(target.generation)
@@ -147,11 +147,11 @@ async def test_an_older_release_never_replaces_a_newer_one_that_declares_nothing
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), EMPTY)
     _, target = await index_live(packages, vectors)
     index = IndexStore(pool)
-    await index.enqueue(target.generation, [(KIT_V1, "kit")])
+    await index.enqueue(target.generation, [("kit@1.0.0.0", "kit")])
     await store_package(packages, KIT_V1, Release("kit", "1.0.0.0"), KIT_SOURCE)
     await Worker(index, packages, vectors, WordEmbedder()).drain(target.generation)
     assert not any(id_.startswith("kit@") for id_ in await ids(pool, target.generation))
-    assert await highlighted(pool, target.generation) == {("base", ""), (KIT_V2, "main")}
+    assert await highlighted(pool, target.generation) == {("base", ""), ("kit@2.0.0.0", "main")}
     assert (await index.job_states(target.generation))["superseded"] == 1
 
 
@@ -162,10 +162,10 @@ async def test_a_new_release_replaces_an_old_one_that_declares_nothing(
     await store_package(packages, KIT_V1, Release("kit", "1.0.0.0"), EMPTY)
     _, target = await index_live(packages, vectors)
     index = IndexStore(pool)
-    await index.enqueue(target.generation, [(KIT_V2, "kit")])
+    await index.enqueue(target.generation, [("kit@2.0.0.0", "kit")])
     await store_package(packages, KIT_V2, Release("kit", "2.0.0.0"), KIT_SOURCE)
     await Worker(index, packages, vectors, WordEmbedder()).drain(target.generation)
-    assert await highlighted(pool, target.generation) == {("base", ""), (KIT_V2, "main")}
+    assert await highlighted(pool, target.generation) == {("base", ""), ("kit@2.0.0.0", "main")}
 
 
 async def test_the_status_counts_a_release_that_declares_nothing(
@@ -191,13 +191,13 @@ async def test_an_invalid_release_falls_back_to_the_latest_valid_one(
     found = await ids(pool, target.generation)
     assert "kit@1.0.0.0/main:double" in found
     assert not any(id_.startswith("kit@2.0.0.0") for id_ in found)
-    assert await index.is_invalid(KIT_V2)
-    assert await index.latest_valid_releases() == {"kit": KIT_V1}
+    assert await index.is_invalid("kit@2.0.0.0")
+    assert await index.latest_valid_releases() == {"kit": "kit@1.0.0.0"}
     states = await index.job_states(target.generation)
     assert states == {"done": 2, "invalid": 1}
 
 
-async def test_an_invalid_release_is_never_tried_again(
+async def test_a_new_base_retries_an_invalid_release(
     packages: PackageStore, vectors: VectorIndex
 ) -> None:
     await packages.store_base(Base(TAG, BASE.encode()))
@@ -206,7 +206,7 @@ async def test_an_invalid_release_is_never_tried_again(
     await packages.store_base(Base("v2.0.39", BASE.encode()))
     await schedule_live(index, packages, vectors)
     [_, new] = await index.generations(LIVE)
-    assert await index.job_states(new.id) == {"queued": 1}
+    assert await index.job_states(new.id) == {"queued": 2}
 
 
 async def test_the_latest_valid_release_compares_versions_as_numbers(
@@ -214,4 +214,4 @@ async def test_the_latest_valid_release_compares_versions_as_numbers(
 ) -> None:
     await store_package(packages, KIT_V1, Release("kit", "0.9.0.0"), KIT_SOURCE)
     await store_package(packages, KIT_V2, Release("kit", "0.10.0.0"), KIT_SOURCE)
-    assert await IndexStore(pool).latest_valid_releases() == {"kit": KIT_V2}
+    assert await IndexStore(pool).latest_valid_releases() == {"kit": "kit@0.10.0.0"}

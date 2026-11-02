@@ -162,5 +162,5 @@ async def test_select_skips_an_invalid_release(
     router: respx.MockRouter, packages: PackageStore
 ) -> None:
     serve_pages(router, [HOT])
-    selection = await select(await full_store(packages), PackageBudget(10), {TIME})
+    selection = await select(await full_store(packages), PackageBudget(10), {"time@0.1.0.0"})
     assert [package.hash for package in selection.corpus.packages] == [HTTP_OLD, JSON]

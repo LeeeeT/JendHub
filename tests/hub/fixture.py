@@ -30,3 +30,25 @@ def listing(hash_: str, name: str | None = None, version: str | None = None) -> 
 def serve_pages(router: respx.MockRouter, pages: list[list[dict[str, object]]]) -> None:
     route = router.get(f"{HUB}/packages.json")
     route.side_effect = [httpx.Response(200, json={"packages": page}) for page in pages]
+
+    names: dict[str, list[dict[str, object]]] = {}
+    for page in pages:
+        for entry in page:
+            name = entry.get("name")
+            if isinstance(name, str):
+                names.setdefault(name, []).append(
+                    {
+                        "hash": entry["hash"],
+                        "version": entry["version"],
+                    }
+                )
+    for name, versions in names.items():
+        router.get(f"{HUB}/name/{name}").mock(
+            httpx.Response(
+                200,
+                json={
+                    "name": name,
+                    "versions": versions,
+                },
+            )
+        )

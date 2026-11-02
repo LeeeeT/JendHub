@@ -69,10 +69,10 @@ def test_valid_path_rejects_other_paths(path: str) -> None:
     assert not hub.valid_path(path)
 
 
-def test_new_listings_stops_at_the_first_known_hash(router: respx.MockRouter) -> None:
+def test_new_listings_reads_past_a_known_hash(router: respx.MockRouter) -> None:
     serve_pages(router, [[listing(HASH_A), listing(HASH_B), listing(HASH_C)]])
     found = asyncio.run(_new_listings({HASH_B}))
-    assert [entry.hash for entry in found] == [HASH_A]
+    assert [entry.hash for entry in found] == [HASH_A, HASH_C]
 
 
 def test_new_listings_skips_entries_that_shift_into_the_next_page(
@@ -139,3 +139,49 @@ async def _new_listings(known: set[str]) -> list[Listing | Rejection]:
 async def _fetch_package(entry: Listing) -> Package | Rejection:
     async with httpx.AsyncClient() as client:
         return await fetch_package(client, entry)
+
+
+async def test_name_releases_preserves_versions_with_the_same_hash(
+    router: respx.MockRouter,
+) -> None:
+    router.get(f"{HUB}/name/kit").mock(
+        httpx.Response(
+            200,
+            json={
+                "name": "kit",
+                "versions": [
+                    {"hash": HASH_A, "version": "2.0.0.0"},
+                    {"hash": HASH_A, "version": "1.0.0.0"},
+                ],
+            },
+        )
+    )
+    async with httpx.AsyncClient() as client:
+        assert await hub.name_releases(client, "kit") == [
+            hub.PackageRelease(HASH_A, Release("kit", "2.0.0.0")),
+            hub.PackageRelease(HASH_A, Release("kit", "1.0.0.0")),
+        ]
+
+
+async def test_name_releases_accepts_an_unregistered_name(router: respx.MockRouter) -> None:
+    router.get(f"{HUB}/name/absent").mock(httpx.Response(404))
+    async with httpx.AsyncClient() as client:
+        assert await hub.name_releases(client, "absent") == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"name": "other", "versions": []},
+        {"name": "kit", "versions": [{"hash": "bad", "version": "1.0.0.0"}]},
+        {"name": "kit", "versions": [{"hash": HASH_A, "version": "1.0"}]},
+    ],
+)
+async def test_name_releases_rejects_an_invalid_record(
+    router: respx.MockRouter,
+    body: hub.Json,
+) -> None:
+    router.get(f"{HUB}/name/kit").mock(httpx.Response(200, json=body))
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(HubError):
+            await hub.name_releases(client, "kit")

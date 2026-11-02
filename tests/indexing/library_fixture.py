@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from jendhub.hub.api import Listing, Package, Release
+from jendhub.hub.api import Listing, Package, PackageRelease, Release
 from jendhub.hub.base import Base
 from jendhub.hub.library import Library
 
@@ -39,4 +39,5 @@ def library(root: Path, packages: dict[Release, tuple[str, dict[str, str]]]) -> 
     for release, (hash_, files) in packages.items():
         encoded = {path: text.encode() for path, text in files.items()}
         found.store_package(Package(Listing(hash_, release), encoded))
+        found.store_release(PackageRelease(hash_, release))
     return found

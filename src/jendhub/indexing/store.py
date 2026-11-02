@@ -13,10 +13,10 @@ from jendhub.errors import JendHubError
 from jendhub.hub.api import Release
 from jendhub.indexing.artifacts import Artifacts
 from jendhub.search.highlights import lines_json
-from jendhub.uses.failures import LoadError, errors_json, summary
+from jendhub.uses.failures import LoadError, errors_json, missing_inputs, summary
 from jendhub.vectors.index import Quantization, VectorConfig, collection_name
 
-INDEXER_VERSION = 5
+INDEXER_VERSION = 6
 LIVE = "live"
 MAX_ATTEMPTS = 5
 RETRY_BASE = timedelta(minutes=1)
@@ -146,35 +146,79 @@ class IndexStore:
                 [(generation_id, release, name) for release, name in releases],
             )
 
+    async def revalidate_invalid(self, base_tag: str, revision: int) -> None:
+        async with self.pool.connection() as connection, connection.transaction():
+            cursor = await connection.execute(
+                "DELETE FROM invalid_releases WHERE base_tag <> %s"
+                " OR indexer_version <> %s OR (library_revision <> %s AND ("
+                " EXISTS (SELECT FROM releases r WHERE r.id = ANY(missing_names))"
+                " OR EXISTS (SELECT FROM packages p WHERE p.hash = ANY(missing_hashes))))"
+                " RETURNING release",
+                (base_tag, INDEXER_VERSION, revision),
+            )
+            releases = [release for (release,) in await cursor.fetchall()]
+            await connection.execute(
+                "UPDATE invalid_releases SET library_revision = %s WHERE library_revision <> %s",
+                (revision, revision),
+            )
+            if releases:
+                await connection.execute(
+                    "UPDATE index_jobs j SET state = 'queued', attempts = 0, run_after = now(),"
+                    " lease_until = NULL, error = NULL, finished_at = NULL FROM generations g"
+                    " WHERE g.id = j.generation AND g.state <> 'retired'"
+                    " AND g.base_tag = %s AND g.indexer_version = %s"
+                    " AND j.release = ANY(%s) AND j.state = 'invalid'",
+                    (base_tag, INDEXER_VERSION, releases),
+                )
+
     async def latest_valid_releases(self) -> dict[str, str]:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT DISTINCT ON (name) name, hash FROM packages"
-                " WHERE name IS NOT NULL AND hash NOT IN (SELECT hash FROM invalid_releases)"
+                "SELECT DISTINCT ON (name) name, id FROM releases"
+                " WHERE id NOT IN (SELECT release FROM invalid_releases)"
                 " ORDER BY name, version_order DESC"
             )
             return dict(await cursor.fetchall())
 
-    async def invalid_hashes(self) -> set[str]:
+    async def invalid_releases(self) -> set[str]:
         async with self.pool.connection() as connection:
-            cursor = await connection.execute("SELECT hash FROM invalid_releases")
-            return {hash_ for (hash_,) in await cursor.fetchall()}
+            cursor = await connection.execute("SELECT release FROM invalid_releases")
+            return {release for (release,) in await cursor.fetchall()}
 
     async def is_invalid(self, release: str) -> bool:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT 1 FROM invalid_releases WHERE hash = %s", (release,)
+                "SELECT 1 FROM invalid_releases WHERE release = %s", (release,)
             )
             return await cursor.fetchone() is not None
 
     async def mark_invalid(
-        self, job: Job, base_tag: str, errors: dict[str, LoadError]
+        self,
+        job: Job,
+        base_tag: str,
+        errors: dict[str, LoadError],
+        revision: int,
+        stored: set[str],
     ) -> str | None:
+        names, hashes = missing_inputs(errors, stored)
         async with self.pool.connection() as connection, connection.transaction():
             await connection.execute(
-                "INSERT INTO invalid_releases (hash, base_tag, errors) VALUES (%s, %s, %s)"
-                " ON CONFLICT DO NOTHING",
-                (job.release, base_tag, Jsonb(errors_json(errors))),
+                "INSERT INTO invalid_releases"
+                " (release, base_tag, errors, library_revision, indexer_version,"
+                " missing_names, missing_hashes) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                " ON CONFLICT (release) DO UPDATE SET base_tag = EXCLUDED.base_tag,"
+                " errors = EXCLUDED.errors, library_revision = EXCLUDED.library_revision,"
+                " indexer_version = EXCLUDED.indexer_version, found_at = now(),"
+                " missing_names = EXCLUDED.missing_names, missing_hashes = EXCLUDED.missing_hashes",
+                (
+                    job.release,
+                    base_tag,
+                    Jsonb(errors_json(errors)),
+                    revision,
+                    INDEXER_VERSION,
+                    names,
+                    hashes,
+                ),
             )
             await connection.execute(
                 "UPDATE index_jobs SET state = 'invalid', finished_at = now(), error = %s,"
@@ -182,9 +226,9 @@ class IndexStore:
                 (summary(errors), job.generation, job.release),
             )
             cursor = await connection.execute(
-                "SELECT p.hash FROM packages p JOIN packages own ON own.hash = %s"
+                "SELECT p.id FROM releases p JOIN releases own ON own.id = %s"
                 " WHERE p.name = own.name AND p.version_order < own.version_order"
-                " AND p.hash NOT IN (SELECT hash FROM invalid_releases)"
+                " AND p.id NOT IN (SELECT release FROM invalid_releases)"
                 " ORDER BY p.version_order DESC LIMIT 1",
                 (job.release,),
             )
@@ -353,9 +397,9 @@ async def newer_release(
     connection: AsyncConnection, generation_id: int, artifacts: Artifacts
 ) -> str | None:
     cursor = await connection.execute(
-        "SELECT h.release FROM packages own JOIN packages p ON p.name = own.name"
-        " JOIN highlights h ON h.release = p.hash"
-        " WHERE own.hash = %s AND h.generation = %s AND p.version_order > own.version_order"
+        "SELECT h.release FROM releases own JOIN releases p ON p.name = own.name"
+        " JOIN highlights h ON h.release = p.id"
+        " WHERE own.id = %s AND h.generation = %s AND p.version_order > own.version_order"
         " LIMIT 1",
         (artifacts.release, generation_id),
     )
@@ -369,7 +413,7 @@ async def older_releases(
     if artifacts.package is None:
         return []
     cursor = await connection.execute(
-        "SELECT DISTINCT h.release FROM packages p JOIN highlights h ON h.release = p.hash"
+        "SELECT DISTINCT h.release FROM releases p JOIN highlights h ON h.release = p.id"
         " WHERE p.name = %s AND h.generation = %s AND h.release <> %s",
         (artifacts.package.name, generation_id, artifacts.release),
     )

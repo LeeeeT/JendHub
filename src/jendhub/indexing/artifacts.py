@@ -1,10 +1,12 @@
 import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
-from jendhub.corpus.definitions import BASE, Definition, Origin, SourceFile, extract
+from jendhub.corpus.definitions import BASE, IMPORT, Definition, Origin, SourceFile, extract
 from jendhub.hub.api import Release
 from jendhub.hub.library import Library
 from jendhub.search.documents import name_document, origin_document
@@ -55,17 +57,16 @@ def definition_key(origin: Origin, name: str) -> str:
     return name if origin.release is None else f"{origin.release.name}/{origin.module}:{name}"
 
 
-def source_files(
-    library: Library, base: Path, release: str, package: Release | None
-) -> dict[Path, SourceFile]:
+def source_files(library: Library, base: Path, package: Release | None) -> dict[Path, SourceFile]:
     if package is None:
         return {base.resolve(): SourceFile(BASE, base.read_text(encoding="utf-8"))}
-    root = library.package_directory(release)
+    hash_ = library.release_hash(package)
+    root = library.package_directory(hash_)
     return {
         (root / path).resolve(): SourceFile(
             Origin(package, path.removesuffix(".bend")), content.decode(errors="replace")
         )
-        for path, content in sorted(library.read_package(release).items())
+        for path, content in sorted(library.read_package(hash_).items())
     }
 
 
@@ -172,10 +173,29 @@ async def load_errors(
     }
 
 
+def imported_owners(
+    library: Library,
+    files: dict[Path, SourceFile],
+    package: Release | None,
+    selected: dict[str, Release | None],
+) -> dict[str, Release | None]:
+    for source in files.values():
+        for match in IMPORT.finditer(source.source):
+            label, _, _ = match.group(1).partition("/")
+            name, at, version = label.partition("@")
+            if at:
+                imported = Release(name, version)
+                with suppress(FileNotFoundError):
+                    selected[library.release_hash(imported)] = imported
+    if package is not None:
+        selected[library.release_hash(package)] = package
+    return selected
+
+
 async def build(
     library: Library, base: Path, release: str, package: Release | None, owners: Owners
 ) -> Artifacts:
-    files = source_files(library, base, release, package)
+    files = source_files(library, base, package)
     paths = {file.origin: path for path, file in files.items()}
     definitions = [found for file in files.values() for found in extract(file)]
     by_id = {definition.id: definition for definition in definitions}
@@ -191,7 +211,15 @@ async def build(
         if target is not None and (hash_ := package_hash(lib, target.file)) is not None
     }
     real_base = await asyncio.to_thread(base.resolve)
-    found_targets = Targets(lib, real_base, await owners(sorted(targets)))
+    selected = await owners(sorted(targets))
+    file_targets = {
+        path: Targets(
+            lib,
+            real_base,
+            imported_owners(library, {path: source}, package, selected.copy()),
+        )
+        for path, source in files.items()
+    }
     edges: list[tuple[str, str]] = []
     external: defaultdict[str, set[str]] = defaultdict(set)
     for file in resolved:
@@ -203,7 +231,7 @@ async def build(
                 target = f"{files[use.target.file].origin.prefix}{use.target.name}"
                 if target in by_id:
                     edges.append((user, target))
-            elif (key := found_targets.key(use.target)) is not None and (
+            elif (key := file_targets[file.path].key(use.target)) is not None and (
                 package is None or not key.startswith(f"{package.name}/")
             ):
                 external[user].add(key)
@@ -242,12 +270,13 @@ async def build(
         if file.error is None and frozenset(extracted[file.path]) != file.declarations
     }
 
-    def target_key(target: Declaration) -> str | None:
+    def target_key(path: Path, target: Declaration) -> str | None:
         if target.file in files:
             return definition_key(files[target.file].origin, target.name)
-        return found_targets.key(target)
+        return file_targets[path].key(target)
 
     highlights = {
-        files[file.path].origin.module: linked(file.highlights, target_key) for file in resolved
+        files[file.path].origin.module: linked(file.highlights, partial(target_key, file.path))
+        for file in resolved
     }
     return Artifacts(release, package, indexed, sorted(set(edges)), errors, mismatches, highlights)

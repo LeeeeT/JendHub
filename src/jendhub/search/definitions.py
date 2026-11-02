@@ -5,8 +5,8 @@ from jendhub.hub.library import Library
 from jendhub.search.sources import (
     BASE_IMPORT,
     SourceFile,
-    StoredRelease,
     package_source,
+    stored_release,
     used_imports,
 )
 
@@ -59,8 +59,12 @@ async def read_definition(
         if package is None:
             imports = [ImportLine(BASE_IMPORT, BASE_IMPORT, None)]
         else:
-            stored = StoredRelease(f"{package}@{version}", release)
-            source = await package_source(connection, library, stored, f"{module}.bend")
+            stored = await stored_release(connection, release)
+            source = (
+                None
+                if stored is None
+                else await package_source(connection, library, stored, f"{module}.bend")
+            )
             imports = [] if source is None else import_lines(source, text)
         cursor = await connection.execute(
             "SELECT t.id FROM uses JOIN definitions t ON t.point = uses.target_point"

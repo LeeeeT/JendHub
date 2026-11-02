@@ -103,8 +103,8 @@ async def invalid_releases(pool: Pool, offset: int, limit: int) -> tuple[list[In
         cursor = await connection.execute("SELECT count(*) FROM invalid_releases")
         total_row = await cursor.fetchone()
         cursor = await connection.execute(
-            "SELECT p.name, p.version, i.hash, i.base_tag, i.errors, i.found_at"
-            " FROM invalid_releases i JOIN packages p ON p.hash = i.hash"
+            "SELECT p.name, p.version, p.hash, i.base_tag, i.errors, i.found_at"
+            " FROM invalid_releases i JOIN releases p ON p.id = i.release"
             " ORDER BY i.found_at DESC, p.name, p.version_order DESC OFFSET %s LIMIT %s",
             (offset, limit),
         )

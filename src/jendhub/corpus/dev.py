@@ -98,7 +98,7 @@ async def select_packages(
     if base_tag is None:
         raise DevError("the store has no base.bend: run jendhub sync first")
     stored = await store.stored_hashes()
-    rejected = await store.rejected_hashes() | invalid
+    rejected = await store.rejected_hashes()
     names: set[str] = set()
     packages: list[PackageRelease] = []
     definitions = 0
@@ -108,7 +108,7 @@ async def select_packages(
                 break
             match entry:
                 case Listing(hash_, Release(name) as release) if (
-                    hash_ not in rejected and name not in names
+                    str(release) not in invalid and hash_ not in rejected and name not in names
                 ):
                     if hash_ not in stored:
                         raise DevError(f"{hash_} is not in the store: run jendhub sync first")

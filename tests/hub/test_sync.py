@@ -92,3 +92,53 @@ async def test_plan_changes_nothing(router: respx.MockRouter, packages: PackageS
     assert await packages.known_hashes() == set()
     assert not source.called
     assert not router.get(f"{HUB}/{new}/manifest").called
+
+
+async def test_sync_refreshes_names_of_known_content(
+    router: respx.MockRouter, packages: PackageStore
+) -> None:
+    serve_base(router, "v2.0.38", b"base")
+    hash_ = serve_package(router, {"main.bend": b"main"})
+    serve_pages(router, [[listing(hash_)]])
+    await sync(packages)
+    manifest = router.get(f"{HUB}/{hash_}/manifest")
+    manifest.reset()
+    serve_pages(router, [[listing(hash_, "kit", "2.0.0.0")]])
+    router.get(f"{HUB}/name/kit").mock(
+        httpx.Response(
+            200,
+            json={
+                "name": "kit",
+                "versions": [
+                    {"hash": hash_, "version": "2.0.0.0"},
+                    {"hash": hash_, "version": "1.0.0.0"},
+                ],
+            },
+        )
+    )
+    await sync(packages)
+    assert not manifest.called
+    assert await packages.holder(Release("kit", "1.0.0.0")) == hash_
+    assert await packages.holder(Release("kit", "2.0.0.0")) == hash_
+
+
+async def test_sync_discovers_an_alias_that_the_package_list_omits(
+    router: respx.MockRouter,
+    packages: PackageStore,
+) -> None:
+    serve_base(router, "v2.0.38", b"base")
+    dependency = serve_package(router, {"codec.bend": b"codec"})
+    consumer = serve_package(router, {"main.bend": b"import codec@1.0.0.0/codec.bend as C\n"})
+    serve_pages(router, [[listing(consumer, "app", "1.0.0.0"), listing(dependency)]])
+    router.get(f"{HUB}/name/codec").mock(
+        httpx.Response(
+            200,
+            json={
+                "name": "codec",
+                "versions": [{"hash": dependency, "version": "1.0.0.0"}],
+            },
+        )
+    )
+    await sync(packages)
+    assert await packages.holder(Release("codec", "1.0.0.0")) == dependency
+    assert packages.library.release_hash(Release("codec", "1.0.0.0")) == dependency

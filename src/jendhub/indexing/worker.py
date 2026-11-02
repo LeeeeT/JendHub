@@ -83,12 +83,14 @@ class Worker:
         base = library.base_source(generation.base_tag)
         package = None
         if job.release != BASE_RELEASE:
-            package = (await self.packages.releases([job.release]))[job.release]
+            package = (await self.packages.release(job.release)).release
+        revision = await self.packages.revision()
+        stored = await self.packages.stored_hashes()
         artifacts = await build(library, base, job.release, package, self.packages.releases)
         if artifacts.errors and package is None:
             raise IndexingError(f"Base does not load: {summary(artifacts.errors)}")
         if artifacts.errors:
-            await self.drop(job, generation, artifacts.errors)
+            await self.drop(job, generation, artifacts.errors, revision, stored)
             return Attempt("invalid")
         log_mismatches(artifacts)
         mismatches = len(artifacts.mismatches)
@@ -127,9 +129,16 @@ class Worker:
         )
         return Attempt("done", mismatches)
 
-    async def drop(self, job: Job, generation: Generation, errors: dict[str, LoadError]) -> None:
-        older = await self.index.mark_invalid(job, generation.base_tag, errors)
-        logger.warning("%s is invalid and never indexed: %s", job.release, summary(errors))
+    async def drop(
+        self,
+        job: Job,
+        generation: Generation,
+        errors: dict[str, LoadError],
+        revision: int,
+        stored: set[str],
+    ) -> None:
+        older = await self.index.mark_invalid(job, generation.base_tag, errors, revision, stored)
+        logger.warning("%s does not load: %s", job.release, summary(errors))
         if older is not None and generation.corpus == LIVE:
             await self.index.enqueue(generation.id, [(older, job.name)])
             logger.info("queued %s, the next older release of %s", older, job.name)

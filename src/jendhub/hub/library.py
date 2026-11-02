@@ -1,8 +1,9 @@
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from jendhub.hub.api import Package
+from jendhub.hub.api import Package, PackageRelease, Release
 from jendhub.hub.base import Base
 
 
@@ -56,9 +57,28 @@ class Library:
         self.lib.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(self.package_directory(listing.hash), ignore_errors=True)
         staged.replace(self.package_directory(listing.hash))
-        if listing.release is not None:
-            name_file = self.lib / "names" / str(listing.release)
-            write_atomically(name_file, f"{listing.hash}\n".encode())
 
     def store_base(self, base: Base) -> None:
         write_atomically(self.base_source(base.tag), base.source)
+
+    def store_release(self, release: PackageRelease) -> bool:
+        path = self.lib / "names" / str(release.release)
+        content = f"{release.hash}\n".encode()
+        try:
+            if path.read_bytes() == content:
+                return False
+        except FileNotFoundError:
+            pass
+        write_atomically(path, content)
+        return True
+
+    def release_hash(self, release: Release) -> str:
+        return (self.lib / "names" / str(release)).read_text().strip()
+
+    def imported_names(self) -> set[str]:
+        pattern = re.compile(r"^import ([a-z][a-z0-9-]{0,63})@", re.MULTILINE)
+        return {
+            name
+            for path in self.lib.glob("0x*/**/*.bend")
+            for name in pattern.findall(path.read_text(errors="replace"))
+        }

@@ -1,7 +1,7 @@
 import asyncio
 
 from jendhub.db.pool import Pool
-from jendhub.hub.api import Listing, Package, Rejection, Release
+from jendhub.hub.api import HubError, Listing, Package, PackageRelease, Rejection, Release
 from jendhub.hub.base import Base
 from jendhub.hub.library import Library
 from jendhub.settings import LibrarySettings, load_settings
@@ -30,16 +30,11 @@ class PackageStore:
             return {hash_ for (hash_,) in await cursor.fetchall()}
 
     async def package(self, hash_: str) -> Package:
-        async with self.pool.connection() as connection:
-            cursor = await connection.execute(
-                "SELECT name, version FROM packages WHERE hash = %s", (hash_,)
-            )
-            row = await cursor.fetchone()
-        if row is None:
+        labels = await self.releases([hash_])
+        if hash_ not in labels:
             raise KeyError(hash_)
-        release = None if row[0] is None else Release(row[0], row[1])
         files = await asyncio.to_thread(self.library.read_package, hash_)
-        return Package(Listing(hash_, release), files)
+        return Package(Listing(hash_, labels[hash_]), files)
 
     async def latest_base_tag(self) -> str | None:
         async with self.pool.connection() as connection:
@@ -59,31 +54,68 @@ class PackageStore:
     async def holder(self, release: Release) -> str | None:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT hash FROM packages WHERE name = %s AND version = %s",
+                "SELECT hash FROM releases WHERE name = %s AND version = %s",
                 (release.name, release.version),
             )
             row = await cursor.fetchone()
         return None if row is None else row[0]
 
-    async def store_package(self, package: Package) -> Rejection | None:
-        listing = package.listing
-        release = listing.release
-        if release is not None and (held := await self.holder(release)) not in {None, listing.hash}:
-            rejection = Rejection(listing.hash, f"the release {release} is {held}")
-            await self.reject(rejection)
-            return rejection
+    async def store_package(self, package: Package) -> None:
         await asyncio.to_thread(self.library.store_package, package)
         async with self.pool.connection() as connection:
-            await connection.execute(
-                "INSERT INTO packages (hash, name, version) VALUES (%s, %s, %s)"
-                " ON CONFLICT DO NOTHING",
-                (
-                    listing.hash,
-                    None if release is None else release.name,
-                    None if release is None else release.version,
-                ),
+            cursor = await connection.execute(
+                "INSERT INTO packages (hash) VALUES (%s) ON CONFLICT DO NOTHING RETURNING hash",
+                (package.listing.hash,),
             )
-        return None
+            if await cursor.fetchone() is not None:
+                await connection.execute("UPDATE library_state SET revision = revision + 1")
+        if package.listing.release is not None:
+            await self.store_release(PackageRelease(package.listing.hash, package.listing.release))
+
+    async def store_release(self, package: PackageRelease) -> bool:
+        async with self.pool.connection() as connection, connection.transaction():
+            await connection.execute("SELECT revision FROM library_state FOR UPDATE")
+            cursor = await connection.execute(
+                "SELECT hash FROM releases WHERE name = %s AND version = %s",
+                (package.release.name, package.release.version),
+            )
+            held = await cursor.fetchone()
+            if held is not None and held[0] != package.hash:
+                raise HubError(f"the release {package.release} is {held[0]}, not {package.hash}")
+            repaired = await asyncio.to_thread(self.library.store_release, package)
+            if held is not None:
+                if repaired:
+                    await connection.execute("UPDATE library_state SET revision = revision + 1")
+                return repaired
+            await connection.execute(
+                "INSERT INTO releases (hash, name, version) VALUES (%s, %s, %s)",
+                (package.hash, package.release.name, package.release.version),
+            )
+            await connection.execute("UPDATE library_state SET revision = revision + 1")
+        return True
+
+    async def names(self) -> set[str]:
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute("SELECT DISTINCT name FROM releases")
+            return {name for (name,) in await cursor.fetchall()}
+
+    async def revision(self) -> int:
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute("SELECT revision FROM library_state")
+            row = await cursor.fetchone()
+        if row is None:
+            raise HubError("the library has no revision")
+        return row[0]
+
+    async def release(self, id_: str) -> PackageRelease:
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute(
+                "SELECT hash, name, version FROM releases WHERE id = %s", (id_,)
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            raise KeyError(id_)
+        return PackageRelease(row[0], Release(row[1], row[2]))
 
     async def reject(self, rejection: Rejection) -> None:
         async with self.pool.connection() as connection:
@@ -96,7 +128,10 @@ class PackageStore:
     async def releases(self, hashes: list[str]) -> dict[str, Release | None]:
         async with self.pool.connection() as connection:
             cursor = await connection.execute(
-                "SELECT hash, name, version FROM packages WHERE hash = ANY(%s)", (hashes,)
+                "SELECT DISTINCT ON (p.hash) p.hash, r.name, r.version FROM packages p"
+                " LEFT JOIN releases r ON r.hash = p.hash WHERE p.hash = ANY(%s)"
+                " ORDER BY p.hash, r.name, r.version_order DESC",
+                (hashes,),
             )
             rows = await cursor.fetchall()
         return {

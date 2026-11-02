@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 def corpus_name(base_tag: str, packages: list[PackageRelease]) -> str:
-    listed = "\n".join([base_tag, *sorted(package.hash for package in packages)])
+    listed = "\n".join(
+        [base_tag, *sorted(f"{package.release}:{package.hash}" for package in packages)]
+    )
     return f"dev-{hashlib.sha256(listed.encode()).hexdigest()[:16]}"
 
 
@@ -92,12 +94,14 @@ async def schedule_live(index: IndexStore, packages: PackageStore, vectors: Vect
     tag = await packages.latest_base_tag()
     if tag is None:
         return
+    await index.revalidate_invalid(tag, await packages.revision())
     latest = await index.latest_valid_releases()
     releases: list[tuple[str, str | None]] = [(BASE_RELEASE, None)]
     releases += [(hash_, name) for name, hash_ in latest.items()]
     await ensure_generation(index, vectors, GenerationSpec(LIVE, tag, releases, PRODUCTION))
     for generation in await index.generations(LIVE):
-        await index.enqueue(generation.id, releases)
+        if generation.base_tag == tag and generation.indexer_version == INDEXER_VERSION:
+            await index.enqueue(generation.id, releases)
     await promote_ready(index, vectors, LIVE)
 
 

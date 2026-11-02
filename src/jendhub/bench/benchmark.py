@@ -80,7 +80,7 @@ async def dev_index(services: Services, listed: DevCorpus) -> int:
     index = IndexStore(services.pool)
     corpus = corpus_name(listed.base_tag, listed.packages)
     releases: list[tuple[str, str | None]] = [(BASE_RELEASE, None)]
-    releases += [(package.hash, package.release.name) for package in listed.packages]
+    releases += [(str(package.release), package.release.name) for package in listed.packages]
     spec = GenerationSpec(corpus, listed.base_tag, releases, PRODUCTION)
     generation = await ensure_generation(index, services.vectors, spec)
     worker = Worker(index, services.packages, services.vectors, services.embedder)

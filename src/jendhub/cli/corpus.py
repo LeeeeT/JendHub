@@ -30,7 +30,7 @@ async def sync_store(store: PackageStore, *, dry_run: bool) -> None:
 
 
 async def select_dev_corpus(store: PackageStore, index: IndexStore, budget: Budget) -> None:
-    selection = await select(store, budget, await index.invalid_hashes())
+    selection = await select(store, budget, await index.invalid_releases())
     DEV_CORPUS_LIST.parent.mkdir(parents=True, exist_ok=True)
     DEV_CORPUS_LIST.write_text(selection.corpus.to_json())
     sys.stdout.write(

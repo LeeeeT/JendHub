@@ -106,10 +106,14 @@ data as web pages. Both are on one site, https://jend.leeeet.dev.
   of nixpkgs, because nixpkgs caches binary packages only for that version.
 - **Corpus:** the store keeps every version of every package, because packages
   import each other by hash. Search uses only the latest valid version of each
-  named package, as if other versions do not exist.
+  named package, as if other versions do not exist. Names and versions have their own
+  records. Several names or versions can refer to one content hash. Each name
+  has its own search records. Sync reads the full package list and refreshes
+  each known or imported name from BendHub's name endpoint.
 - **Valid releases:** a release is valid if each of its files loads with the
   current Base, as the compiler loads it. If one file does not load, JendHub
-  drops the whole release and never tries it again, also with a later Base.
+  excludes the whole release for the current Base, indexer, and library records.
+  It tries the release again when Base or the indexer changes, or a missing dependency becomes available.
   Search then uses the latest valid release of the same name.
 - **Base:** JendHub keeps each released `base.bend`. `import Base` always means
   the latest release. A new Base release rebuilds the index.
@@ -265,7 +269,7 @@ the live generation from Postgres.
   line of a module that they all import, so the pages show each error once,
   with the places where the loads stopped and the files that do not load.
   The worker then queues the next older valid release of the same name, and
-  the syncer never queues the invalid one again.
+  the syncer retries the invalid release when Base or the indexer changes, or a missing dependency becomes available.
 - **A new Base release, a new `INDEXER_VERSION`, or a new vector setting
   (`PRODUCTION` in `vectors/index.py`):** the syncer creates a new generation
   and queues a job for Base and for each latest release. The worker gets the
@@ -380,6 +384,13 @@ Without one, the pages answer that the index is not ready.
 OpenRouter on their own. Start one with `process-compose process start
 <name>`. For the CLI, open a second terminal with `nix develop`, and run
 `jendhub --help`.
+
+Migration `0013_release_names.sql` changes indexed release IDs from content
+hashes to `name@version`. For an existing index, stop the site, syncer, and
+worker before the migration. Then run `jendhub index restore-vectors` before
+starting these services. This command restores vector payloads from the
+embedding cache. It makes no embedding requests. A new index generation then
+builds with separate records for each package name.
 
 ### The production stack on your machine
 
@@ -505,9 +516,9 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 
 | Store | Content |
 |---|---|
-| Postgres `packages`, `rejected_packages`, `base_releases` | The releases of BendHub and of Base that the library has, and the rejected packages. |
+| Postgres `packages`, `releases`, `rejected_packages`, `base_releases` | The releases of BendHub and of Base that the library has, and the rejected packages. |
 | Postgres `generations`, `index_jobs` | The index generations with their vector settings, and the job queue. |
-| Postgres `invalid_releases` | The releases that never go into the index, with the load error of each file that does not load. |
+| Postgres `invalid_releases` | The releases that do not load, their errors, and the inputs used to check them. |
 | Postgres `definitions`, `uses`, `external_uses`, `user_counts` | The definitions of each generation, with their features, their uses and the number of definitions that use each key. |
 | Postgres `highlights` | The highlights of each line of each indexed file, for each generation: the column range, the class, whether the token declares its name, and the key of the definition that the name refers to. |
 | Postgres `embeddings` | The embedding cache: full float32 vectors, keyed by model and text hash. |
@@ -517,8 +528,8 @@ ssh -L 9090:127.0.0.1:9090 root@195.63.145.165   # then open http://127.0.0.1:90
 | The library, `data/library` | The files of each package in the `BEND_LIB` layout (`lib/<hash>/<path>`, and `lib/names/<name@version>` with the hash), and `base/<tag>/base.bend`. |
 
 The sync rejects a release with an invalid name or version, a package with an
-invalid file name, or a package whose name and version another package already
-has, and never tries it again. A hash mismatch, a network
+invalid file name. It keeps these rejections and does not download the same
+content again. A conflicting name binding, a hash mismatch, a network
 error or a listing without a valid hash stops the sync.
 
 ## Uses
@@ -556,7 +567,7 @@ compiler declare the same names. The worker checks this for
 each file and logs each difference.
 
 The status page lists the invalid releases and the errors of their files.
-JendHub does not try an invalid release again. The usual causes are a
+JendHub checks an invalid release again when Base or the indexer changes, or a missing dependency becomes available. The usual causes are a
 constructor that Base declares too, such as `Text` since Base v2.0.38, a name
 part that starts with a digit, and an import of a package that BendHub does
 not have. The loader parses and resolves names, but

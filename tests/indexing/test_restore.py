@@ -8,7 +8,7 @@ from jendhub.indexing.project import restore_vectors
 from jendhub.search.engine import SearchEngine
 from jendhub.search.ranking import load_model
 from jendhub.vectors.index import Scope, VectorIndex
-from tests.indexing.live import KIT_V1, WordEmbedder, index_live, seed
+from tests.indexing.live import WordEmbedder, index_live, seed
 
 
 async def test_restore_leaves_a_present_collection_alone(
@@ -28,7 +28,7 @@ async def test_restore_completes_a_partial_collection(
     [before] = await engine.search(["double a number"], 3)
     described = await vectors.client.get_collection(target.collection)
     threshold = described.config.optimizer_config.indexing_threshold
-    await vectors.delete_release(target.collection, KIT_V1)
+    await vectors.delete_release(target.collection, "kit@1.0.0.0")
     assert await restore_vectors(index, vectors, EmbeddingCache(pool)) == [target.collection]
     [after] = await engine.search(["double a number"], 3)
     assert [hit.id for hit in after] == [hit.id for hit in before]

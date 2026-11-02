@@ -30,7 +30,7 @@ class SourceFile:
 
     @property
     def indexed_release(self) -> str:
-        return BASE_RELEASE if self.hash is None else self.hash
+        return BASE_RELEASE if self.hash is None else self.release
 
     @property
     def module(self) -> str:
@@ -154,7 +154,9 @@ def used_imports(file_text: str, code: str) -> list[int]:
 async def stored_release(connection: AsyncConnection, release: str) -> StoredRelease | None:
     if HASH.fullmatch(release):
         cursor = await connection.execute(
-            "SELECT name, version FROM packages WHERE hash = %s", (release,)
+            "SELECT r.name, r.version FROM packages p LEFT JOIN releases r ON r.hash = p.hash"
+            " WHERE p.hash = %s ORDER BY r.name, r.version_order DESC LIMIT 1",
+            (release,),
         )
         row = await cursor.fetchone()
         return None if row is None else StoredRelease(label(release, *row), release)
@@ -162,7 +164,7 @@ async def stored_release(connection: AsyncConnection, release: str) -> StoredRel
     if not valid_release(name, version):
         return None
     cursor = await connection.execute(
-        "SELECT hash FROM packages WHERE name = %s AND version = %s", (name, version)
+        "SELECT hash FROM releases WHERE name = %s AND version = %s", (name, version)
     )
     row = await cursor.fetchone()
     return None if row is None else StoredRelease(str(Release(name, version)), row[0])
@@ -172,7 +174,7 @@ async def latest_releases(
     connection: AsyncConnection, name: str, limit: int
 ) -> tuple[list[str], int]:
     cursor = await connection.execute(
-        "SELECT version, count(*) OVER () FROM packages"
+        "SELECT version, count(*) OVER () FROM releases"
         " WHERE name = %s ORDER BY version_order DESC LIMIT %s",
         (name, limit),
     )
@@ -191,7 +193,7 @@ async def indexed_file(pool: Pool, generation: int, path: str) -> bool:
         cursor = await connection.execute(
             "SELECT EXISTS (SELECT FROM highlights"
             " WHERE generation = %s AND release = %s AND module = %s)",
-            (generation, stored.hash, file.removesuffix(".bend")),
+            (generation, stored.label, file.removesuffix(".bend")),
         )
         row = await cursor.fetchone()
     return row is not None and row[0]
@@ -199,7 +201,8 @@ async def indexed_file(pool: Pool, generation: int, path: str) -> bool:
 
 async def hash_labels(connection: AsyncConnection, hashes: list[str]) -> dict[str, str]:
     cursor = await connection.execute(
-        "SELECT hash, name, version FROM packages WHERE hash = ANY(%s) AND name IS NOT NULL",
+        "SELECT DISTINCT ON (hash) hash, name, version FROM releases WHERE hash = ANY(%s)"
+        " ORDER BY hash, name, version_order DESC",
         (hashes,),
     )
     return {hash_: label(hash_, name, version) for hash_, name, version in await cursor.fetchall()}
@@ -282,7 +285,7 @@ async def read_release_files(
         cursor = await connection.execute(
             "SELECT module || '.bend', count(*) FROM definitions"
             " WHERE generation = %s AND release = %s GROUP BY module",
-            (generation, stored.hash),
+            (generation, stored.label),
         )
         definitions: dict[str, int] = dict(await cursor.fetchall())
     return ReleaseFiles(stored.label, stored.hash, paths, definitions)
