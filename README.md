@@ -552,7 +552,11 @@ node for them.
 
 The `jendhub-index` program in `indexer/` loads each file of a release as the
 compiler loads the file it checks. It writes the uses, the declared names and
-the highlights of each line as JSON. The highlights come from the `highlight`
+the highlights of each line as one JSON record per file. Python reads these
+records from a temporary file, processes one file at a time, and keeps the
+final highlights as serialized JSON. It does not keep the full decoded response.
+Normal loads do not retain body traces; the compiler-comparison tool requests
+those traces separately. The highlights come from the `highlight`
 module of `bend2-lsp-rs`, which also gives the semantic tokens of the language
 server: the lexer gives the class of each token, and the meaning of each name
 gives the class of each identifier and the declaration that the identifier

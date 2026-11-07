@@ -12,7 +12,6 @@ from jendhub.embedding.model import digest
 from jendhub.errors import JendHubError
 from jendhub.hub.api import Release
 from jendhub.indexing.artifacts import Artifacts
-from jendhub.search.highlights import lines_json
 from jendhub.uses.failures import LoadError, errors_json, missing_inputs, summary
 from jendhub.vectors.index import Quantization, VectorConfig, collection_name
 
@@ -490,7 +489,7 @@ async def insert(
     for indexed in artifacts.definitions:
         if indexed.parent is not None:
             children.setdefault(indexed.parent, []).append(by_id[indexed.definition.id])
-    rows = [
+    rows = (
         (
             point,
             generation_id,
@@ -517,35 +516,31 @@ async def insert(
             sorted(children.get(indexed.definition.id, [])),
         )
         for indexed, point in zip(artifacts.definitions, points, strict=True)
-    ]
+    )
     async with connection.cursor() as many:
-        await many.executemany(
-            "INSERT INTO definitions (point, generation, release, id, key, kind, name, package,"
+        async with many.copy(
+            "COPY definitions (point, generation, release, id, key, kind, name, package,"
             " version, module, text, head, first_line, end_line, document_digest, name_digest,"
-            " parameters, result, documented, helper, release_users, parent, children)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
-            " %s, %s, %s, %s, %s)",
-            rows,
-        )
-        await many.executemany(
-            "INSERT INTO uses (user_point, target_point) VALUES (%s, %s)",
-            [(by_id[user], by_id[target]) for user, target in artifacts.uses],
-        )
-        await many.executemany(
-            "INSERT INTO external_uses (generation, user_point, target_key) VALUES (%s, %s, %s)",
-            [
-                (generation_id, by_id[indexed.definition.id], key)
-                for indexed in artifacts.definitions
-                for key in sorted(indexed.external_targets)
-            ],
-        )
-        await many.executemany(
-            "INSERT INTO highlights (generation, release, module, lines) VALUES (%s, %s, %s, %s)",
-            [
-                (generation_id, artifacts.release, module, lines_json(lines))
-                for module, lines in sorted(artifacts.highlights.items())
-            ],
-        )
+            " parameters, result, documented, helper, release_users, parent, children) FROM STDIN"
+        ) as copied:
+            for row in rows:
+                await copied.write_row(row)
+        async with many.copy("COPY uses (user_point, target_point) FROM STDIN") as copied:
+            for user, target in artifacts.uses:
+                await copied.write_row((by_id[user], by_id[target]))
+        async with many.copy(
+            "COPY external_uses (generation, user_point, target_key) FROM STDIN"
+        ) as copied:
+            for indexed in artifacts.definitions:
+                for key in sorted(indexed.external_targets):
+                    await copied.write_row((generation_id, by_id[indexed.definition.id], key))
+        async with many.copy(
+            "COPY highlights (generation, release, module, lines) FROM STDIN"
+        ) as copied:
+            for module, lines in sorted(artifacts.highlights.items()):
+                await copied.write_row(
+                    (generation_id, artifacts.release, module, Jsonb(lines, dumps=str))
+                )
     return points
 
 

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,10 @@ async def test_a_def_that_fills_a_law_is_no_definition_on_either_side(
     found = await artifacts(library(tmp_path, {LIB: (LIB_HASH, {"main.bend": law})}), LIB_HASH)
     assert found.mismatches == {}
     assert [indexed.definition.name for indexed in found.definitions] == ["unit"]
+
+
+async def test_highlights_are_kept_as_serialized_json(tmp_path: Path) -> None:
+    found = await artifacts(library(tmp_path, {LIB: (LIB_HASH, {"box.bend": BOX})}), LIB_HASH)
+    assert isinstance(found.highlights["box"], str)
+    lines = json.loads(found.highlights["box"])
+    assert any(item[4] == "lib/box:Box" for line in lines for item in line)

@@ -1,7 +1,13 @@
+from dataclasses import replace
+
+import psycopg
+import pytest
+
 from jendhub.db.pool import Pool
 from jendhub.hub.api import Release
 from jendhub.hub.base import Base
 from jendhub.hub.store import PackageStore
+from jendhub.indexing.artifacts import build
 from jendhub.indexing.schedule import schedule_live
 from jendhub.indexing.status import generation_statuses
 from jendhub.indexing.store import LIVE, IndexStore
@@ -19,6 +25,7 @@ from tests.indexing.live import (
     KIT_V2,
     WordEmbedder,
     index_live,
+    seed,
     store_package,
 )
 
@@ -215,3 +222,26 @@ async def test_the_latest_valid_release_compares_versions_as_numbers(
     await store_package(packages, KIT_V1, Release("kit", "0.9.0.0"), KIT_SOURCE)
     await store_package(packages, KIT_V2, Release("kit", "0.10.0.0"), KIT_SOURCE)
     assert await IndexStore(pool).latest_valid_releases() == {"kit": "kit@0.10.0.0"}
+
+
+async def test_a_failed_streamed_write_keeps_the_old_release(
+    pool: Pool, packages: PackageStore, vectors: VectorIndex
+) -> None:
+    await seed(packages)
+    index, target = await index_live(packages, vectors)
+    before = await ids(pool, target.generation)
+    users = await stored_users(pool, target.generation)
+    files = await highlighted(pool, target.generation)
+    artifacts = await build(
+        packages.library,
+        packages.library.base_source(TAG),
+        "kit@1.0.0.0",
+        Release("kit", "1.0.0.0"),
+        packages.releases,
+    )
+    broken = replace(artifacts, highlights={"main": "not JSON"})
+    with pytest.raises(psycopg.errors.InvalidTextRepresentation):
+        await index.write(target.generation, broken)
+    assert await ids(pool, target.generation) == before
+    assert await stored_users(pool, target.generation) == users
+    assert await highlighted(pool, target.generation) == files

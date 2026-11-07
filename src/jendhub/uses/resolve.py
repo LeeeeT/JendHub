@@ -1,8 +1,11 @@
+import asyncio
 import json
-import subprocess
-from collections.abc import Callable
+import tempfile
+from collections.abc import AsyncGenerator, Callable, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 from jendhub.errors import JendHubError
 from jendhub.json import Json
@@ -15,19 +18,19 @@ class UsesError(JendHubError):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Declaration:
     file: Path
     name: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Use:
     user: Declaration
     target: Declaration
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Failure:
     expected: str
     observed: str | None
@@ -35,7 +38,7 @@ class Failure:
     line: int | None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ResolvedFile:
     path: Path
     error: Failure | None
@@ -110,23 +113,46 @@ def resolved_file(found: Json) -> ResolvedFile:
             raise UsesError(f"{INDEXER} returned an invalid entry: {found!r}")
 
 
-def resolve(lib: Path, base: Path, entries: list[Path]) -> list[ResolvedFile]:
+def read_entries(output: TextIO, entries: list[Path]) -> Iterator[ResolvedFile]:
+    for path in entries:
+        try:
+            found = resolved_file(json.loads(output.readline()))
+        except ValueError as error:
+            raise UsesError(f"{INDEXER} returned invalid JSON") from error
+        if found.path != path:
+            raise UsesError(f"{INDEXER} returned an unexpected entry: {found.path}")
+        yield found
+    if output.read(1):
+        raise UsesError(f"{INDEXER} returned too many entries")
+
+
+@asynccontextmanager
+async def resolve(
+    lib: Path, base: Path, entries: list[Path]
+) -> AsyncGenerator[Iterator[ResolvedFile]]:
     request = {
         "lib": str(lib),
-        "base": str(base.resolve()),
+        "base": str(await asyncio.to_thread(base.resolve)),
         "entries": [str(entry) for entry in entries],
     }
-    try:
-        result = subprocess.run(  # noqa: S603
-            [INDEXER], input=json.dumps(request), capture_output=True, text=True, check=False
-        )
-    except FileNotFoundError as error:
-        raise UsesError(f"{INDEXER} is not on PATH: run jendhub in nix develop") from error
-    if result.returncode != 0:
-        raise UsesError(f"{INDEXER} failed: {result.stderr.strip()}")
-    answer: Json = json.loads(result.stdout)
-    match answer:
-        case {"entries": list() as found} if len(found) == len(entries):
-            return [resolved_file(item) for item in found]
-        case _:
-            raise UsesError(f"{INDEXER} returned an invalid answer")
+    with (
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output,
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errors,
+    ):
+        try:
+            process = await asyncio.create_subprocess_exec(
+                INDEXER, stdin=asyncio.subprocess.PIPE, stdout=output, stderr=errors
+            )
+        except FileNotFoundError as error:
+            raise UsesError(f"{INDEXER} is not on PATH: run jendhub in nix develop") from error
+        try:
+            await process.communicate(json.dumps(request).encode())
+            if process.returncode != 0:
+                errors.seek(0)
+                raise UsesError(f"{INDEXER} failed: {errors.read().strip()}")
+            output.seek(0)
+            yield read_entries(output, entries)
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()

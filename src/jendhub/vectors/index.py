@@ -20,7 +20,7 @@ HNSW_M = 16
 HNSW_EF_CONSTRUCT = 128
 OVERSAMPLING = 2.0
 SEARCH_EF = 200
-UPSERT_BATCH = 64
+UPSERT_BATCH = 16
 INDEXING_THRESHOLD = 10_000
 TIMEOUT_SECONDS = 120
 
@@ -205,15 +205,15 @@ class VectorIndex:
         await self.client.delete_collection(name)
 
     async def upsert(self, name: str, config: VectorConfig, found: Projected, release: str) -> None:
-        code = config.project(found.code)
-        names = config.project(found.names)
         for start in range(0, len(found.points), UPSERT_BATCH):
             batch = slice(start, start + UPSERT_BATCH)
+            code = config.project(found.code[batch])
+            names = config.project(found.names[batch])
             await self.client.upsert(
                 name,
                 points=models.Batch(
                     ids=list[models.ExtendedPointId](found.points[batch]),
-                    vectors={CODE: code[batch].tolist(), NAME: names[batch].tolist()},
+                    vectors={CODE: code.tolist(), NAME: names.tolist()},
                     payloads=[
                         {RELEASE: release, MODULE: module, USES: uses}
                         for module, uses in zip(

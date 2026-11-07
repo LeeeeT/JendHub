@@ -4,7 +4,9 @@ from itertools import count
 import numpy as np
 import pytest
 
+from jendhub.embedding.model import Vectors
 from jendhub.settings import QdrantSettings
+from jendhub.vectors import index as vector_module
 from jendhub.vectors.index import (
     CODE,
     NAME,
@@ -89,3 +91,23 @@ async def test_create_twice_keeps_the_points(index: VectorIndex) -> None:
     await index.upsert(name, config, projected([1], basis(1)), "release")
     await index.create(name, config)
     assert [neighbor.point for neighbor in await index.search(name, config, basis(1)[0], 1)] == [1]
+
+
+async def test_upsert_projects_only_the_current_batch(
+    index: VectorIndex, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    name = f"test-{next(COLLECTIONS)}"
+    config = CONFIGS[0]
+    await index.create(name, config)
+    project = VectorConfig.project
+    sizes: list[int] = []
+
+    def measure(self: VectorConfig, vectors: Vectors) -> Vectors:
+        sizes.append(len(vectors))
+        return project(self, vectors)
+
+    monkeypatch.setattr(vector_module, "UPSERT_BATCH", 2)
+    monkeypatch.setattr(VectorConfig, "project", measure)
+    await index.upsert(name, config, projected([1, 2, 3, 4, 5], basis(5)), "release")
+    assert sizes == [2, 2, 2, 2, 1, 1]
+    assert await index.release_size(name, "release") == 5

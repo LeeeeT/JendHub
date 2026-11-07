@@ -23,11 +23,6 @@ struct Request {
 }
 
 #[derive(Serialize)]
-struct Response {
-    entries: Vec<Entry>,
-}
-
-#[derive(Serialize)]
 struct Entry {
     path: String,
     error: Option<Failure>,
@@ -313,25 +308,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         base: real(&request.base),
         hub: "https://hub.bend-lang.com".to_owned(),
     };
-    let mut entries = Vec::with_capacity(request.entries.len());
+    let mut output = io::stdout().lock();
     for entry in request.entries {
         let loaded = load(&Disk, &env, &entry);
         let declarations = entry_declarations(&loaded);
         let uses = uses(&loaded);
         let error = failure(&loaded);
         let highlighted = entry_highlights(loaded, &entry);
-        entries.push(Entry {
-            highlights: highlighted.lines,
-            targets: highlighted.targets,
-            path: entry,
-            error,
-            declarations,
-            uses,
-        });
+        serde_json::to_writer(
+            &mut output,
+            &Entry {
+                highlights: highlighted.lines,
+                targets: highlighted.targets,
+                path: entry,
+                error,
+                declarations,
+                uses,
+            },
+        )?;
+        output.write_all(b"\n")?;
     }
-    let mut output = io::stdout().lock();
-    serde_json::to_writer(&mut output, &Response { entries })?;
-    output.write_all(b"\n")?;
     Ok(())
 }
 

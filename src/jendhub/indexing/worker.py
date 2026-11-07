@@ -101,7 +101,9 @@ class Worker:
         for start in range(0, len(documents), CHUNK):
             await self.embedder.embed(documents[start : start + CHUNK])
             await self.embedder.embed(names[start : start + CHUNK])
+        count = len(artifacts.definitions)
         written = await self.index.write(generation.id, artifacts)
+        del artifacts
         if isinstance(written, Superseded):
             logger.info("%s is superseded by %s", job.release, written.by)
             await self.index.finish(job, "superseded")
@@ -125,7 +127,7 @@ class Worker:
             "indexed %s in generation %d: %d definitions",
             job.release,
             generation.id,
-            len(artifacts.definitions),
+            count,
         )
         return Attempt("done", mismatches)
 

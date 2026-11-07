@@ -25,7 +25,7 @@ class HighlightError(JendHubError):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Highlight[T]:
     start: int
     end: int
